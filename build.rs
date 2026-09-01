@@ -49,10 +49,10 @@ fn copy_folder(src: &Path, dst: &Path) {
     }
 }
 
-fn extract_lib_names(out_dir: &Path, build_shared_libs: bool) -> Vec<String> {
-    let lib_pattern = if cfg!(windows) {
+fn extract_lib_names(out_dir: &Path, build_shared_libs: bool, target_os: &str) -> Vec<String> {
+    let lib_pattern = if target_os == "windows" {
         "*.lib"
-    } else if cfg!(target_os = "macos") {
+    } else if target_os == "macos" {
         if build_shared_libs {
             "*.dylib"
         } else {
@@ -90,10 +90,10 @@ fn extract_lib_names(out_dir: &Path, build_shared_libs: bool) -> Vec<String> {
     lib_names
 }
 
-fn extract_lib_assets(out_dir: &Path) -> Vec<PathBuf> {
-    let shared_lib_pattern = if cfg!(windows) {
+fn extract_lib_assets(out_dir: &Path, target_os: &str) -> Vec<PathBuf> {
+    let shared_lib_pattern = if target_os == "windows" {
         "*.dll"
-    } else if cfg!(target_os = "macos") {
+    } else if target_os == "macos" {
         "*.dylib"
     } else {
         "*.so"
@@ -145,6 +145,7 @@ fn main() {
     println!("cargo:rustc-link-lib=espeak-ng");
     println!("cargo:rustc-link-lib=ucd");
     let target = env::var("TARGET").unwrap();
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     let target_dir = get_cargo_target_dir().unwrap();
@@ -212,11 +213,11 @@ fn main() {
         if build_shared_libs { "ON" } else { "OFF" },
     );
 
-    if cfg!(windows) {
+    if target_os == "windows" {
         config.static_crt(static_crt);
     }
 
-    if cfg!(target_os = "macos") {
+    if target_os == "macos" {
         config.define("USE_LIBPCAUDIO", "OFF");
     }
 
@@ -249,7 +250,7 @@ fn main() {
     );
     println!("cargo:rustc-link-search={}", bindings_dir.display());
 
-    if cfg!(windows) {
+    if target_os == "windows" {
         println!(
             "cargo:rustc-link-search={}",
             out_dir.join("build/src/speechPlayer/Release").display()
@@ -261,14 +262,14 @@ fn main() {
     }
 
     // macOS
-    if cfg!(target_os = "macos") {
+    if target_os == "macos" {
         println!("cargo:rustc-link-lib=framework=Foundation");
         println!("cargo:rustc-link-lib=c++");
     }
 
     // Link libraries
     let espeak_libs_kind = if build_shared_libs { "dylib" } else { "static" };
-    let espeak_libs = extract_lib_names(&out_dir, build_shared_libs);
+    let espeak_libs = extract_lib_names(&out_dir, build_shared_libs, &target_os);
 
     for lib in espeak_libs {
         debug_log!(
@@ -279,12 +280,12 @@ fn main() {
     }
 
     // Windows debug
-    if cfg!(all(debug_assertions, windows)) {
+    if target_os == "windows" && cfg!(debug_assertions) {
         println!("cargo:rustc-link-lib=dylib=msvcrtd");
     }
 
     // Linux
-    if cfg!(target_os = "linux") {
+    if target_os == "linux" {
         println!("cargo:rustc-link-lib=dylib=stdc++");
     }
 
@@ -301,7 +302,7 @@ fn main() {
 
     // copy DLLs to target
     if build_shared_libs {
-        let libs_assets = extract_lib_assets(&out_dir);
+        let libs_assets = extract_lib_assets(&out_dir, &target_os);
         for asset in libs_assets {
             let asset_clone = asset.clone();
             let filename = asset_clone.file_name().unwrap();
