@@ -277,10 +277,7 @@ fn main() {
             "LINK {}",
             format!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib)
         );
-        println!(
-            "{}",
-            format!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib)
-        );
+        println!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib);
     }
 
     // Windows debug
