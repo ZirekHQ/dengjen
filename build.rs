@@ -58,12 +58,10 @@ fn extract_lib_names(out_dir: &Path, build_shared_libs: bool) -> Vec<String> {
         } else {
             "*.a"
         }
+    } else if build_shared_libs {
+        "*.so"
     } else {
-        if build_shared_libs {
-            "*.so"
-        } else {
-            "*.a"
-        }
+        "*.a"
     };
     let libs_dir = out_dir.join("lib");
     let pattern = libs_dir.join(lib_pattern);
