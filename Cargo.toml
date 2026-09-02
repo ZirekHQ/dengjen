@@ -1,5 +1,5 @@
 [package]
-name = "espeak-rs-sys"
+name = "dengjen-espeak-rs-sys"
 version = "0.2.0"
 edition = "2024"
 description = "Rust bindings to espeak-ng"
