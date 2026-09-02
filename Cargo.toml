@@ -19,8 +19,13 @@ include = [
     "src/*.rs",
     "build.rs",
     "wrapper.h",
-    # Omit too big files from dictsource
+    # Omit too big files from dictsource, except ru_listx: espeak-ng's
+    # data.cmake wires it into the Russian dictionary automatically
+    # (EXTRA_ru option, default ON) when compile-espeak-intonations is
+    # enabled, so dropping it silently degrades Russian pronunciation
+    # for anyone building from the published crate. See #23.
     "!espeak-ng/dictsource/extra/**",
+    "espeak-ng/dictsource/extra/ru_listx",
     "!espeak-ng/dictsource/fo_list",
     "!espeak-ng/src/windows/Debug/*.wav",
 ]
