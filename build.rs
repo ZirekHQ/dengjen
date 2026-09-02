@@ -253,34 +253,144 @@ fn cmake_bool_is_true(value: &str) -> bool {
 }
 
 fn resolved_pcaudio_lib(cache_contents: &str) -> Option<PathBuf> {
-    let mut use_libpcaudio = false;
-    let mut pcaudio_lib = None;
-    let mut pcaudio_inc = None;
+    resolved_system_lib(
+        cache_contents,
+        "USE_LIBPCAUDIO:BOOL=",
+        "PCAUDIO_LIB:FILEPATH=",
+        "PCAUDIO_INC:PATH=",
+    )
+}
+
+/// Mirrors espeak-ng's own `HAVE_LIBSONIC AND USE_LIBSONIC` gate
+/// (src/libespeak-ng/CMakeLists.txt) the same way [`resolved_pcaudio_lib`]
+/// mirrors the pcaudio one. Unlike pcaudio, when no system libsonic is found
+/// `deps.cmake` falls back to fetching and compiling sonic in-tree as an
+/// OBJECT library, whose object files get embedded directly into espeak-ng's
+/// own static lib — no extra linker flag needed for that case. That fallback
+/// only `set()`s `SONIC_LIB` to the bare in-tree target name (`sonic`)
+/// locally within the CMake run; it never overwrites the cached
+/// `SONIC_LIB:FILEPATH` entry `find_library` originally wrote, so the
+/// `*-NOTFOUND` check below naturally distinguishes "linked as a real system
+/// library" from "compiled in-tree and already embedded".
+fn resolved_sonic_lib(cache_contents: &str) -> Option<PathBuf> {
+    resolved_system_lib(
+        cache_contents,
+        "USE_LIBSONIC:BOOL=",
+        "SONIC_LIB:FILEPATH=",
+        "SONIC_INC:PATH=",
+    )
+}
+
+fn resolved_system_lib(
+    cache_contents: &str,
+    use_key: &str,
+    lib_key: &str,
+    inc_key: &str,
+) -> Option<PathBuf> {
+    let mut enabled = false;
+    let mut lib = None;
+    let mut inc = None;
 
     for line in cache_contents.lines() {
         let line = line.trim();
-        if let Some(value) = line.strip_prefix("USE_LIBPCAUDIO:BOOL=") {
-            use_libpcaudio = cmake_bool_is_true(value);
-        } else if let Some(value) = line.strip_prefix("PCAUDIO_LIB:FILEPATH=") {
-            pcaudio_lib = Some(value);
-        } else if let Some(value) = line.strip_prefix("PCAUDIO_INC:PATH=") {
-            pcaudio_inc = Some(value);
+        if let Some(value) = line.strip_prefix(use_key) {
+            enabled = cmake_bool_is_true(value);
+        } else if let Some(value) = line.strip_prefix(lib_key) {
+            lib = Some(value);
+        } else if let Some(value) = line.strip_prefix(inc_key) {
+            inc = Some(value);
         }
     }
 
     let is_resolved = |value: Option<&str>| matches!(value, Some(v) if !v.is_empty() && !v.ends_with("-NOTFOUND"));
 
-    if use_libpcaudio && is_resolved(pcaudio_lib) && is_resolved(pcaudio_inc) {
-        pcaudio_lib.map(PathBuf::from)
+    if enabled && is_resolved(lib) && is_resolved(inc) {
+        lib.map(PathBuf::from)
     } else {
         None
     }
 }
 
+/// Emits the `cargo:rustc-link-search`/`cargo:rustc-link-lib` directives for
+/// a system library CMake resolved to `lib_path`, deriving the search
+/// directory, kind (static vs. dylib), and bare library name from the
+/// resolved file itself rather than assuming a search path or extension.
+/// `default_name` is used only if the resolved file's name is unexpectedly
+/// malformed (no `lib` prefix or no stem at all).
+fn emit_system_lib_link_directives(lib_path: &Path, default_name: &str) {
+    if let Some(dir) = lib_path.parent() {
+        println!("cargo:rustc-link-search=native={}", dir.display());
+    }
+    let kind = if lib_path.extension().and_then(|ext| ext.to_str()) == Some("a") {
+        "static"
+    } else {
+        "dylib"
+    };
+    let name = lib_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(|stem| stem.strip_prefix("lib"))
+        .unwrap_or(default_name);
+    println!("cargo:rustc-link-lib={kind}={name}");
+}
+
 #[cfg(test)]
 mod tests {
-    use super::resolved_pcaudio_lib;
+    use super::{resolved_pcaudio_lib, resolved_sonic_lib};
     use std::path::PathBuf;
+
+    #[test]
+    fn resolves_sonic_lib_path_when_cmake_found_system_libsonic() {
+        // CMake found a system libsonic (SONIC_LIB resolves to a real path,
+        // not the in-tree FetchContent fallback's bare `sonic` target name).
+        let cache = "SONIC_LIB:FILEPATH=/usr/lib/x86_64-linux-gnu/libsonic.so\n\
+                      SONIC_INC:PATH=/usr/include\n\
+                      USE_LIBSONIC:BOOL=ON\n";
+        assert_eq!(
+            resolved_sonic_lib(cache),
+            Some(PathBuf::from("/usr/lib/x86_64-linux-gnu/libsonic.so"))
+        );
+    }
+
+    #[test]
+    fn returns_none_for_sonic_when_use_libsonic_is_off() {
+        let cache = "SONIC_LIB:FILEPATH=SONIC_LIB-NOTFOUND\n\
+                      SONIC_INC:PATH=SONIC_INC-NOTFOUND\n\
+                      USE_LIBSONIC:BOOL=OFF\n";
+        assert_eq!(resolved_sonic_lib(cache), None);
+    }
+
+    #[test]
+    fn returns_none_for_sonic_when_falling_back_to_in_tree_fetchcontent_build() {
+        // deps.cmake's fallback path when no system libsonic is found: it
+        // fetches and compiles sonic in-tree as an OBJECT library and links
+        // it into espeak-ng's own static lib directly, so no extra `-lsonic`
+        // is needed. SONIC_LIB's *cached* value stays SONIC_LIB-NOTFOUND
+        // (the in-tree `set(SONIC_LIB sonic)` only shadows it locally within
+        // that CMake run; it isn't written back to CMakeCache.txt), while
+        // USE_LIBSONIC still defaults to ON via HAVE_LIBSONIC.
+        let cache = "SONIC_LIB:FILEPATH=SONIC_LIB-NOTFOUND\n\
+                      SONIC_INC:PATH=SONIC_INC-NOTFOUND\n\
+                      USE_LIBSONIC:BOOL=ON\n";
+        assert_eq!(resolved_sonic_lib(cache), None);
+    }
+
+    #[test]
+    fn returns_none_for_sonic_when_cache_missing_keys() {
+        let cache = "CMAKE_INSTALL_PREFIX:PATH=/out\n";
+        assert_eq!(resolved_sonic_lib(cache), None);
+    }
+
+    #[test]
+    fn treats_true_as_enabled_for_sonic_like_cmake_boolean_semantics() {
+        let cache = "SONIC_LIB:FILEPATH=/usr/lib/x86_64-linux-gnu/libsonic.so\n\
+                      SONIC_INC:PATH=/usr/include\n\
+                      USE_LIBSONIC:BOOL=TRUE\n";
+        assert_eq!(
+            resolved_sonic_lib(cache),
+            Some(PathBuf::from("/usr/lib/x86_64-linux-gnu/libsonic.so"))
+        );
+    }
 
     #[test]
     fn resolves_lib_path_when_cmake_enabled_and_found_pcaudio() {
@@ -534,29 +644,19 @@ fn main() {
     // Linux
     if target_os == "linux" {
         println!("cargo:rustc-link-lib=dylib=stdc++");
-        // CMake links espeak-ng against pcaudio only when it found the system
-        // lib and headers (see USE_LIBPCAUDIO); mirror that decision here,
-        // pointing the linker at the exact path CMake resolved, instead of
-        // guessing a bare `-lpcaudio` will resolve in the default search path.
+        // CMake links espeak-ng against pcaudio/sonic only when it found the
+        // system lib and headers (see USE_LIBPCAUDIO/USE_LIBSONIC); mirror
+        // that decision here, pointing the linker at the exact path CMake
+        // resolved, instead of guessing a bare `-lpcaudio`/`-lsonic` will
+        // resolve in the default search path.
         let cmake_cache = out_dir.join("build").join("CMakeCache.txt");
-        if let Some(pcaudio_lib) = std::fs::read_to_string(&cmake_cache)
-            .ok()
-            .and_then(|contents| resolved_pcaudio_lib(&contents))
-        {
-            if let Some(dir) = pcaudio_lib.parent() {
-                println!("cargo:rustc-link-search=native={}", dir.display());
-            }
-            let kind = if pcaudio_lib.extension().and_then(|ext| ext.to_str()) == Some("a") {
-                "static"
-            } else {
-                "dylib"
-            };
-            let name = pcaudio_lib
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .and_then(|stem| stem.strip_prefix("lib"))
-                .unwrap_or("pcaudio");
-            println!("cargo:rustc-link-lib={kind}={name}");
+        let cache_contents = std::fs::read_to_string(&cmake_cache).ok();
+
+        if let Some(pcaudio_lib) = cache_contents.as_deref().and_then(resolved_pcaudio_lib) {
+            emit_system_lib_link_directives(&pcaudio_lib, "pcaudio");
+        }
+        if let Some(sonic_lib) = cache_contents.as_deref().and_then(resolved_sonic_lib) {
+            emit_system_lib_link_directives(&sonic_lib, "sonic");
         }
     }
 
