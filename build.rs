@@ -53,11 +53,7 @@ fn extract_lib_names(out_dir: &Path, build_shared_libs: bool, target_os: &str) -
     let lib_pattern = if target_os == "windows" {
         "*.lib"
     } else if target_os == "macos" {
-        if build_shared_libs {
-            "*.dylib"
-        } else {
-            "*.a"
-        }
+        if build_shared_libs { "*.dylib" } else { "*.a" }
     } else if build_shared_libs {
         "*.so"
     } else {
@@ -174,13 +170,17 @@ fn main() {
         copy_folder(&espeak_src, &espeak_dst);
     }
     // Speed up build
-    env::set_var(
-        "CMAKE_BUILD_PARALLEL_LEVEL",
-        std::thread::available_parallelism()
-            .unwrap()
-            .get()
-            .to_string(),
-    );
+    // SAFETY: build.rs runs single-threaded at this point, before any
+    // concurrent env access (e.g. from the cmake crate's child process spawn).
+    unsafe {
+        env::set_var(
+            "CMAKE_BUILD_PARALLEL_LEVEL",
+            std::thread::available_parallelism()
+                .unwrap()
+                .get()
+                .to_string(),
+        );
+    }
 
     // Bindings
     let bindings = bindgen::Builder::default()
