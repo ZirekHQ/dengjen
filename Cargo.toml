@@ -35,6 +35,19 @@ bindgen = "0.72.1"
 cmake = "0.1"
 glob = "0.3.1"
 
+[dev-dependencies]
+bindgen = "0.72.1"
+cmake = "0.1"
+glob = "0.3.1"
+
 [features]
 default = []
 compile-espeak-intonations = []
+
+# Registers build.rs's own `#[cfg(test)]` module as a runnable test target.
+# Cargo never tests a `build-dependencies`-only build script on its own —
+# `cargo test` only compiles and runs `src/`, so these units were dead code
+# until now. See issue #10.
+[[test]]
+name = "build_script_unit_tests"
+path = "build.rs"
