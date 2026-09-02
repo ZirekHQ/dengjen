@@ -112,6 +112,96 @@ fn extract_lib_assets(out_dir: &Path, target_os: &str) -> Vec<PathBuf> {
     files
 }
 
+/// Maps a Rust `CARGO_CFG_TARGET_ARCH` to the ABI name the Android NDK's
+/// CMake toolchain file expects for `ANDROID_ABI`.
+fn android_abi(target_arch: &str) -> &'static str {
+    match target_arch {
+        "aarch64" => "arm64-v8a",
+        "arm" => "armeabi-v7a",
+        "x86" => "x86",
+        "x86_64" => "x86_64",
+        other => panic!("unsupported Android target arch: {other}"),
+    }
+}
+
+/// Resolves the Android NDK installation directory from the first of
+/// `ANDROID_NDK_HOME`, `ANDROID_NDK_ROOT`, or `NDK_HOME` that is set.
+fn android_ndk_home() -> String {
+    ["ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "NDK_HOME"]
+        .into_iter()
+        .find_map(|var| env::var(var).ok())
+        .expect(
+            "targeting Android requires ANDROID_NDK_HOME (or ANDROID_NDK_ROOT/NDK_HOME) \
+             to be set to an Android NDK installation",
+        )
+}
+
+/// Locates the Android NDK's CMake toolchain file under `ndk_home`.
+///
+/// The `cmake` crate has no built-in Android support: without an explicit
+/// `CMAKE_TOOLCHAIN_FILE`, CMake's configure step fails outright when
+/// cross-compiling for Android, so this must be set up manually the same
+/// way `ndk-build`/Gradle's CMake integration does.
+fn android_toolchain_file(ndk_home: &str) -> PathBuf {
+    let toolchain_file = Path::new(ndk_home)
+        .join("build")
+        .join("cmake")
+        .join("android.toolchain.cmake");
+    assert!(
+        toolchain_file.exists(),
+        "Android NDK toolchain file not found at {} (checked NDK home {})",
+        toolchain_file.display(),
+        ndk_home
+    );
+    toolchain_file
+}
+
+/// The NDK's own host-tag naming for the prebuilt toolchain/sysroot
+/// directory, keyed off the machine build.rs itself is *running* on (not
+/// the Android target it's cross-compiling for).
+fn ndk_host_tag() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "darwin-x86_64"
+    } else if cfg!(target_os = "windows") {
+        "windows-x86_64"
+    } else {
+        "linux-x86_64"
+    }
+}
+
+/// Locates the NDK's unified sysroot (bionic libc + Android-specific
+/// headers) under `ndk_home`.
+///
+/// bindgen/clang otherwise silently fall back to the host's own system
+/// headers (e.g. glibc under `/usr/include`) when parsing `wrapper.h`
+/// for a foreign target, which fail in target-specific ways the host
+/// toolchain was never meant to resolve (see issue #9). An explicit NDK
+/// sysroot avoids the host headers entirely.
+fn android_sysroot(ndk_home: &str) -> PathBuf {
+    let sysroot = Path::new(ndk_home)
+        .join("toolchains")
+        .join("llvm")
+        .join("prebuilt")
+        .join(ndk_host_tag())
+        .join("sysroot");
+    assert!(
+        sysroot.exists(),
+        "Android NDK sysroot not found at {} (checked NDK home {})",
+        sysroot.display(),
+        ndk_home
+    );
+    sysroot
+}
+
+/// The Android API level to target, from `ANDROID_PLATFORM` (accepting
+/// either `21` or `android-21`), defaulting to 21.
+fn android_api_level() -> u32 {
+    env::var("ANDROID_PLATFORM")
+        .ok()
+        .and_then(|v| v.trim_start_matches("android-").parse().ok())
+        .unwrap_or(21)
+}
+
 fn macos_link_search_path() -> Option<String> {
     let output = Command::new("clang")
         .arg("--print-search-dirs")
@@ -300,13 +390,28 @@ fn main() {
     }
 
     // Bindings
-    let bindings = bindgen::Builder::default()
+    let mut bindgen_builder = bindgen::Builder::default()
         .header("wrapper.h")
         .clang_arg(format!("-I{}", espeak_dst.display()))
         .clang_arg(format!(
             "-I{}",
             espeak_dst.join("src").join("include").display()
-        ))
+        ));
+
+    if target_os == "android" {
+        // bindgen infers --target from Cargo's TARGET env var but has no
+        // sysroot of its own, so clang falls back to the host's system
+        // headers (glibc) while still targeting Android/bionic — a
+        // mismatch that fails opaquely (see issue #9). Point it at the
+        // NDK's own sysroot instead.
+        let ndk_home = android_ndk_home();
+        let sysroot = android_sysroot(&ndk_home);
+        bindgen_builder = bindgen_builder
+            .clang_arg(format!("--target={target}{}", android_api_level()))
+            .clang_arg(format!("--sysroot={}", sysroot.display()));
+    }
+
+    let bindings = bindgen_builder
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Failed to generate bindings");
@@ -336,6 +441,25 @@ fn main() {
 
     if target_os == "macos" {
         config.define("USE_LIBPCAUDIO", "OFF");
+    }
+
+    if target_os == "android" {
+        let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+        let android_platform = format!("android-{}", android_api_level());
+        // c++_shared, not c++_static: the NDK recommends against a static
+        // STL once an app links more than one native library, since each
+        // static copy gets its own C++ runtime globals (locale, exception
+        // state) and duplicate-symbol/ODR clashes across .so boundaries
+        // follow. The app's packaging step must bundle the matching
+        // libc++_shared.so from the NDK sysroot alongside the built .so.
+        config
+            .define(
+                "CMAKE_TOOLCHAIN_FILE",
+                android_toolchain_file(&android_ndk_home()),
+            )
+            .define("ANDROID_ABI", android_abi(&target_arch))
+            .define("ANDROID_PLATFORM", android_platform)
+            .define("ANDROID_STL", "c++_shared");
     }
 
     // General
@@ -382,6 +506,12 @@ fn main() {
     if target_os == "macos" {
         println!("cargo:rustc-link-lib=framework=Foundation");
         println!("cargo:rustc-link-lib=c++");
+    }
+
+    // Android: speechPlayer is C++, so the NDK's C++ runtime must be linked
+    // explicitly (rustc, not CMake, drives this final link step).
+    if target_os == "android" {
+        println!("cargo:rustc-link-lib=c++_shared");
     }
 
     // Link libraries
