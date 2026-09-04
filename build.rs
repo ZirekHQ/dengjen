@@ -105,6 +105,78 @@ fn copy_folder(src: &Path, dst: &Path) {
     std::fs::rename(&tmp_dst, dst).expect("Failed to move completed copy into place");
 }
 
+/// Where to get the espeak-ng source tree from: the live git submodule (dev
+/// builds, CI running from a checkout) or the pre-compressed bundle shipped
+/// inside the published crate (crates.io's 10MiB `.crate` cap forced
+/// bundled/espeak-ng.tar.xz to replace the raw tree in `Cargo.toml`'s
+/// `include` -- see scripts/bundle-espeak-ng.sh). Exactly one of the two is
+/// expected to exist in any given checkout: the submodule when building from
+/// git, the bundle when building from a `cargo publish`ed source.
+enum EspeakNgSource<'a> {
+    Directory(&'a Path),
+    Bundle(&'a Path),
+}
+
+fn resolve_espeak_ng_source<'a>(espeak_src: &'a Path, bundle_path: &'a Path) -> EspeakNgSource<'a> {
+    if espeak_src.exists() {
+        EspeakNgSource::Directory(espeak_src)
+    } else if bundle_path.exists() {
+        EspeakNgSource::Bundle(bundle_path)
+    } else {
+        panic!(
+            "neither the espeak-ng submodule ({}) nor the pre-built bundle ({}) was found -- \
+             did you run `git submodule update --init`?",
+            espeak_src.display(),
+            bundle_path.display()
+        );
+    }
+}
+
+/// Decompresses and unpacks `bundle` (an xz-compressed tar, as produced by
+/// scripts/bundle-espeak-ng.sh) into `dst`, atomically -- same tmp-dir+rename
+/// approach as [`copy_folder`] and for the same reason: `dst.exists()` is
+/// used elsewhere to skip re-preparing the source on a later build reusing
+/// the same `OUT_DIR`, so a partial extraction left behind by a failure
+/// would poison every subsequent build.
+fn extract_xz_tar_bundle(bundle: &Path, dst: &Path) {
+    assert!(
+        bundle.exists(),
+        "espeak-ng bundle not found at {}",
+        bundle.display()
+    );
+
+    let parent = dst
+        .parent()
+        .expect("extraction destination must have a parent directory");
+    std::fs::create_dir_all(parent).expect("Failed to create parent directory");
+
+    let tmp_dst = parent.join(format!(
+        "{}.tmp",
+        dst.file_name()
+            .and_then(|name| name.to_str())
+            .expect("extraction destination must have a UTF-8 file name")
+    ));
+    let _ = std::fs::remove_dir_all(&tmp_dst);
+    assert!(
+        !tmp_dst.exists(),
+        "failed to remove stale temp extraction at {} before extracting into it",
+        tmp_dst.display()
+    );
+
+    let compressed = std::fs::read(bundle)
+        .unwrap_or_else(|e| panic!("failed to read bundle {}: {e}", bundle.display()));
+    let mut decompressed = Vec::new();
+    lzma_rs::xz_decompress(&mut &compressed[..], &mut decompressed)
+        .unwrap_or_else(|e| panic!("failed to xz-decompress bundle {}: {e}", bundle.display()));
+
+    std::fs::create_dir_all(&tmp_dst).expect("Failed to create extraction temp directory");
+    tar::Archive::new(&decompressed[..])
+        .unpack(&tmp_dst)
+        .unwrap_or_else(|e| panic!("failed to unpack bundle {}: {e}", bundle.display()));
+
+    std::fs::rename(&tmp_dst, dst).expect("Failed to move extracted bundle into place");
+}
+
 /// Name of the directory CMake installs eSpeak NG's runtime data under
 /// (`<install-prefix>/share/espeak-ng-data`), and the name `espeak-rs`'s own
 /// data lookup expects to find next to the final binary.
@@ -437,8 +509,8 @@ fn emit_system_lib_link_directives(lib_path: &Path, default_name: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_espeak_ng_data_next_to_binary, copy_folder, copy_succeeded, resolved_pcaudio_lib,
-        resolved_sonic_lib,
+        EspeakNgSource, copy_espeak_ng_data_next_to_binary, copy_folder, copy_succeeded,
+        extract_xz_tar_bundle, resolve_espeak_ng_source, resolved_pcaudio_lib, resolved_sonic_lib,
     };
     use std::panic::{AssertUnwindSafe, catch_unwind};
     use std::path::PathBuf;
@@ -757,6 +829,147 @@ mod tests {
         std::fs::remove_dir_all(&out_dir).unwrap();
         std::fs::remove_dir_all(&target_dir).unwrap();
     }
+
+    #[test]
+    fn prefers_the_live_submodule_directory_when_it_exists() {
+        let espeak_src = scratch_path("resolve-src-dir");
+        let bundle_path = scratch_path("resolve-src-bundle");
+        std::fs::create_dir_all(&espeak_src).unwrap();
+        std::fs::write(&bundle_path, b"not actually used").unwrap();
+
+        match resolve_espeak_ng_source(&espeak_src, &bundle_path) {
+            EspeakNgSource::Directory(src) => assert_eq!(src, espeak_src),
+            EspeakNgSource::Bundle(_) => panic!("expected the live directory to win"),
+        }
+
+        std::fs::remove_dir_all(&espeak_src).unwrap();
+        std::fs::remove_file(&bundle_path).unwrap();
+    }
+
+    #[test]
+    fn falls_back_to_the_bundle_when_no_live_submodule_directory_exists() {
+        let espeak_src = scratch_path("resolve-missing-src-dir");
+        let bundle_path = scratch_path("resolve-fallback-bundle");
+        std::fs::write(&bundle_path, b"bundle contents").unwrap();
+        assert!(!espeak_src.exists());
+
+        match resolve_espeak_ng_source(&espeak_src, &bundle_path) {
+            EspeakNgSource::Bundle(bundle) => assert_eq!(bundle, bundle_path),
+            EspeakNgSource::Directory(_) => panic!("expected the bundle fallback"),
+        }
+
+        std::fs::remove_file(&bundle_path).unwrap();
+    }
+
+    #[test]
+    fn panics_when_neither_submodule_directory_nor_bundle_exists() {
+        // A fresh clone with no `git submodule update --init` and no
+        // published-crate bundle: there is nothing to build from at all.
+        let espeak_src = scratch_path("resolve-nothing-src-dir");
+        let bundle_path = scratch_path("resolve-nothing-bundle");
+        assert!(!espeak_src.exists());
+        assert!(!bundle_path.exists());
+
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            resolve_espeak_ng_source(&espeak_src, &bundle_path)
+        }))
+        .is_err();
+
+        assert!(panicked);
+    }
+
+    /// Builds a valid xz-compressed tar containing `entries` (path, content
+    /// bytes), matching what scripts/bundle-espeak-ng.sh produces.
+    fn build_xz_tar_fixture(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut tar_bytes = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_bytes);
+            for (path, content) in entries {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(content.len() as u64);
+                header.set_mode(0o644);
+                header.set_cksum();
+                builder.append_data(&mut header, path, *content).unwrap();
+            }
+            builder.finish().unwrap();
+        }
+        let mut compressed = Vec::new();
+        lzma_rs::xz_compress(&mut &tar_bytes[..], &mut compressed).unwrap();
+        compressed
+    }
+
+    #[test]
+    fn extracts_an_xz_tar_bundle_into_the_destination() {
+        let bundle_path = scratch_path("extract-bundle-fixture.tar.xz");
+        let dst = scratch_path("extract-bundle-dst");
+        std::fs::write(
+            &bundle_path,
+            build_xz_tar_fixture(&[
+                ("CMakeLists.txt", b"cmake stuff"),
+                ("dictsource/en_list", b"english dictionary source"),
+            ]),
+        )
+        .unwrap();
+
+        extract_xz_tar_bundle(&bundle_path, &dst);
+
+        assert_eq!(
+            std::fs::read(dst.join("CMakeLists.txt")).unwrap(),
+            b"cmake stuff"
+        );
+        assert_eq!(
+            std::fs::read(dst.join("dictsource").join("en_list")).unwrap(),
+            b"english dictionary source"
+        );
+
+        std::fs::remove_file(&bundle_path).unwrap();
+        std::fs::remove_dir_all(&dst).unwrap();
+    }
+
+    #[test]
+    fn extract_xz_tar_bundle_never_leaves_a_destination_behind_when_the_bundle_is_missing() {
+        let bundle_path = scratch_path("extract-missing-bundle.tar.xz");
+        let dst = scratch_path("extract-missing-bundle-dst");
+        assert!(!bundle_path.exists());
+        assert!(!dst.exists());
+
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            extract_xz_tar_bundle(&bundle_path, &dst)
+        }))
+        .is_err();
+
+        assert!(
+            panicked,
+            "extract_xz_tar_bundle should panic when the bundle is missing"
+        );
+        assert!(
+            !dst.exists(),
+            "a failed extraction must not leave the destination behind"
+        );
+    }
+
+    #[test]
+    fn extract_xz_tar_bundle_never_leaves_a_destination_behind_when_the_bundle_is_corrupt() {
+        let bundle_path = scratch_path("extract-corrupt-bundle.tar.xz");
+        let dst = scratch_path("extract-corrupt-bundle-dst");
+        std::fs::write(&bundle_path, b"not a valid xz stream").unwrap();
+
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            extract_xz_tar_bundle(&bundle_path, &dst)
+        }))
+        .is_err();
+
+        assert!(
+            panicked,
+            "extract_xz_tar_bundle should panic when the bundle isn't a valid xz stream"
+        );
+        assert!(
+            !dst.exists(),
+            "a failed extraction must not leave the destination behind"
+        );
+
+        std::fs::remove_file(&bundle_path).unwrap();
+    }
 }
 
 fn main() {
@@ -771,6 +984,9 @@ fn main() {
     let espeak_dst = out_dir.join("espeak-ng");
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
     let espeak_src = Path::new(&manifest_dir).join("espeak-ng");
+    let bundle_path = Path::new(&manifest_dir)
+        .join("bundled")
+        .join("espeak-ng.tar.xz");
     let build_shared_libs = false;
 
     let build_shared_libs = std::env::var("ESPEAK_BUILD_SHARED_LIBS")
@@ -789,8 +1005,16 @@ fn main() {
 
     // Prepare espeak-ng source
     if !espeak_dst.exists() {
-        debug_log!("Copy {} to {}", espeak_src.display(), espeak_dst.display());
-        copy_folder(&espeak_src, &espeak_dst);
+        match resolve_espeak_ng_source(&espeak_src, &bundle_path) {
+            EspeakNgSource::Directory(src) => {
+                debug_log!("Copy {} to {}", src.display(), espeak_dst.display());
+                copy_folder(src, &espeak_dst);
+            }
+            EspeakNgSource::Bundle(bundle) => {
+                debug_log!("Extract {} to {}", bundle.display(), espeak_dst.display());
+                extract_xz_tar_bundle(bundle, &espeak_dst);
+            }
+        }
     }
     // Speed up build
     // SAFETY: build.rs runs single-threaded at this point, before any
@@ -806,8 +1030,25 @@ fn main() {
     }
 
     // Bindings
+    //
+    // wrapper.h's #include "espeak-ng/src/include/..." paths are quoted, so
+    // clang looks for them relative to wrapper.h's own directory
+    // (CARGO_MANIFEST_DIR) first, before falling back to -I search paths.
+    // That file-relative lookup only succeeds when a raw `espeak-ng/`
+    // submodule checkout happens to sit right there (dev/CI-from-git
+    // builds); it can't when the source came from the pre-compressed
+    // bundle instead (see EspeakNgSource::Bundle), which is only ever
+    // extracted into OUT_DIR, never into CARGO_MANIFEST_DIR (build scripts
+    // must not write into a published crate's source directory -- it's
+    // shared/read-only registry cache once installed via `cargo add`).
+    // Passing OUT_DIR itself as a search path lets clang's -I fallback
+    // resolve "espeak-ng/src/include/..." against
+    // OUT_DIR/espeak-ng/src/include/... in that case; it's an inert no-op
+    // in the dev-submodule case, where the file-relative lookup already
+    // wins.
     let mut bindgen_builder = bindgen::Builder::default()
         .header("wrapper.h")
+        .clang_arg(format!("-I{}", out_dir.display()))
         .clang_arg(format!("-I{}", espeak_dst.display()))
         .clang_arg(format!(
             "-I{}",
@@ -839,6 +1080,7 @@ fn main() {
         .expect("Failed to write bindings");
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=./espeak-ng");
+    println!("cargo:rerun-if-changed={}", bundle_path.display());
 
     debug_log!("Bindings Created");
 

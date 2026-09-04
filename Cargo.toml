@@ -7,38 +7,31 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/ZirekHQ/dengjen-piper-rs"
 
 include = [
-    "espeak-ng/CMakeLists.txt",
-    "espeak-ng/vim/",
-    "espeak-ng/cmake/",
-    "espeak-ng/phsource/",
-    "espeak-ng/tests/",
-    "espeak-ng/src/",
-    "espeak-ng/espeak-ng-data/",
-    "espeak-ng/dictsource/**",
-    "espeak-ng/espeak-ng.pc.in",
+    # The espeak-ng submodule tree itself (dictsource/phsource/src/... --
+    # see scripts/bundle-espeak-ng.sh for exactly what's in it and why) gzips
+    # to over crates.io's 10MiB .crate cap. cargo's .crate container is
+    # hardcoded to gzip (rust-lang/cargo#2526), so it's pre-compressed with
+    # xz instead -- xz -9e gets the same content to ~7.7MiB -- and shipped
+    # as one blob that build.rs decompresses at build time.
+    "bundled/espeak-ng.tar.xz",
     "src/*.rs",
     "build.rs",
     "wrapper.h",
-    # Omit too big files from dictsource, except ru_listx: espeak-ng's
-    # data.cmake wires it into the Russian dictionary automatically
-    # (EXTRA_ru option, default ON) when compile-espeak-intonations is
-    # enabled, so dropping it silently degrades Russian pronunciation
-    # for anyone building from the published crate. See #23.
-    "!espeak-ng/dictsource/extra/**",
-    "espeak-ng/dictsource/extra/ru_listx",
-    "!espeak-ng/dictsource/fo_list",
-    "!espeak-ng/src/windows/Debug/*.wav",
 ]
 
 [build-dependencies]
 bindgen = "0.72.1"
 cmake = "0.1"
 glob = "0.3.1"
+lzma-rs = "0.3.0"
+tar = "0.4.46"
 
 [dev-dependencies]
 bindgen = "0.72.1"
 cmake = "0.1"
 glob = "0.3.1"
+lzma-rs = "0.3.0"
+tar = "0.4.46"
 
 [features]
 default = []
