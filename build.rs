@@ -28,10 +28,6 @@ fn get_cargo_target_dir() -> Result<std::path::PathBuf, Box<dyn std::error::Erro
     Ok(target_dir.to_path_buf())
 }
 
-/// `cp`'s exit status maps directly to success. robocopy's is a bitmask
-/// where 0-7 all mean "succeeded" (0 = nothing to copy, 1 = files copied,
-/// 2/4 = extra/mismatched files noted, 3 = 1+2) and 8+ signals a real
-/// failure; a missing code (killed by a signal) is never a success.
 fn copy_succeeded(is_windows: bool, exit_code: Option<i32>) -> bool {
     if is_windows {
         exit_code.is_some_and(|code| code < 8)
@@ -40,13 +36,6 @@ fn copy_succeeded(is_windows: bool, exit_code: Option<i32>) -> bool {
     }
 }
 
-/// Copies `src` to `dst`, atomically: `dst` is only ever created once the
-/// copy has fully succeeded, by copying into a sibling temp directory and
-/// renaming it into place last. Callers use `dst.exists()` to decide
-/// whether to skip copying on a later build reusing the same `OUT_DIR`, so
-/// a partial or failed copy that left `dst` behind (e.g. from
-/// `create_dir_all` pre-creating it) would permanently poison every
-/// subsequent build with an incomplete tree — see #42.
 fn copy_folder(src: &Path, dst: &Path) {
     assert!(
         src.exists(),
@@ -66,12 +55,6 @@ fn copy_folder(src: &Path, dst: &Path) {
             .and_then(|name| name.to_str())
             .expect("copy destination must have a UTF-8 file name")
     ));
-    // Clean up a stale tmp dir left behind by an earlier interrupted copy.
-    // Errors are expected when there's nothing to remove, but `tmp_dst`
-    // must be gone before the copy below: otherwise `cp`/`robocopy` would
-    // merge into whatever's left of that stale copy instead of starting
-    // clean, and the corrupted result would still get renamed into place
-    // as if it were a fresh, complete copy.
     let _ = std::fs::remove_dir_all(&tmp_dst);
     assert!(
         !tmp_dst.exists(),
@@ -105,13 +88,6 @@ fn copy_folder(src: &Path, dst: &Path) {
     std::fs::rename(&tmp_dst, dst).expect("Failed to move completed copy into place");
 }
 
-/// Where to get the espeak-ng source tree from: the live git submodule (dev
-/// builds, CI running from a checkout) or the pre-compressed bundle shipped
-/// inside the published crate (crates.io's 10MiB `.crate` cap forced
-/// bundled/espeak-ng.tar.xz to replace the raw tree in `Cargo.toml`'s
-/// `include` -- see scripts/bundle-espeak-ng.sh). Exactly one of the two is
-/// expected to exist in any given checkout: the submodule when building from
-/// git, the bundle when building from a `cargo publish`ed source.
 enum EspeakNgSource<'a> {
     Directory(&'a Path),
     Bundle(&'a Path),
@@ -132,12 +108,6 @@ fn resolve_espeak_ng_source<'a>(espeak_src: &'a Path, bundle_path: &'a Path) -> 
     }
 }
 
-/// Decompresses and unpacks `bundle` (an xz-compressed tar, as produced by
-/// scripts/bundle-espeak-ng.sh) into `dst`, atomically -- same tmp-dir+rename
-/// approach as [`copy_folder`] and for the same reason: `dst.exists()` is
-/// used elsewhere to skip re-preparing the source on a later build reusing
-/// the same `OUT_DIR`, so a partial extraction left behind by a failure
-/// would poison every subsequent build.
 fn extract_xz_tar_bundle(bundle: &Path, dst: &Path) {
     assert!(
         bundle.exists(),
@@ -177,37 +147,8 @@ fn extract_xz_tar_bundle(bundle: &Path, dst: &Path) {
     std::fs::rename(&tmp_dst, dst).expect("Failed to move extracted bundle into place");
 }
 
-/// Name of the directory CMake installs eSpeak NG's runtime data under
-/// (`<install-prefix>/share/espeak-ng-data`), and the name `espeak-rs`'s own
-/// data lookup expects to find next to the final binary.
 const ESPEAK_NG_DATA_DIR_NAME: &str = "espeak-ng-data";
 
-/// Copies the CMake-installed `espeak-ng-data` directory from `out_dir/share`
-/// to sit directly next to the crate's final binary in `target_dir`.
-///
-/// `espeak-ng-data` is otherwise only reachable inside `OUT_DIR`'s ephemeral,
-/// hash-named path (`target/<profile>/build/espeak-rs-sys-<hash>/out/...`),
-/// which vanishes with `target/` and can't be located to bundle into a
-/// distributable build. `espeak-rs`'s data lookup already checks the
-/// executable's own directory for `espeak-ng-data`, so placing a copy in
-/// `target_dir` makes a plain `cargo build --release` runnable (and
-/// distributable, by copying this folder alongside the binary) with no
-/// `PIPER_ESPEAKNG_DATA_DIRECTORY` needed. See issue #10.
-///
-/// No-ops when `src` doesn't exist: espeak-ng's own CMakeLists.txt gates its
-/// entire `include(cmake/data.cmake)` (which is what installs this
-/// directory) behind `COMPILE_INTONATIONS` for both native and cross
-/// builds -- so no data is installed to `out_dir/share` at all when
-/// cross-compiling without a `-DNativeBuild=...` pointing at a host build
-/// (see the top-level `CMAKE_CROSSCOMPILING` branch), *or* when this crate's
-/// own `compile-espeak-intonations` feature is disabled, natively too.
-/// Either way there is nothing to copy, not a failure.
-///
-/// Replaces any pre-existing `dst` outright rather than skipping when `src`
-/// is available: `target_dir` (unlike `OUT_DIR`) persists across many
-/// rebuilds, so a stale copy from a previous espeak-ng version or
-/// dictionary change must not be left behind to quietly go out of sync with
-/// the library just linked. See PR #46.
 fn copy_espeak_ng_data_next_to_binary(out_dir: &Path, target_dir: &Path) {
     let src = out_dir.join("share").join(ESPEAK_NG_DATA_DIR_NAME);
     if !src.exists() {
@@ -237,14 +178,12 @@ fn extract_lib_names(out_dir: &Path, build_shared_libs: bool, target_os: &str) -
 
     let mut lib_names: Vec<String> = Vec::new();
 
-    // Process the libraries based on the pattern
     for entry in glob(pattern.to_str().unwrap()).unwrap() {
         match entry {
             Ok(path) => {
                 let stem = path.file_stem().unwrap();
                 let stem_str = stem.to_str().unwrap();
 
-                // Remove the "lib" prefix if present
                 let lib_name = if stem_str.starts_with("lib") {
                     stem_str.strip_prefix("lib").unwrap_or(stem_str)
                 } else {
@@ -284,8 +223,6 @@ fn extract_lib_assets(out_dir: &Path, target_os: &str) -> Vec<PathBuf> {
     files
 }
 
-/// Maps a Rust `CARGO_CFG_TARGET_ARCH` to the ABI name the Android NDK's
-/// CMake toolchain file expects for `ANDROID_ABI`.
 fn android_abi(target_arch: &str) -> &'static str {
     match target_arch {
         "aarch64" => "arm64-v8a",
@@ -296,8 +233,6 @@ fn android_abi(target_arch: &str) -> &'static str {
     }
 }
 
-/// Resolves the Android NDK installation directory from the first of
-/// `ANDROID_NDK_HOME`, `ANDROID_NDK_ROOT`, or `NDK_HOME` that is set.
 fn android_ndk_home() -> String {
     ["ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "NDK_HOME"]
         .into_iter()
@@ -308,12 +243,6 @@ fn android_ndk_home() -> String {
         )
 }
 
-/// Locates the Android NDK's CMake toolchain file under `ndk_home`.
-///
-/// The `cmake` crate has no built-in Android support: without an explicit
-/// `CMAKE_TOOLCHAIN_FILE`, CMake's configure step fails outright when
-/// cross-compiling for Android, so this must be set up manually the same
-/// way `ndk-build`/Gradle's CMake integration does.
 fn android_toolchain_file(ndk_home: &str) -> PathBuf {
     let toolchain_file = Path::new(ndk_home)
         .join("build")
@@ -328,9 +257,6 @@ fn android_toolchain_file(ndk_home: &str) -> PathBuf {
     toolchain_file
 }
 
-/// The NDK's own host-tag naming for the prebuilt toolchain/sysroot
-/// directory, keyed off the machine build.rs itself is *running* on (not
-/// the Android target it's cross-compiling for).
 fn ndk_host_tag() -> &'static str {
     if cfg!(target_os = "macos") {
         "darwin-x86_64"
@@ -341,14 +267,6 @@ fn ndk_host_tag() -> &'static str {
     }
 }
 
-/// Locates the NDK's unified sysroot (bionic libc + Android-specific
-/// headers) under `ndk_home`.
-///
-/// bindgen/clang otherwise silently fall back to the host's own system
-/// headers (e.g. glibc under `/usr/include`) when parsing `wrapper.h`
-/// for a foreign target, which fail in target-specific ways the host
-/// toolchain was never meant to resolve (see issue #9). An explicit NDK
-/// sysroot avoids the host headers entirely.
 fn android_sysroot(ndk_home: &str) -> PathBuf {
     let sysroot = Path::new(ndk_home)
         .join("toolchains")
@@ -365,8 +283,6 @@ fn android_sysroot(ndk_home: &str) -> PathBuf {
     sysroot
 }
 
-/// The Android API level to target, from `ANDROID_PLATFORM` (accepting
-/// either `21` or `android-21`), defaulting to 21.
 fn android_api_level() -> u32 {
     env::var("ANDROID_PLATFORM")
         .ok()
@@ -398,22 +314,6 @@ fn macos_link_search_path() -> Option<String> {
     None
 }
 
-/// Mirrors espeak-ng's own `HAVE_LIBPCAUDIO AND USE_LIBPCAUDIO` gate
-/// (src/libespeak-ng/CMakeLists.txt) by reading CMake's cache instead of
-/// re-running its `find_library`/`find_path` detection. Returns the absolute
-/// path CMake resolved for libpcaudio, so callers can point the Rust linker
-/// at the exact location and library kind CMake linked against instead of
-/// guessing a bare `-lpcaudio` will resolve in the default search path.
-/// Requires PCAUDIO_LIB/PCAUDIO_INC to actually be resolved (not
-/// `*-NOTFOUND`) in addition to `USE_LIBPCAUDIO:BOOL=ON`, since that flag
-/// alone can be stale (CACHE'd from an earlier configure where the library
-/// was present) while the resolved paths were invalidated since.
-/// CMake's `if()` boolean grammar (case-insensitive): true is `ON`, `YES`,
-/// `TRUE`, `Y`, or a non-zero number; everything else (including `OFF`,
-/// `NO`, `FALSE`, `N`, `IGNORE`, `NOTFOUND`, a `*-NOTFOUND` suffix, or empty)
-/// is false. `option()`-declared cache entries persist whatever spelling was
-/// used to set them (verified: `-DVAR=TRUE` is not normalized to `ON` in
-/// CMakeCache.txt), so a literal `== "ON"` check misses valid true values.
 fn cmake_bool_is_true(value: &str) -> bool {
     let upper = value.to_ascii_uppercase();
     match upper.as_str() {
@@ -433,17 +333,6 @@ fn resolved_pcaudio_lib(cache_contents: &str) -> Option<PathBuf> {
     )
 }
 
-/// Mirrors espeak-ng's own `HAVE_LIBSONIC AND USE_LIBSONIC` gate
-/// (src/libespeak-ng/CMakeLists.txt) the same way [`resolved_pcaudio_lib`]
-/// mirrors the pcaudio one. Unlike pcaudio, when no system libsonic is found
-/// `deps.cmake` falls back to fetching and compiling sonic in-tree as an
-/// OBJECT library, whose object files get embedded directly into espeak-ng's
-/// own static lib — no extra linker flag needed for that case. That fallback
-/// only `set()`s `SONIC_LIB` to the bare in-tree target name (`sonic`)
-/// locally within the CMake run; it never overwrites the cached
-/// `SONIC_LIB:FILEPATH` entry `find_library` originally wrote, so the
-/// `*-NOTFOUND` check below naturally distinguishes "linked as a real system
-/// library" from "compiled in-tree and already embedded".
 fn resolved_sonic_lib(cache_contents: &str) -> Option<PathBuf> {
     resolved_system_lib(
         cache_contents,
@@ -483,12 +372,6 @@ fn resolved_system_lib(
     }
 }
 
-/// Emits the `cargo:rustc-link-search`/`cargo:rustc-link-lib` directives for
-/// a system library CMake resolved to `lib_path`, deriving the search
-/// directory, kind (static vs. dylib), and bare library name from the
-/// resolved file itself rather than assuming a search path or extension.
-/// `default_name` is used only if the resolved file's name is unexpectedly
-/// malformed (no `lib` prefix or no stem at all).
 fn emit_system_lib_link_directives(lib_path: &Path, default_name: &str) {
     if let Some(dir) = lib_path.parent() {
         println!("cargo:rustc-link-search=native={}", dir.display());
@@ -517,8 +400,6 @@ mod tests {
 
     #[test]
     fn resolves_sonic_lib_path_when_cmake_found_system_libsonic() {
-        // CMake found a system libsonic (SONIC_LIB resolves to a real path,
-        // not the in-tree FetchContent fallback's bare `sonic` target name).
         let cache = "SONIC_LIB:FILEPATH=/usr/lib/x86_64-linux-gnu/libsonic.so\n\
                       SONIC_INC:PATH=/usr/include\n\
                       USE_LIBSONIC:BOOL=ON\n";
@@ -538,13 +419,6 @@ mod tests {
 
     #[test]
     fn returns_none_for_sonic_when_falling_back_to_in_tree_fetchcontent_build() {
-        // deps.cmake's fallback path when no system libsonic is found: it
-        // fetches and compiles sonic in-tree as an OBJECT library and links
-        // it into espeak-ng's own static lib directly, so no extra `-lsonic`
-        // is needed. SONIC_LIB's *cached* value stays SONIC_LIB-NOTFOUND
-        // (the in-tree `set(SONIC_LIB sonic)` only shadows it locally within
-        // that CMake run; it isn't written back to CMakeCache.txt), while
-        // USE_LIBSONIC still defaults to ON via HAVE_LIBSONIC.
         let cache = "SONIC_LIB:FILEPATH=SONIC_LIB-NOTFOUND\n\
                       SONIC_INC:PATH=SONIC_INC-NOTFOUND\n\
                       USE_LIBSONIC:BOOL=ON\n";
@@ -589,8 +463,6 @@ mod tests {
 
     #[test]
     fn returns_none_when_lib_path_is_notfound_despite_use_libpcaudio_on() {
-        // A stale USE_LIBPCAUDIO=ON cached from an earlier configure, while
-        // PCAUDIO_LIB was never (re-)resolved this run.
         let cache = "PCAUDIO_LIB:FILEPATH=PCAUDIO_LIB-NOTFOUND\n\
                       PCAUDIO_INC:PATH=/usr/include\n\
                       USE_LIBPCAUDIO:BOOL=ON\n";
@@ -605,9 +477,6 @@ mod tests {
 
     #[test]
     fn treats_true_as_enabled_like_cmake_boolean_semantics() {
-        // A cache entry set via `-DUSE_LIBPCAUDIO=TRUE` persists that literal
-        // string rather than CMake normalizing it to ON (verified against a
-        // real `cmake` invocation, not assumed).
         let cache = "PCAUDIO_LIB:FILEPATH=/usr/lib/x86_64-linux-gnu/libpcaudio.so\n\
                       PCAUDIO_INC:PATH=/usr/include\n\
                       USE_LIBPCAUDIO:BOOL=TRUE\n";
@@ -632,7 +501,7 @@ mod tests {
     fn unix_copy_succeeds_only_on_exit_code_zero() {
         assert!(copy_succeeded(false, Some(0)));
         assert!(!copy_succeeded(false, Some(1)));
-        assert!(!copy_succeeded(false, None)); // killed by a signal
+        assert!(!copy_succeeded(false, None));
     }
 
     #[test]
@@ -644,8 +513,6 @@ mod tests {
         assert!(!copy_succeeded(true, None));
     }
 
-    /// A fresh, unique path under the system temp dir for a test to use as
-    /// scratch space. Not created on disk.
     fn scratch_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "espeak-rs-sys-test-{name}-{}-{:?}",
@@ -674,12 +541,6 @@ mod tests {
 
     #[test]
     fn copy_folder_never_leaves_a_destination_behind_when_the_source_is_missing() {
-        // Regression test for #42: create_dir_all(dst) used to run before
-        // the copy was attempted, so a copy that failed (here, because the
-        // source doesn't exist at all -- the exact state of a fresh clone
-        // before `git submodule update --init`) left an empty `dst` behind.
-        // Every later build reusing that OUT_DIR then saw `dst.exists()`
-        // and skipped copying forever, even after the source was fixed.
         let src = scratch_path("missing-src");
         let dst = scratch_path("poisoned-dst");
         assert!(!src.exists());
@@ -699,16 +560,6 @@ mod tests {
 
     #[test]
     fn copy_folder_refuses_to_proceed_when_a_stale_tmp_copy_cannot_be_removed() {
-        // Regression test: an earlier interrupted copy can leave
-        // `<dst>.tmp` behind. If cleaning it up fails silently, `cp`
-        // would merge into it instead of starting clean, and the
-        // corrupted result would be renamed into place as if it were a
-        // fresh, complete copy. Force a removal failure the portable way:
-        // `<dst>.tmp` is a plain file, so `remove_dir_all` errors (it's
-        // not a directory) and can never succeed, however many times
-        // `copy_folder` retries -- unlike a permissions-based failure,
-        // which `cp -rf` running as root (as in a container) could still
-        // bypass.
         let src = scratch_path("stale-tmp-src");
         let dst = scratch_path("stale-tmp-dst");
         let tmp_dst = dst.parent().unwrap().join(format!(
@@ -756,10 +607,6 @@ mod tests {
 
     #[test]
     fn leaves_an_existing_copy_alone_when_out_dir_has_no_fresh_source() {
-        // When OUT_DIR's copy is no longer around (e.g. a later `cargo
-        // clean` without deleting `target_dir`), a prior copy already next
-        // to the binary must be left as-is rather than deleted with nothing
-        // to replace it with.
         let out_dir = scratch_path("espeak-data-missing-out");
         let target_dir = scratch_path("espeak-data-existing-target");
         let existing_dst = target_dir.join("espeak-ng-data");
@@ -779,11 +626,6 @@ mod tests {
 
     #[test]
     fn does_nothing_when_out_dir_has_no_espeak_ng_data_to_copy() {
-        // Regression: cross-compiling without `-DNativeBuild=...` makes
-        // upstream's CMakeLists.txt skip `include(cmake/data.cmake)`
-        // entirely (see the top-level `CMAKE_CROSSCOMPILING` branch), so
-        // `out_dir/share/espeak-ng-data` never exists. This must be a no-op,
-        // not a panic (see #46 CI failure on aarch64 cross-compile jobs).
         let out_dir = scratch_path("espeak-data-cross-compile-out");
         let target_dir = scratch_path("espeak-data-cross-compile-target");
         std::fs::create_dir_all(&out_dir).unwrap();
@@ -798,12 +640,6 @@ mod tests {
 
     #[test]
     fn refreshes_a_stale_espeak_ng_data_copy_when_a_fresh_source_is_available() {
-        // Regression: target_dir persists across many OUT_DIR regenerations,
-        // so a previous build's copy must not be kept forever once a fresh
-        // source is available (e.g. after an espeak-ng version bump or
-        // dictionary change) -- otherwise the copy next to the binary
-        // silently goes stale relative to the library just linked. See PR
-        // #46 review.
         let out_dir = scratch_path("espeak-data-refresh-out");
         let target_dir = scratch_path("espeak-data-refresh-target");
         let data_src = out_dir.join("share").join("espeak-ng-data");
@@ -863,8 +699,6 @@ mod tests {
 
     #[test]
     fn panics_when_neither_submodule_directory_nor_bundle_exists() {
-        // A fresh clone with no `git submodule update --init` and no
-        // published-crate bundle: there is nothing to build from at all.
         let espeak_src = scratch_path("resolve-nothing-src-dir");
         let bundle_path = scratch_path("resolve-nothing-bundle");
         assert!(!espeak_src.exists());
@@ -878,8 +712,6 @@ mod tests {
         assert!(panicked);
     }
 
-    /// Builds a valid xz-compressed tar containing `entries` (path, content
-    /// bytes), matching what scripts/bundle-espeak-ng.sh produces.
     fn build_xz_tar_fixture(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut tar_bytes = Vec::new();
         {
@@ -1003,7 +835,6 @@ fn main() {
     debug_log!("OUT_DIR: {}", out_dir.display());
     debug_log!("BUILD_SHARED: {}", build_shared_libs);
 
-    // Prepare espeak-ng source
     if !espeak_dst.exists() {
         match resolve_espeak_ng_source(&espeak_src, &bundle_path) {
             EspeakNgSource::Directory(src) => {
@@ -1016,9 +847,6 @@ fn main() {
             }
         }
     }
-    // Speed up build
-    // SAFETY: build.rs runs single-threaded at this point, before any
-    // concurrent env access (e.g. from the cmake crate's child process spawn).
     unsafe {
         env::set_var(
             "CMAKE_BUILD_PARALLEL_LEVEL",
@@ -1029,23 +857,6 @@ fn main() {
         );
     }
 
-    // Bindings
-    //
-    // wrapper.h's #include "espeak-ng/src/include/..." paths are quoted, so
-    // clang looks for them relative to wrapper.h's own directory
-    // (CARGO_MANIFEST_DIR) first, before falling back to -I search paths.
-    // That file-relative lookup only succeeds when a raw `espeak-ng/`
-    // submodule checkout happens to sit right there (dev/CI-from-git
-    // builds); it can't when the source came from the pre-compressed
-    // bundle instead (see EspeakNgSource::Bundle), which is only ever
-    // extracted into OUT_DIR, never into CARGO_MANIFEST_DIR (build scripts
-    // must not write into a published crate's source directory -- it's
-    // shared/read-only registry cache once installed via `cargo add`).
-    // Passing OUT_DIR itself as a search path lets clang's -I fallback
-    // resolve "espeak-ng/src/include/..." against
-    // OUT_DIR/espeak-ng/src/include/... in that case; it's an inert no-op
-    // in the dev-submodule case, where the file-relative lookup already
-    // wins.
     let mut bindgen_builder = bindgen::Builder::default()
         .header("wrapper.h")
         .clang_arg(format!("-I{}", out_dir.display()))
@@ -1056,11 +867,6 @@ fn main() {
         ));
 
     if target_os == "android" {
-        // bindgen infers --target from Cargo's TARGET env var but has no
-        // sysroot of its own, so clang falls back to the host's system
-        // headers (glibc) while still targeting Android/bionic — a
-        // mismatch that fails opaquely (see issue #9). Point it at the
-        // NDK's own sysroot instead.
         let ndk_home = android_ndk_home();
         let sysroot = android_sysroot(&ndk_home);
         bindgen_builder = bindgen_builder
@@ -1073,7 +879,6 @@ fn main() {
         .generate()
         .expect("Failed to generate bindings");
 
-    // Write the generated bindings to an output file
     let bindings_path = out_dir.join("bindings.rs");
     bindings
         .write_to_file(bindings_path)
@@ -1083,8 +888,6 @@ fn main() {
     println!("cargo:rerun-if-changed={}", bundle_path.display());
 
     debug_log!("Bindings Created");
-
-    // Build with Cmake
 
     let mut config = Config::new(&espeak_dst);
 
@@ -1104,12 +907,6 @@ fn main() {
     if target_os == "android" {
         let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
         let android_platform = format!("android-{}", android_api_level());
-        // c++_shared, not c++_static: the NDK recommends against a static
-        // STL once an app links more than one native library, since each
-        // static copy gets its own C++ runtime globals (locale, exception
-        // state) and duplicate-symbol/ODR clashes across .so boundaries
-        // follow. The app's packaging step must bundle the matching
-        // libc++_shared.so from the NDK sysroot alongside the built .so.
         config
             .define(
                 "CMAKE_TOOLCHAIN_FILE",
@@ -1120,7 +917,6 @@ fn main() {
             .define("ANDROID_STL", "c++_shared");
     }
 
-    // General
     config
         .profile(&profile)
         .define("ENABLE_TESTS", "OFF")
@@ -1132,14 +928,13 @@ fn main() {
                 "OFF"
             },
         )
-        .very_verbose(std::env::var("CMAKE_VERBOSE").is_ok()) // Not verbose by default
+        .very_verbose(std::env::var("CMAKE_VERBOSE").is_ok())
         .always_configure(false);
 
     let bindings_dir = config.build();
 
     copy_espeak_ng_data_next_to_binary(&out_dir, &target_dir);
 
-    // Search paths
     println!("cargo:rustc-link-search={}", out_dir.join("lib").display());
     println!(
         "cargo:rustc-link-search={}",
@@ -1162,19 +957,15 @@ fn main() {
         );
     }
 
-    // macOS
     if target_os == "macos" {
         println!("cargo:rustc-link-lib=framework=Foundation");
         println!("cargo:rustc-link-lib=c++");
     }
 
-    // Android: speechPlayer is C++, so the NDK's C++ runtime must be linked
-    // explicitly (rustc, not CMake, drives this final link step).
     if target_os == "android" {
         println!("cargo:rustc-link-lib=c++_shared");
     }
 
-    // Link libraries
     let espeak_libs_kind = if build_shared_libs { "dylib" } else { "static" };
     let espeak_libs = extract_lib_names(&out_dir, build_shared_libs, &target_os);
 
@@ -1186,19 +977,12 @@ fn main() {
         println!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib);
     }
 
-    // Windows debug
     if target_os == "windows" && cfg!(debug_assertions) {
         println!("cargo:rustc-link-lib=dylib=msvcrtd");
     }
 
-    // Linux
     if target_os == "linux" {
         println!("cargo:rustc-link-lib=dylib=stdc++");
-        // CMake links espeak-ng against pcaudio/sonic only when it found the
-        // system lib and headers (see USE_LIBPCAUDIO/USE_LIBSONIC); mirror
-        // that decision here, pointing the linker at the exact path CMake
-        // resolved, instead of guessing a bare `-lpcaudio`/`-lsonic` will
-        // resolve in the default search path.
         let cmake_cache = out_dir.join("build").join("CMakeCache.txt");
         let cache_contents = std::fs::read_to_string(&cmake_cache).ok();
 
@@ -1210,18 +994,13 @@ fn main() {
         }
     }
 
-    if target.contains("apple") {
-        // On (older) OSX we need to link against the clang runtime,
-        // which is hidden in some non-default path.
-        //
-        // More details at https://github.com/alexcrichton/curl-rust/issues/279.
-        if let Some(path) = macos_link_search_path() {
-            println!("cargo:rustc-link-lib=clang_rt.osx");
-            println!("cargo:rustc-link-search={}", path);
-        }
+    if target.contains("apple")
+        && let Some(path) = macos_link_search_path()
+    {
+        println!("cargo:rustc-link-lib=clang_rt.osx");
+        println!("cargo:rustc-link-search={}", path);
     }
 
-    // copy DLLs to target
     if build_shared_libs {
         let libs_assets = extract_lib_assets(&out_dir, &target_os);
         for asset in libs_assets {
@@ -1234,7 +1013,6 @@ fn main() {
                 std::fs::hard_link(asset.clone(), dst).unwrap();
             }
 
-            // Copy DLLs to examples as well
             if target_dir.join("examples").exists() {
                 let dst = target_dir.join("examples").join(filename);
                 debug_log!("HARD LINK {} TO {}", asset.display(), dst.display());
@@ -1243,7 +1021,6 @@ fn main() {
                 }
             }
 
-            // Copy DLLs to target/profile/deps as well for tests
             let dst = target_dir.join("deps").join(filename);
             debug_log!("HARD LINK {} TO {}", asset.display(), dst.display());
             if !dst.exists() {
