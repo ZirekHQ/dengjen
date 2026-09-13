@@ -33,4 +33,4 @@ compile-espeak-intonations = []
 
 [[test]]
 name = "build_script_unit_tests"
-path = "build.rs"
+path = "tests/build_script_tests.rs"
