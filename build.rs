@@ -28,11 +28,17 @@ fn get_cargo_target_dir() -> Result<std::path::PathBuf, Box<dyn std::error::Erro
     Ok(target_dir.to_path_buf())
 }
 
-pub(crate) fn copy_succeeded(is_windows: bool, exit_code: Option<i32>) -> bool {
-    if is_windows {
-        exit_code.is_some_and(|code| code < 8)
-    } else {
-        exit_code == Some(0)
+fn copy_dir_recursive(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).expect("Failed to create destination directory");
+    for entry in std::fs::read_dir(src).expect("Failed to read source directory") {
+        let entry = entry.expect("Failed to read directory entry");
+        let file_type = entry.file_type().expect("Failed to read entry file type");
+        let dst_path = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_recursive(&entry.path(), &dst_path);
+        } else {
+            std::fs::copy(entry.path(), &dst_path).expect("Failed to copy file");
+        }
     }
 }
 
@@ -62,28 +68,7 @@ pub(crate) fn copy_folder(src: &Path, dst: &Path) {
         tmp_dst.display()
     );
 
-    let status = if cfg!(windows) {
-        std::process::Command::new("robocopy.exe")
-            .arg("/e")
-            .arg(src)
-            .arg(&tmp_dst)
-            .status()
-            .expect("Failed to execute robocopy command")
-    } else {
-        std::process::Command::new("cp")
-            .arg("-rf")
-            .arg(src)
-            .arg(&tmp_dst)
-            .status()
-            .expect("Failed to execute cp command")
-    };
-
-    assert!(
-        copy_succeeded(cfg!(windows), status.code()),
-        "copying {} to {} failed with {status}",
-        src.display(),
-        tmp_dst.display(),
-    );
+    copy_dir_recursive(src, &tmp_dst);
 
     std::fs::rename(&tmp_dst, dst).expect("Failed to move completed copy into place");
 }
@@ -152,17 +137,14 @@ pub(crate) fn extract_xz_tar_bundle(bundle: &Path, dst: &Path) {
 
 const ESPEAK_NG_DATA_DIR_NAME: &str = "espeak-ng-data";
 
-pub(crate) fn copy_espeak_ng_data_next_to_binary(out_dir: &Path, target_dir: &Path) {
-    let src = out_dir.join("share").join(ESPEAK_NG_DATA_DIR_NAME);
-    if !src.exists() {
-        return;
+pub(crate) fn espeak_ng_data_dir_const_source(data_dir: Option<&Path>) -> String {
+    match data_dir {
+        Some(dir) => format!(
+            "pub const ESPEAK_NG_DATA_DIR: Option<&str> = Some({:?});",
+            dir.display().to_string()
+        ),
+        None => "pub const ESPEAK_NG_DATA_DIR: Option<&str> = None;".to_string(),
     }
-    let dst = target_dir.join(ESPEAK_NG_DATA_DIR_NAME);
-    if dst.exists() {
-        std::fs::remove_dir_all(&dst)
-            .expect("Failed to remove stale espeak-ng-data copy before refreshing it");
-    }
-    copy_folder(&src, &dst);
 }
 
 fn extract_lib_names(out_dir: &Path, build_shared_libs: bool, target_os: &str) -> Vec<String> {
@@ -400,7 +382,7 @@ fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    let target_dir = get_cargo_target_dir().unwrap();
+    let target_dir = get_cargo_target_dir().ok();
     let espeak_dst = out_dir.join("espeak-ng");
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
     let espeak_src = Path::new(&manifest_dir).join("espeak-ng");
@@ -419,7 +401,7 @@ fn main() {
 
     debug_log!("TARGET: {}", target);
     debug_log!("CARGO_MANIFEST_DIR: {}", manifest_dir);
-    debug_log!("TARGET_DIR: {}", target_dir.display());
+    debug_log!("TARGET_DIR: {:?}", target_dir);
     debug_log!("OUT_DIR: {}", out_dir.display());
     debug_log!("BUILD_SHARED: {}", build_shared_libs);
 
@@ -521,7 +503,16 @@ fn main() {
 
     let bindings_dir = config.build();
 
-    copy_espeak_ng_data_next_to_binary(&out_dir, &target_dir);
+    let espeak_ng_data_parent = out_dir.join("share");
+    let data_dir = espeak_ng_data_parent
+        .join(ESPEAK_NG_DATA_DIR_NAME)
+        .exists()
+        .then_some(espeak_ng_data_parent.as_path());
+    std::fs::write(
+        out_dir.join("espeak_ng_data_dir.rs"),
+        espeak_ng_data_dir_const_source(data_dir),
+    )
+    .expect("Failed to write generated espeak_ng_data_dir.rs");
 
     println!("cargo:rustc-link-search={}", out_dir.join("lib").display());
     println!(
@@ -590,6 +581,9 @@ fn main() {
     }
 
     if build_shared_libs {
+        let target_dir = target_dir.expect(
+            "ESPEAK_BUILD_SHARED_LIBS=1 requires a discoverable cargo target directory, but none was found (unsupported build layout for shared-lib output placement)",
+        );
         let libs_assets = extract_lib_assets(&out_dir, &target_os);
         for asset in libs_assets {
             let asset_clone = asset.clone();

@@ -5,11 +5,11 @@
 mod build_script;
 
 use build_script::{
-    EspeakNgSource, copy_espeak_ng_data_next_to_binary, copy_folder, copy_succeeded,
-    extract_xz_tar_bundle, resolve_espeak_ng_source, resolved_pcaudio_lib, resolved_sonic_lib,
+    EspeakNgSource, copy_folder, espeak_ng_data_dir_const_source, extract_xz_tar_bundle,
+    resolve_espeak_ng_source, resolved_pcaudio_lib, resolved_sonic_lib,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[test]
 fn resolves_sonic_lib_path_when_cmake_found_system_libsonic() {
@@ -110,22 +110,6 @@ fn treats_1_as_enabled_like_cmake_boolean_semantics() {
     );
 }
 
-#[test]
-fn unix_copy_succeeds_only_on_exit_code_zero() {
-    assert!(copy_succeeded(false, Some(0)));
-    assert!(!copy_succeeded(false, Some(1)));
-    assert!(!copy_succeeded(false, None));
-}
-
-#[test]
-fn robocopy_copy_succeeds_below_the_failure_bit() {
-    assert!(copy_succeeded(true, Some(0)));
-    assert!(copy_succeeded(true, Some(1)));
-    assert!(copy_succeeded(true, Some(7)));
-    assert!(!copy_succeeded(true, Some(8)));
-    assert!(!copy_succeeded(true, None));
-}
-
 fn scratch_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
         "espeak-rs-sys-test-{name}-{}-{:?}",
@@ -200,83 +184,18 @@ fn copy_folder_refuses_to_proceed_when_a_stale_tmp_copy_cannot_be_removed() {
 }
 
 #[test]
-fn copies_espeak_ng_data_next_to_the_final_binary() {
-    let out_dir = scratch_path("espeak-data-out");
-    let target_dir = scratch_path("espeak-data-target");
-    let data_src = out_dir.join("share").join("espeak-ng-data");
-    std::fs::create_dir_all(&data_src).unwrap();
-    std::fs::write(data_src.join("phontab"), b"phontab-contents").unwrap();
-
-    copy_espeak_ng_data_next_to_binary(&out_dir, &target_dir);
-
+fn generates_a_some_constant_when_a_data_dir_is_given() {
+    let source = espeak_ng_data_dir_const_source(Some(Path::new("/out/share")));
     assert_eq!(
-        std::fs::read(target_dir.join("espeak-ng-data").join("phontab")).unwrap(),
-        b"phontab-contents"
+        source,
+        "pub const ESPEAK_NG_DATA_DIR: Option<&str> = Some(\"/out/share\");"
     );
-
-    std::fs::remove_dir_all(&out_dir).unwrap();
-    std::fs::remove_dir_all(&target_dir).unwrap();
 }
 
 #[test]
-fn leaves_an_existing_copy_alone_when_out_dir_has_no_fresh_source() {
-    let out_dir = scratch_path("espeak-data-missing-out");
-    let target_dir = scratch_path("espeak-data-existing-target");
-    let existing_dst = target_dir.join("espeak-ng-data");
-    std::fs::create_dir_all(&existing_dst).unwrap();
-    std::fs::write(existing_dst.join("phontab"), b"already-here").unwrap();
-    assert!(!out_dir.exists());
-
-    copy_espeak_ng_data_next_to_binary(&out_dir, &target_dir);
-
-    assert_eq!(
-        std::fs::read(existing_dst.join("phontab")).unwrap(),
-        b"already-here"
-    );
-
-    std::fs::remove_dir_all(&target_dir).unwrap();
-}
-
-#[test]
-fn does_nothing_when_out_dir_has_no_espeak_ng_data_to_copy() {
-    let out_dir = scratch_path("espeak-data-cross-compile-out");
-    let target_dir = scratch_path("espeak-data-cross-compile-target");
-    std::fs::create_dir_all(&out_dir).unwrap();
-    assert!(!out_dir.join("share").exists());
-
-    copy_espeak_ng_data_next_to_binary(&out_dir, &target_dir);
-
-    assert!(!target_dir.join("espeak-ng-data").exists());
-
-    std::fs::remove_dir_all(&out_dir).unwrap();
-}
-
-#[test]
-fn refreshes_a_stale_espeak_ng_data_copy_when_a_fresh_source_is_available() {
-    let out_dir = scratch_path("espeak-data-refresh-out");
-    let target_dir = scratch_path("espeak-data-refresh-target");
-    let data_src = out_dir.join("share").join("espeak-ng-data");
-    std::fs::create_dir_all(&data_src).unwrap();
-    std::fs::write(data_src.join("phontab"), b"fresh-contents").unwrap();
-
-    let existing_dst = target_dir.join("espeak-ng-data");
-    std::fs::create_dir_all(&existing_dst).unwrap();
-    std::fs::write(existing_dst.join("phontab"), b"stale-contents").unwrap();
-    std::fs::write(existing_dst.join("only-in-stale-copy"), b"leftover").unwrap();
-
-    copy_espeak_ng_data_next_to_binary(&out_dir, &target_dir);
-
-    assert_eq!(
-        std::fs::read(existing_dst.join("phontab")).unwrap(),
-        b"fresh-contents"
-    );
-    assert!(
-        !existing_dst.join("only-in-stale-copy").exists(),
-        "stale files from the old copy must not survive a refresh"
-    );
-
-    std::fs::remove_dir_all(&out_dir).unwrap();
-    std::fs::remove_dir_all(&target_dir).unwrap();
+fn generates_a_none_constant_when_no_data_dir_is_given() {
+    let source = espeak_ng_data_dir_const_source(None);
+    assert_eq!(source, "pub const ESPEAK_NG_DATA_DIR: Option<&str> = None;");
 }
 
 #[test]

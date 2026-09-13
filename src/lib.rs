@@ -6,3 +6,4 @@
 #![allow(clippy::ptr_offset_with_cast)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+include!(concat!(env!("OUT_DIR"), "/espeak_ng_data_dir.rs"));
