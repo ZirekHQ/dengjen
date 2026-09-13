@@ -389,6 +389,232 @@ fn emit_system_lib_link_directives(lib_path: &Path, default_name: &str) {
     println!("cargo:rustc-link-lib={kind}={name}");
 }
 
+fn main() {
+    println!("cargo:rustc-link-lib=speechPlayer");
+    println!("cargo:rustc-link-lib=espeak-ng");
+    println!("cargo:rustc-link-lib=ucd");
+    let target = env::var("TARGET").unwrap();
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+    let target_dir = get_cargo_target_dir().unwrap();
+    let espeak_dst = out_dir.join("espeak-ng");
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
+    let espeak_src = Path::new(&manifest_dir).join("espeak-ng");
+    let bundle_path = Path::new(&manifest_dir)
+        .join("bundled")
+        .join("espeak-ng.tar.xz");
+    let build_shared_libs = false;
+
+    let build_shared_libs = std::env::var("ESPEAK_BUILD_SHARED_LIBS")
+        .map(|v| v == "1")
+        .unwrap_or(build_shared_libs);
+    let profile = env::var("ESPEAK_LIB_PROFILE").unwrap_or("Release".to_string());
+    let static_crt = env::var("ESPEAK_STATIC_CRT")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
+    debug_log!("TARGET: {}", target);
+    debug_log!("CARGO_MANIFEST_DIR: {}", manifest_dir);
+    debug_log!("TARGET_DIR: {}", target_dir.display());
+    debug_log!("OUT_DIR: {}", out_dir.display());
+    debug_log!("BUILD_SHARED: {}", build_shared_libs);
+
+    if !espeak_dst.exists() {
+        match resolve_espeak_ng_source(&espeak_src, &bundle_path) {
+            EspeakNgSource::Directory(src) => {
+                debug_log!("Copy {} to {}", src.display(), espeak_dst.display());
+                copy_folder(src, &espeak_dst);
+            }
+            EspeakNgSource::Bundle(bundle) => {
+                debug_log!("Extract {} to {}", bundle.display(), espeak_dst.display());
+                extract_xz_tar_bundle(bundle, &espeak_dst);
+            }
+        }
+    }
+    unsafe {
+        env::set_var(
+            "CMAKE_BUILD_PARALLEL_LEVEL",
+            std::thread::available_parallelism()
+                .unwrap()
+                .get()
+                .to_string(),
+        );
+    }
+
+    let mut bindgen_builder = bindgen::Builder::default()
+        .header("wrapper.h")
+        .clang_arg(format!("-I{}", out_dir.display()))
+        .clang_arg(format!("-I{}", espeak_dst.display()))
+        .clang_arg(format!(
+            "-I{}",
+            espeak_dst.join("src").join("include").display()
+        ));
+
+    if target_os == "android" {
+        let ndk_home = android_ndk_home();
+        let sysroot = android_sysroot(&ndk_home);
+        bindgen_builder = bindgen_builder
+            .clang_arg(format!("--target={target}{}", android_api_level()))
+            .clang_arg(format!("--sysroot={}", sysroot.display()));
+    }
+
+    let bindings = bindgen_builder
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .generate()
+        .expect("Failed to generate bindings");
+
+    let bindings_path = out_dir.join("bindings.rs");
+    bindings
+        .write_to_file(bindings_path)
+        .expect("Failed to write bindings");
+    println!("cargo:rerun-if-changed=wrapper.h");
+    println!("cargo:rerun-if-changed=./espeak-ng");
+    println!("cargo:rerun-if-changed={}", bundle_path.display());
+
+    debug_log!("Bindings Created");
+
+    let mut config = Config::new(&espeak_dst);
+
+    config.define(
+        "BUILD_SHARED_LIBS",
+        if build_shared_libs { "ON" } else { "OFF" },
+    );
+
+    if target_os == "windows" {
+        config.static_crt(static_crt);
+    }
+
+    if target_os == "macos" {
+        config.define("USE_LIBPCAUDIO", "OFF");
+    }
+
+    if target_os == "android" {
+        let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+        let android_platform = format!("android-{}", android_api_level());
+        config
+            .define(
+                "CMAKE_TOOLCHAIN_FILE",
+                android_toolchain_file(&android_ndk_home()),
+            )
+            .define("ANDROID_ABI", android_abi(&target_arch))
+            .define("ANDROID_PLATFORM", android_platform)
+            .define("ANDROID_STL", "c++_shared");
+    }
+
+    config
+        .profile(&profile)
+        .define("ENABLE_TESTS", "OFF")
+        .define(
+            "COMPILE_INTONATIONS",
+            if cfg!(feature = "compile-espeak-intonations") {
+                "ON"
+            } else {
+                "OFF"
+            },
+        )
+        .very_verbose(std::env::var("CMAKE_VERBOSE").is_ok())
+        .always_configure(false);
+
+    let bindings_dir = config.build();
+
+    copy_espeak_ng_data_next_to_binary(&out_dir, &target_dir);
+
+    println!("cargo:rustc-link-search={}", out_dir.join("lib").display());
+    println!(
+        "cargo:rustc-link-search={}",
+        out_dir.join("build/src/speechPlayer").display()
+    );
+    println!(
+        "cargo:rustc-link-search={}",
+        out_dir.join("build/src/ucd-tools").display()
+    );
+    println!("cargo:rustc-link-search={}", bindings_dir.display());
+
+    if target_os == "windows" {
+        println!(
+            "cargo:rustc-link-search={}",
+            out_dir.join("build/src/speechPlayer/Release").display()
+        );
+        println!(
+            "cargo:rustc-link-search={}",
+            out_dir.join("build/src/ucd-tools/Release").display()
+        );
+    }
+
+    if target_os == "macos" {
+        println!("cargo:rustc-link-lib=framework=Foundation");
+        println!("cargo:rustc-link-lib=c++");
+    }
+
+    if target_os == "android" {
+        println!("cargo:rustc-link-lib=c++_shared");
+    }
+
+    let espeak_libs_kind = if build_shared_libs { "dylib" } else { "static" };
+    let espeak_libs = extract_lib_names(&out_dir, build_shared_libs, &target_os);
+
+    for lib in espeak_libs {
+        debug_log!(
+            "LINK {}",
+            format!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib)
+        );
+        println!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib);
+    }
+
+    if target_os == "windows" && cfg!(debug_assertions) {
+        println!("cargo:rustc-link-lib=dylib=msvcrtd");
+    }
+
+    if target_os == "linux" {
+        println!("cargo:rustc-link-lib=dylib=stdc++");
+        let cmake_cache = out_dir.join("build").join("CMakeCache.txt");
+        let cache_contents = std::fs::read_to_string(&cmake_cache).ok();
+
+        if let Some(pcaudio_lib) = cache_contents.as_deref().and_then(resolved_pcaudio_lib) {
+            emit_system_lib_link_directives(&pcaudio_lib, "pcaudio");
+        }
+        if let Some(sonic_lib) = cache_contents.as_deref().and_then(resolved_sonic_lib) {
+            emit_system_lib_link_directives(&sonic_lib, "sonic");
+        }
+    }
+
+    if target.contains("apple")
+        && let Some(path) = macos_link_search_path()
+    {
+        println!("cargo:rustc-link-lib=clang_rt.osx");
+        println!("cargo:rustc-link-search={}", path);
+    }
+
+    if build_shared_libs {
+        let libs_assets = extract_lib_assets(&out_dir, &target_os);
+        for asset in libs_assets {
+            let asset_clone = asset.clone();
+            let filename = asset_clone.file_name().unwrap();
+            let filename = filename.to_str().unwrap();
+            let dst = target_dir.join(filename);
+            debug_log!("HARD LINK {} TO {}", asset.display(), dst.display());
+            if !dst.exists() {
+                std::fs::hard_link(asset.clone(), dst).unwrap();
+            }
+
+            if target_dir.join("examples").exists() {
+                let dst = target_dir.join("examples").join(filename);
+                debug_log!("HARD LINK {} TO {}", asset.display(), dst.display());
+                if !dst.exists() {
+                    std::fs::hard_link(asset.clone(), dst).unwrap();
+                }
+            }
+
+            let dst = target_dir.join("deps").join(filename);
+            debug_log!("HARD LINK {} TO {}", asset.display(), dst.display());
+            if !dst.exists() {
+                std::fs::hard_link(asset.clone(), dst).unwrap();
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -801,231 +1027,5 @@ mod tests {
         );
 
         std::fs::remove_file(&bundle_path).unwrap();
-    }
-}
-
-fn main() {
-    println!("cargo:rustc-link-lib=speechPlayer");
-    println!("cargo:rustc-link-lib=espeak-ng");
-    println!("cargo:rustc-link-lib=ucd");
-    let target = env::var("TARGET").unwrap();
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-
-    let target_dir = get_cargo_target_dir().unwrap();
-    let espeak_dst = out_dir.join("espeak-ng");
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
-    let espeak_src = Path::new(&manifest_dir).join("espeak-ng");
-    let bundle_path = Path::new(&manifest_dir)
-        .join("bundled")
-        .join("espeak-ng.tar.xz");
-    let build_shared_libs = false;
-
-    let build_shared_libs = std::env::var("ESPEAK_BUILD_SHARED_LIBS")
-        .map(|v| v == "1")
-        .unwrap_or(build_shared_libs);
-    let profile = env::var("ESPEAK_LIB_PROFILE").unwrap_or("Release".to_string());
-    let static_crt = env::var("ESPEAK_STATIC_CRT")
-        .map(|v| v == "1")
-        .unwrap_or(false);
-
-    debug_log!("TARGET: {}", target);
-    debug_log!("CARGO_MANIFEST_DIR: {}", manifest_dir);
-    debug_log!("TARGET_DIR: {}", target_dir.display());
-    debug_log!("OUT_DIR: {}", out_dir.display());
-    debug_log!("BUILD_SHARED: {}", build_shared_libs);
-
-    if !espeak_dst.exists() {
-        match resolve_espeak_ng_source(&espeak_src, &bundle_path) {
-            EspeakNgSource::Directory(src) => {
-                debug_log!("Copy {} to {}", src.display(), espeak_dst.display());
-                copy_folder(src, &espeak_dst);
-            }
-            EspeakNgSource::Bundle(bundle) => {
-                debug_log!("Extract {} to {}", bundle.display(), espeak_dst.display());
-                extract_xz_tar_bundle(bundle, &espeak_dst);
-            }
-        }
-    }
-    unsafe {
-        env::set_var(
-            "CMAKE_BUILD_PARALLEL_LEVEL",
-            std::thread::available_parallelism()
-                .unwrap()
-                .get()
-                .to_string(),
-        );
-    }
-
-    let mut bindgen_builder = bindgen::Builder::default()
-        .header("wrapper.h")
-        .clang_arg(format!("-I{}", out_dir.display()))
-        .clang_arg(format!("-I{}", espeak_dst.display()))
-        .clang_arg(format!(
-            "-I{}",
-            espeak_dst.join("src").join("include").display()
-        ));
-
-    if target_os == "android" {
-        let ndk_home = android_ndk_home();
-        let sysroot = android_sysroot(&ndk_home);
-        bindgen_builder = bindgen_builder
-            .clang_arg(format!("--target={target}{}", android_api_level()))
-            .clang_arg(format!("--sysroot={}", sysroot.display()));
-    }
-
-    let bindings = bindgen_builder
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-        .generate()
-        .expect("Failed to generate bindings");
-
-    let bindings_path = out_dir.join("bindings.rs");
-    bindings
-        .write_to_file(bindings_path)
-        .expect("Failed to write bindings");
-    println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-changed=./espeak-ng");
-    println!("cargo:rerun-if-changed={}", bundle_path.display());
-
-    debug_log!("Bindings Created");
-
-    let mut config = Config::new(&espeak_dst);
-
-    config.define(
-        "BUILD_SHARED_LIBS",
-        if build_shared_libs { "ON" } else { "OFF" },
-    );
-
-    if target_os == "windows" {
-        config.static_crt(static_crt);
-    }
-
-    if target_os == "macos" {
-        config.define("USE_LIBPCAUDIO", "OFF");
-    }
-
-    if target_os == "android" {
-        let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-        let android_platform = format!("android-{}", android_api_level());
-        config
-            .define(
-                "CMAKE_TOOLCHAIN_FILE",
-                android_toolchain_file(&android_ndk_home()),
-            )
-            .define("ANDROID_ABI", android_abi(&target_arch))
-            .define("ANDROID_PLATFORM", android_platform)
-            .define("ANDROID_STL", "c++_shared");
-    }
-
-    config
-        .profile(&profile)
-        .define("ENABLE_TESTS", "OFF")
-        .define(
-            "COMPILE_INTONATIONS",
-            if cfg!(feature = "compile-espeak-intonations") {
-                "ON"
-            } else {
-                "OFF"
-            },
-        )
-        .very_verbose(std::env::var("CMAKE_VERBOSE").is_ok())
-        .always_configure(false);
-
-    let bindings_dir = config.build();
-
-    copy_espeak_ng_data_next_to_binary(&out_dir, &target_dir);
-
-    println!("cargo:rustc-link-search={}", out_dir.join("lib").display());
-    println!(
-        "cargo:rustc-link-search={}",
-        out_dir.join("build/src/speechPlayer").display()
-    );
-    println!(
-        "cargo:rustc-link-search={}",
-        out_dir.join("build/src/ucd-tools").display()
-    );
-    println!("cargo:rustc-link-search={}", bindings_dir.display());
-
-    if target_os == "windows" {
-        println!(
-            "cargo:rustc-link-search={}",
-            out_dir.join("build/src/speechPlayer/Release").display()
-        );
-        println!(
-            "cargo:rustc-link-search={}",
-            out_dir.join("build/src/ucd-tools/Release").display()
-        );
-    }
-
-    if target_os == "macos" {
-        println!("cargo:rustc-link-lib=framework=Foundation");
-        println!("cargo:rustc-link-lib=c++");
-    }
-
-    if target_os == "android" {
-        println!("cargo:rustc-link-lib=c++_shared");
-    }
-
-    let espeak_libs_kind = if build_shared_libs { "dylib" } else { "static" };
-    let espeak_libs = extract_lib_names(&out_dir, build_shared_libs, &target_os);
-
-    for lib in espeak_libs {
-        debug_log!(
-            "LINK {}",
-            format!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib)
-        );
-        println!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib);
-    }
-
-    if target_os == "windows" && cfg!(debug_assertions) {
-        println!("cargo:rustc-link-lib=dylib=msvcrtd");
-    }
-
-    if target_os == "linux" {
-        println!("cargo:rustc-link-lib=dylib=stdc++");
-        let cmake_cache = out_dir.join("build").join("CMakeCache.txt");
-        let cache_contents = std::fs::read_to_string(&cmake_cache).ok();
-
-        if let Some(pcaudio_lib) = cache_contents.as_deref().and_then(resolved_pcaudio_lib) {
-            emit_system_lib_link_directives(&pcaudio_lib, "pcaudio");
-        }
-        if let Some(sonic_lib) = cache_contents.as_deref().and_then(resolved_sonic_lib) {
-            emit_system_lib_link_directives(&sonic_lib, "sonic");
-        }
-    }
-
-    if target.contains("apple")
-        && let Some(path) = macos_link_search_path()
-    {
-        println!("cargo:rustc-link-lib=clang_rt.osx");
-        println!("cargo:rustc-link-search={}", path);
-    }
-
-    if build_shared_libs {
-        let libs_assets = extract_lib_assets(&out_dir, &target_os);
-        for asset in libs_assets {
-            let asset_clone = asset.clone();
-            let filename = asset_clone.file_name().unwrap();
-            let filename = filename.to_str().unwrap();
-            let dst = target_dir.join(filename);
-            debug_log!("HARD LINK {} TO {}", asset.display(), dst.display());
-            if !dst.exists() {
-                std::fs::hard_link(asset.clone(), dst).unwrap();
-            }
-
-            if target_dir.join("examples").exists() {
-                let dst = target_dir.join("examples").join(filename);
-                debug_log!("HARD LINK {} TO {}", asset.display(), dst.display());
-                if !dst.exists() {
-                    std::fs::hard_link(asset.clone(), dst).unwrap();
-                }
-            }
-
-            let dst = target_dir.join("deps").join(filename);
-            debug_log!("HARD LINK {} TO {}", asset.display(), dst.display());
-            if !dst.exists() {
-                std::fs::hard_link(asset.clone(), dst).unwrap();
-            }
-        }
     }
 }
