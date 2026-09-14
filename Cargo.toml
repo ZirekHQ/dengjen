@@ -1,6 +1,7 @@
 [package]
 name = "dengjen-espeak-rs-sys"
 version = "0.2.4"
+rust-version = "1.88"
 edition = "2024"
 description = "Rust bindings to espeak-ng"
 license = "GPL-3.0-or-later"
