@@ -1,5 +1,4 @@
-// Only the handful of functions covered by #[test]s below are called from this
-// binary; the rest run when Cargo compiles build.rs as the actual build script.
+// Only the tested functions below are called here; the rest run when Cargo compiles build.rs itself.
 #[allow(dead_code)]
 #[path = "../build.rs"]
 mod build_script;
