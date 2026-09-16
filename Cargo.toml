@@ -1,6 +1,6 @@
 [package]
 name = "dengjen-espeak-rs-sys"
-version = "0.2.5"
+version = "0.2.6"
 rust-version = "1.88"
 edition = "2024"
 description = "Rust bindings to espeak-ng"
