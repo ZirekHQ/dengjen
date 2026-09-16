@@ -2,7 +2,6 @@ use cmake::Config;
 use glob::glob;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 macro_rules! debug_log {
     ($($arg:tt)*) => {
@@ -93,6 +92,16 @@ pub(crate) fn resolve_espeak_ng_source<'a>(
             espeak_src.display(),
             bundle_path.display()
         );
+    }
+}
+
+pub(crate) fn materialize_espeak_ng_source(espeak_src: &Path, bundle_path: &Path, dst: &Path) {
+    if dst.exists() {
+        std::fs::remove_dir_all(dst).expect("Failed to remove stale materialized espeak-ng source");
+    }
+    match resolve_espeak_ng_source(espeak_src, bundle_path) {
+        EspeakNgSource::Directory(src) => copy_folder(src, dst),
+        EspeakNgSource::Bundle(bundle) => extract_xz_tar_bundle(bundle, dst),
     }
 }
 
@@ -275,28 +284,37 @@ fn android_api_level() -> u32 {
         .unwrap_or(21)
 }
 
-fn macos_link_search_path() -> Option<String> {
-    let output = Command::new("clang")
-        .arg("--print-search-dirs")
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        println!(
-            "failed to run 'clang --print-search-dirs', continuing without a link search path"
-        );
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
+pub(crate) fn parse_clang_libraries_dir(stdout: &str) -> Option<String> {
     for line in stdout.lines() {
         if line.contains("libraries: =") {
             let path = line.split('=').nth(1)?;
             return Some(format!("{}/lib/darwin", path));
         }
     }
-
-    println!("failed to determine link search path, continuing without it");
     None
+}
+
+fn macos_link_search_path() -> Option<String> {
+    let compiler = cc::Build::new().get_compiler();
+    let output = compiler
+        .to_command()
+        .arg("--print-search-dirs")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        println!(
+            "failed to run '{:?} --print-search-dirs', continuing without a link search path",
+            compiler.path()
+        );
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let result = parse_clang_libraries_dir(&stdout);
+    if result.is_none() {
+        println!("failed to determine link search path, continuing without it");
+    }
+    result
 }
 
 fn cmake_bool_is_true(value: &str) -> bool {
@@ -374,6 +392,16 @@ fn emit_system_lib_link_directives(lib_path: &Path, default_name: &str) {
     println!("cargo:rustc-link-lib={kind}={name}");
 }
 
+pub(crate) const BUILD_CONFIG_ENV_VARS: &[&str] = &[
+    "ESPEAK_BUILD_SHARED_LIBS",
+    "ESPEAK_LIB_PROFILE",
+    "ESPEAK_STATIC_CRT",
+    "ANDROID_NDK_HOME",
+    "ANDROID_NDK_ROOT",
+    "NDK_HOME",
+    "ANDROID_PLATFORM",
+];
+
 fn main() {
     println!("cargo:rustc-link-lib=speechPlayer");
     println!("cargo:rustc-link-lib=espeak-ng");
@@ -405,18 +433,13 @@ fn main() {
     debug_log!("OUT_DIR: {}", out_dir.display());
     debug_log!("BUILD_SHARED: {}", build_shared_libs);
 
-    if !espeak_dst.exists() {
-        match resolve_espeak_ng_source(&espeak_src, &bundle_path) {
-            EspeakNgSource::Directory(src) => {
-                debug_log!("Copy {} to {}", src.display(), espeak_dst.display());
-                copy_folder(src, &espeak_dst);
-            }
-            EspeakNgSource::Bundle(bundle) => {
-                debug_log!("Extract {} to {}", bundle.display(), espeak_dst.display());
-                extract_xz_tar_bundle(bundle, &espeak_dst);
-            }
-        }
-    }
+    debug_log!(
+        "Materializing espeak-ng source from {} or {} into {}",
+        espeak_src.display(),
+        bundle_path.display(),
+        espeak_dst.display()
+    );
+    materialize_espeak_ng_source(&espeak_src, &bundle_path, &espeak_dst);
     unsafe {
         env::set_var(
             "CMAKE_BUILD_PARALLEL_LEVEL",
@@ -456,6 +479,9 @@ fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=./espeak-ng");
     println!("cargo:rerun-if-changed={}", bundle_path.display());
+    for var in BUILD_CONFIG_ENV_VARS {
+        println!("cargo:rerun-if-env-changed={var}");
+    }
 
     debug_log!("Bindings Created");
 
@@ -573,7 +599,7 @@ fn main() {
         }
     }
 
-    if target.contains("apple")
+    if target_os == "macos"
         && let Some(path) = macos_link_search_path()
     {
         println!("cargo:rustc-link-lib=clang_rt.osx");

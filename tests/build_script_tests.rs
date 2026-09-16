@@ -4,7 +4,8 @@
 mod build_script;
 
 use build_script::{
-    EspeakNgSource, copy_folder, espeak_ng_data_dir_const_source, extract_xz_tar_bundle,
+    BUILD_CONFIG_ENV_VARS, EspeakNgSource, copy_folder, espeak_ng_data_dir_const_source,
+    extract_xz_tar_bundle, materialize_espeak_ng_source, parse_clang_libraries_dir,
     resolve_espeak_ng_source, resolved_pcaudio_lib, resolved_sonic_lib,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -109,6 +110,41 @@ fn treats_1_as_enabled_like_cmake_boolean_semantics() {
     );
 }
 
+#[test]
+fn extracts_the_libraries_search_dir_and_appends_lib_darwin() {
+    let stdout = "programs: =/usr/bin\n\
+                  libraries: =/usr/lib/gcc/x86_64-apple-darwin\n\
+                  runtime: =/some/runtime\n";
+    assert_eq!(
+        parse_clang_libraries_dir(stdout),
+        Some("/usr/lib/gcc/x86_64-apple-darwin/lib/darwin".to_string())
+    );
+}
+
+#[test]
+fn returns_none_when_no_libraries_line_is_present() {
+    let stdout = "programs: =/usr/bin\nruntime: =/some/runtime\n";
+    assert_eq!(parse_clang_libraries_dir(stdout), None);
+}
+
+#[test]
+fn watches_every_env_var_the_build_script_reads_as_a_configuration_knob() {
+    for var in [
+        "ESPEAK_BUILD_SHARED_LIBS",
+        "ESPEAK_LIB_PROFILE",
+        "ESPEAK_STATIC_CRT",
+        "ANDROID_NDK_HOME",
+        "ANDROID_NDK_ROOT",
+        "NDK_HOME",
+        "ANDROID_PLATFORM",
+    ] {
+        assert!(
+            BUILD_CONFIG_ENV_VARS.contains(&var),
+            "{var} should be registered for cargo:rerun-if-env-changed"
+        );
+    }
+}
+
 fn scratch_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
         "espeak-rs-sys-test-{name}-{}-{:?}",
@@ -180,6 +216,24 @@ fn copy_folder_refuses_to_proceed_when_a_stale_tmp_copy_cannot_be_removed() {
 
     std::fs::remove_dir_all(&src).unwrap();
     std::fs::remove_file(&tmp_dst).unwrap();
+}
+
+#[test]
+fn materialize_espeak_ng_source_replaces_a_stale_destination_with_updated_source_content() {
+    let src = scratch_path("materialize-src");
+    let dst = scratch_path("materialize-dst");
+    let bundle_path = scratch_path("materialize-bundle-unused");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("version.txt"), b"new").unwrap();
+    std::fs::create_dir_all(&dst).unwrap();
+    std::fs::write(dst.join("version.txt"), b"stale").unwrap();
+
+    materialize_espeak_ng_source(&src, &bundle_path, &dst);
+
+    assert_eq!(std::fs::read(dst.join("version.txt")).unwrap(), b"new");
+
+    std::fs::remove_dir_all(&src).unwrap();
+    std::fs::remove_dir_all(&dst).unwrap();
 }
 
 #[test]
