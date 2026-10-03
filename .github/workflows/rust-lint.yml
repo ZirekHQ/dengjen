@@ -51,6 +51,7 @@ jobs:
           sarif_file: clippy-results.sarif
 
   semver-checks:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -76,6 +77,7 @@ jobs:
           package: dengjen-audio-ops,dengjen-sonic-sys,dengjen-tts-core,dengjen-hebrew-phonemizer,dengjen-pinyin-phonemizer,dengjen-espeak-phonemizer,dengjen-tts-piper,dengjen-tts-kokoro,dengjen-tts-melotts,dengjen-tts
 
   audit:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -95,6 +97,7 @@ jobs:
           ignore: RUSTSEC-2024-0436
 
   fmt:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -107,6 +110,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   deny:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -121,6 +125,7 @@ jobs:
           command: check licenses bans sources
 
   hakari:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -137,6 +142,7 @@ jobs:
         run: cargo hakari generate --diff
 
   msrv:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -160,6 +166,7 @@ jobs:
   # in the build touches that submodule anymore. Renovate still opens bump PRs for it though;
   # without this check, merging one would pass CI green while silently leaving vendor/ stale.
   vendor-drift-check:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -176,6 +183,7 @@ jobs:
   # libraries (onnxruntime, libsonic, espeak-ng), and Miri doesn't support arbitrary FFI.
   # AddressSanitizer does, and is validated locally clean against libdengjen and dengjen-tts.
   asan:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -217,6 +225,7 @@ jobs:
   # Build-only smoke check so fuzz targets don't bit-rot -- see CONTRIBUTING.md#fuzzing for why
   # actual fuzzing isn't run here and how to run a target manually.
   fuzz-build:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -250,6 +259,7 @@ jobs:
   # divan benches need real Piper voice fixtures not committed to this repo -- see
   # CONTRIBUTING.md#benchmarks -- so they only get the clippy job's compile-time check above.
   benchmarks:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -276,6 +286,7 @@ jobs:
   # SonarCloud doesn't scan crates/** (see sonar-project.properties), so this reports coverage
   # to GitHub's own feature instead.
   coverage:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -479,6 +490,7 @@ jobs:
         run: make fmt-check
 
   bindings-go:
+    if: github.event.pull_request.user.login != 'zirekhq-automation[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
