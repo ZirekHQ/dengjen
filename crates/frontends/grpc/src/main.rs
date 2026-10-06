@@ -187,9 +187,8 @@ impl DengjenGrpcService {
             dengjen_tts_piper::synth_config::NOISE_SCALE,
             dengjen_tts_piper::synth_config::NOISE_W,
         ];
-        let has_piper_scales = named_keys
-            .iter()
-            .any(|key| config.parameters.contains_key(*key));
+        let scale_if_set =
+            |key: &str, value: f32| config.parameters.contains_key(key).then_some(value);
         let parameters = config
             .parameters
             .iter()
@@ -198,9 +197,18 @@ impl DengjenGrpcService {
             .collect();
         Ok(grpc::SynthesisSettings {
             speaker,
-            length_scale: has_piper_scales.then_some(piper_config.length_scale),
-            noise_scale: has_piper_scales.then_some(piper_config.noise_scale),
-            noise_w: has_piper_scales.then_some(piper_config.noise_w),
+            length_scale: scale_if_set(
+                dengjen_tts_piper::synth_config::LENGTH_SCALE,
+                piper_config.length_scale,
+            ),
+            noise_scale: scale_if_set(
+                dengjen_tts_piper::synth_config::NOISE_SCALE,
+                piper_config.noise_scale,
+            ),
+            noise_w: scale_if_set(
+                dengjen_tts_piper::synth_config::NOISE_W,
+                piper_config.noise_w,
+            ),
             parameters,
         })
     }
