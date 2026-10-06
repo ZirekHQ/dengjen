@@ -29,8 +29,8 @@ Piper, Kokoro, and MeloTTS each call directly rather than through a shared `Phon
 |Mandarin Chinese only.
 
 |Kokoro
-|Hardcoded, not manifest-configurable
-|English (`en-US`) only, regardless of voice.
+|Derived from the selected voice's name prefix, not manifest-configurable
+|`en-US`, `en-GB`, Japanese, Mandarin, Spanish, French, Hindi, Italian or Brazilian Portuguese.
 
 |MeloTTS
 |`{"type": "espeak", "voice": "..."}`

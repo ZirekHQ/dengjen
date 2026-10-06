@@ -131,8 +131,9 @@ model's own phoneme representation:
 * MeloTTS (`crates/dengjen/models/melotts/src/phonemize.rs`) dispatches
   through its own `PhonemizerBackend` enum and reshapes the engine output
   into `(phone, tone)` pairs, a representation Piper and Kokoro don't use.
-* Kokoro (`crates/dengjen/models/kokoro/src/inference.rs`) hardcodes its
-  target language and calls its own `text_to_kokoro_phonemes` wrapper.
+* Kokoro (`crates/dengjen/models/kokoro/src/inference.rs`) derives its
+  target language from the selected voice's name prefix and calls its own
+  `text_to_kokoro_phonemes` wrapper.
 
 None of the three share an output shape beyond the sentence-list `Phonemes`
 wrapper `DengjenModel` already returns. A `Phonemizer` trait sitting between

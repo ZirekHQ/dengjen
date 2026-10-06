@@ -1,5 +1,5 @@
 use crate::config::KokoroVoiceConfig;
-use crate::phonemize::text_to_kokoro_phonemes;
+use crate::phonemize::{espeak_language_for_voice, text_to_kokoro_phonemes};
 use crate::vocab::Vocab;
 use crate::voice_style::VoiceStyles;
 use dengjen_tts_core::{
@@ -131,7 +131,11 @@ impl DengjenModel for KokoroModel {
 
     #[tracing::instrument(skip(self, text), fields(text_len = text.len()), err)]
     fn phonemize_text(&self, text: &str) -> DengjenResult<Phonemes> {
-        let language = "en-US";
+        let language = {
+            let synth_config = self.synth_config.read().unwrap();
+            let voice = resolve_voice_name(&self.speaker_map, &self.default_voice, &synth_config);
+            espeak_language_for_voice(voice)?
+        };
         let sentences = text_to_kokoro_phonemes(text, language)?;
         Ok(Phonemes::from(sentences))
     }

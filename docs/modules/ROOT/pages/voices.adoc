@@ -53,9 +53,11 @@ Kokoro voices have no `inference` block at all — `crates/dengjen/models/kokoro
 only accepts `model_path`, `voices_dir`, `vocab_path`, `sample_rate`, and the list of `voices`
 names. Per-voice character comes entirely from a precomputed style vector looked up by voice
 name and token length (`VoiceStyles::style_for`); there's no `noise_scale`/`length_scale`
-equivalent to adjust. `speed` is hardcoded to `1.0` and the phonemizer's target language is
-hardcoded to `en-US` (`crates/dengjen/models/kokoro/src/inference.rs`) — a Kokoro voice is
-English-only regardless of manifest content.
+equivalent to adjust. `speed` is hardcoded to `1.0`. The phonemizer's target language comes from the
+selected voice's name prefix (`espeak_language_for_voice` in
+`crates/dengjen/models/kokoro/src/phonemize.rs`): `a` en-US, `b` en-GB, `j` Japanese, `z` Mandarin,
+`e` Spanish, `f` French, `h` Hindi, `i` Italian, `p` Brazilian Portuguese. A voice name with
+any other prefix fails with a `PhonemizationError`, so custom voices need one of these prefixes.
 
 Kokoro does implement `stream_synthesis`, so realtime mode is available, but
 `KokoroAudioStreamer` slices an already-fully-synthesized sentence into chunks rather than
@@ -79,7 +81,7 @@ realtime mode. Use `lazy`, `parallel` or `batched` mode with MeloTTS voices.
 * **Piper** for the broadest voice availability (any VITS-family ONNX export using the standard
   3/4-input tensor convention) and the widest language reach, since its `espeak` phonemizer works
   with any configured espeak-ng voice.
-* **Kokoro** when a fixed set of English voices with no tuning surface is acceptable, and true
+* **Kokoro** when a fixed set of voices (nine languages, picked by the voice name prefix) with no tuning surface is acceptable, and true
   incremental low-latency generation isn't required.
 * **MeloTTS** for tone-aware Mandarin output (via its dedicated pinyin phonemizer with real tone
   extraction) or its bundled Spanish/French/Japanese/Korean voices, and when realtime streaming
