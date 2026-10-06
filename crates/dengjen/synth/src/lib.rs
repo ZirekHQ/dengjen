@@ -44,6 +44,7 @@ const PITCH_PARAM_RANGE: ParamRange = ParamRange { min: 0.5, max: 1.5 };
 /// Amplitude, as a fraction of full scale, below which a vocoder's trailing
 /// output is treated as the model's own baked-in silence rather than speech.
 const TRAILING_SILENCE_THRESHOLD: f32 = 0.015;
+const TAIL_FADE_MS: usize = 5;
 
 pub static SYNTHESIS_THREAD_POOL: Lazy<ThreadPool> = Lazy::new(|| {
     let core_count = std::thread::available_parallelism()
@@ -406,6 +407,9 @@ impl SpeechSynthesisTaskProvider {
         audio
             .samples
             .trim_trailing_silence(TRAILING_SILENCE_THRESHOLD, num_channels);
+        audio
+            .samples
+            .fade_out(audio.info.sample_rate * TAIL_FADE_MS / 1000 * num_channels);
         match &self.output_config {
             Some(config) => config.apply(audio),
             None => Ok(audio),
@@ -1558,6 +1562,26 @@ mod stream_mode_tests {
     }
 
     #[test]
+    fn shape_output_ramps_a_trimmed_tail_down_to_silence() {
+        let provider = SpeechSynthesisTaskProvider {
+            model: Arc::new(CannedSentenceModel {
+                sentences: vec![],
+                fail_on: None,
+            }),
+            text: String::new(),
+            output_config: None,
+        };
+        let decay: Vec<f32> = (0..4000).map(|i| 0.5 * (1.0 - i as f32 / 4000.0)).collect();
+        let shaped = provider
+            .shape_output(Audio::new(AudioSamples::from(decay), 16000, None))
+            .unwrap()
+            .into_vec();
+        assert_eq!(shaped.last(), Some(&0.0));
+        let seam_step = shaped[shaped.len() - 2].abs();
+        assert!(seam_step < 0.001, "tail still ends in a step: {seam_step}");
+    }
+
+    #[test]
     fn batched_stream_yields_one_result_per_sentence_in_order() {
         let model: Arc<dyn DengjenModel + Send + Sync> = Arc::new(CannedSentenceModel {
             sentences: vec!["a", "bb", "ccc", "dddd", "e"],
@@ -2019,7 +2043,9 @@ mod stream_mode_tests {
             .collect();
         assert_eq!(results.len(), 1);
         let audio = results.into_iter().next().unwrap().unwrap();
-        assert_eq!(audio.into_vec(), vec![0.8, -0.6, 0.9]);
+        let samples = audio.into_vec();
+        assert_eq!(samples.len(), 3, "the 0.01/-0.005/0.0 tail is trimmed");
+        assert_eq!(samples.last(), Some(&0.0));
     }
 
     #[test]
