@@ -3,8 +3,9 @@ use crate::phonemize::{espeak_language_for_voice, text_to_kokoro_phonemes};
 use crate::vocab::Vocab;
 use crate::voice_style::VoiceStyles;
 use dengjen_tts_core::{
-    lock_ignoring_poison, Audio, AudioInfo, AudioSamples, AudioStreamIterator, CancellationToken,
-    DengjenAudioResult, DengjenError, DengjenModel, DengjenResult, Phonemes, SynthesisConfig,
+    lock_ignoring_poison, read_ignoring_poison, write_ignoring_poison, Audio, AudioInfo,
+    AudioSamples, AudioStreamIterator, CancellationToken, DengjenAudioResult, DengjenError,
+    DengjenModel, DengjenResult, Phonemes, SynthesisConfig,
 };
 use ndarray::{Array1, Array2};
 use ort::session::Session;
@@ -94,7 +95,7 @@ impl KokoroModel {
         let input_ids = Array2::from_shape_vec((1, token_ids.len()), token_ids.clone())
             .map_err(|e| DengjenError::with_message(e.to_string()))?;
         let voice_name = {
-            let synth_config = self.synth_config.read().unwrap();
+            let synth_config = read_ignoring_poison(&self.synth_config);
             resolve_voice_name(&self.speaker_map, &self.default_voice, &synth_config).to_string()
         };
         let style = self.voice_styles.style_for(&voice_name, token_ids.len())?;
@@ -132,7 +133,7 @@ impl DengjenModel for KokoroModel {
     #[tracing::instrument(skip(self, text), fields(text_len = text.len()), err)]
     fn phonemize_text(&self, text: &str) -> DengjenResult<Phonemes> {
         let language = {
-            let synth_config = self.synth_config.read().unwrap();
+            let synth_config = read_ignoring_poison(&self.synth_config);
             let voice = resolve_voice_name(&self.speaker_map, &self.default_voice, &synth_config);
             espeak_language_for_voice(voice)?
         };
@@ -161,7 +162,7 @@ impl DengjenModel for KokoroModel {
     }
 
     fn get_fallback_synthesis_config(&self) -> DengjenResult<Option<SynthesisConfig>> {
-        Ok(Some(self.synth_config.read().unwrap().clone()))
+        Ok(Some(read_ignoring_poison(&self.synth_config).clone()))
     }
 
     fn set_fallback_synthesis_config(
@@ -176,7 +177,7 @@ impl DengjenModel for KokoroModel {
                 )));
             }
         }
-        *self.synth_config.write().unwrap() = synthesis_config.clone();
+        *write_ignoring_poison(&self.synth_config) = synthesis_config.clone();
         Ok(())
     }
 

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub use dengjen_audio_ops::{Audio, AudioInfo, AudioSamples, WaveWriterError};
 
@@ -17,6 +17,18 @@ pub use synthesis_config::SynthesisConfig;
 /// tolerate whatever state that holder left behind.
 pub fn lock_ignoring_poison<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Returns the read guard even when a previous writer panicked; callers must
+/// tolerate whatever state that writer left behind.
+pub fn read_ignoring_poison<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Returns the write guard even when a previous writer panicked; callers must
+/// tolerate whatever state that writer left behind.
+pub fn write_ignoring_poison<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
+    lock.write().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Renders a caught panic payload as text, falling back to a fixed
@@ -359,6 +371,36 @@ mod lock_ignoring_poison_tests {
         assert!(mutex.is_poisoned());
 
         assert_eq!(*lock_ignoring_poison(&mutex), 7);
+    }
+}
+
+#[cfg(test)]
+mod rwlock_ignoring_poison_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn poisoned_lock() -> Arc<RwLock<i32>> {
+        let lock = Arc::new(RwLock::new(7));
+        let poisoner = Arc::clone(&lock);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.write().unwrap();
+            panic!("poison the lock");
+        })
+        .join();
+        assert!(lock.is_poisoned());
+        lock
+    }
+
+    #[test]
+    fn reads_a_lock_poisoned_by_a_panicking_writer() {
+        assert_eq!(*read_ignoring_poison(&poisoned_lock()), 7);
+    }
+
+    #[test]
+    fn writes_a_lock_poisoned_by_a_panicking_writer() {
+        let lock = poisoned_lock();
+        *write_ignoring_poison(&lock) = 9;
+        assert_eq!(*read_ignoring_poison(&lock), 9);
     }
 }
 

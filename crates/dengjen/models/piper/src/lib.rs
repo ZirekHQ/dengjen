@@ -4,7 +4,9 @@
 use dengjen_espeak_phonemizer::text_to_phonemes;
 #[cfg(feature = "tashkeel")]
 use dengjen_tashkeel::do_tashkeel;
-use dengjen_tts_core::{AudioInfo, DengjenError, DengjenModel, DengjenResult, Phonemes};
+use dengjen_tts_core::{
+    write_ignoring_poison, AudioInfo, DengjenError, DengjenModel, DengjenResult, Phonemes,
+};
 #[cfg(feature = "espeak")]
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -112,7 +114,7 @@ trait VitsModelCommons {
     }
 
     fn _do_set_default_synth_config(&self, new_config: &PiperSynthesisConfig) -> DengjenResult<()> {
-        let mut synth_config = self.get_synth_config().write().unwrap();
+        let mut synth_config = write_ignoring_poison(self.get_synth_config());
         synth_config.length_scale = new_config.length_scale;
         synth_config.noise_scale = new_config.noise_scale;
         synth_config.noise_w = new_config.noise_w;
