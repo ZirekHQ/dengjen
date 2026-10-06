@@ -79,3 +79,6 @@ docs/_build/
 .gradle/
 .worktrees/
 htmlReport/
+
+# Locally downloaded TTS models
+/.local-models/

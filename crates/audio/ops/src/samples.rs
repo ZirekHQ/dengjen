@@ -4,7 +4,9 @@ use std::path::Path;
 const HALF_TURN: f32 = std::f32::consts::PI;
 const I16_MIN_AS_F32: f32 = i16::MIN as f32;
 const I16_MAX_AS_F32: f32 = i16::MAX as f32;
-const WAV_PEAK_MAGNITUDE: f32 = 32767.0;
+// Fixed gain: per-chunk peak normalization made loudness differ between sentences.
+// 1.25 is 1/0.8; measured model peaks reach 0.77, louder samples clamp.
+const REFERENCE_OUTPUT_GAIN: f32 = 1.25;
 
 #[derive(Debug, Clone)]
 pub struct AudioInfo {
@@ -61,19 +63,12 @@ impl AudioSamples {
             return Vec::new();
         }
 
-        let peak_magnitude = self
-            .0
-            .iter()
-            .filter(|sample| sample.is_finite())
-            .map(|sample| sample.abs())
-            .fold(0.0f32, f32::max)
-            .max(f32::EPSILON);
-        let gain = WAV_PEAK_MAGNITUDE / peak_magnitude;
         self.0
             .iter()
             .map(|&sample| {
                 if sample.is_finite() {
-                    (sample * gain).clamp(I16_MIN_AS_F32, I16_MAX_AS_F32) as i16
+                    (sample * REFERENCE_OUTPUT_GAIN * I16_MAX_AS_F32)
+                        .clamp(I16_MIN_AS_F32, I16_MAX_AS_F32) as i16
                 } else {
                     0
                 }
@@ -449,7 +444,7 @@ mod tests {
 
     #[test]
     fn to_i16_vec_degrades_a_nan_sample_to_silence_instead_of_panicking() {
-        let buffer = AudioSamples::from(vec![f32::NAN, 0.5]);
+        let buffer = AudioSamples::from(vec![f32::NAN, 1.0]);
         assert_eq!(buffer.to_i16_vec(), vec![0, 32767]);
     }
 
@@ -496,7 +491,7 @@ mod tests {
 
     #[test]
     fn to_i16_vec_degrades_an_infinite_sample_to_silence_without_poisoning_the_rest() {
-        let buffer = AudioSamples::from(vec![f32::INFINITY, 0.5]);
+        let buffer = AudioSamples::from(vec![f32::INFINITY, 1.0]);
         assert_eq!(buffer.to_i16_vec(), vec![0, 32767]);
     }
 
@@ -577,6 +572,25 @@ mod tests {
         let mut buffer = AudioSamples::from(vec![0.8, 0.6, 0.0, 0.0]);
         buffer.trim_trailing_silence(0.015, 2);
         assert_eq!(buffer.into_vec(), vec![0.8, 0.6]);
+    }
+
+    #[test]
+    fn to_i16_vec_applies_the_same_gain_to_chunks_with_different_peaks() {
+        let quiet = i32::from(AudioSamples::from(vec![0.1]).to_i16_vec()[0]);
+        let loud = i32::from(AudioSamples::from(vec![0.4]).to_i16_vec()[0]);
+        assert!((loud - 4 * quiet).abs() <= 4, "{quiet} {loud}");
+    }
+
+    #[test]
+    fn to_i16_vec_keeps_a_near_silent_chunk_near_silent() {
+        let hiss = AudioSamples::from(vec![0.002, -0.002]).to_i16_vec();
+        assert!(hiss.iter().all(|sample| sample.abs() < 100), "{hiss:?}");
+    }
+
+    #[test]
+    fn to_i16_vec_clamps_samples_pushed_past_full_scale_by_the_gain() {
+        let buffer = AudioSamples::from(vec![1.0, -1.0]);
+        assert_eq!(buffer.to_i16_vec(), vec![i16::MAX, i16::MIN]);
     }
 
     #[test]
@@ -747,7 +761,7 @@ mod tests {
     #[test]
     fn to_i16_vec_golden_values_for_a_known_input() {
         let buffer = AudioSamples::from(vec![-1.0, 0.5, 1.0]);
-        assert_eq!(buffer.to_i16_vec(), vec![-32767, 16383, 32767]);
+        assert_eq!(buffer.to_i16_vec(), vec![-32768, 20479, 32767]);
     }
 }
 
