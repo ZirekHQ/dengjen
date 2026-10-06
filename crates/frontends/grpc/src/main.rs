@@ -187,6 +187,8 @@ impl DengjenGrpcService {
             dengjen_tts_piper::synth_config::NOISE_SCALE,
             dengjen_tts_piper::synth_config::NOISE_W,
         ];
+        let scale_if_set =
+            |key: &str, value: f32| config.parameters.contains_key(key).then_some(value);
         let parameters = config
             .parameters
             .iter()
@@ -195,9 +197,18 @@ impl DengjenGrpcService {
             .collect();
         Ok(grpc::SynthesisSettings {
             speaker,
-            length_scale: Some(piper_config.length_scale),
-            noise_scale: Some(piper_config.noise_scale),
-            noise_w: Some(piper_config.noise_w),
+            length_scale: scale_if_set(
+                dengjen_tts_piper::synth_config::LENGTH_SCALE,
+                piper_config.length_scale,
+            ),
+            noise_scale: scale_if_set(
+                dengjen_tts_piper::synth_config::NOISE_SCALE,
+                piper_config.noise_scale,
+            ),
+            noise_w: scale_if_set(
+                dengjen_tts_piper::synth_config::NOISE_W,
+                piper_config.noise_w,
+            ),
             parameters,
         })
     }
@@ -1277,6 +1288,24 @@ mod synth_options_tests {
         assert_eq!(opts.noise_scale, None);
         assert_eq!(opts.noise_w, None);
         assert!(opts.parameters.is_empty());
+    }
+
+    #[test]
+    fn synth_options_omit_piper_scales_for_a_config_without_them() {
+        let model = ConfiglessModel {
+            speakers: StdHashMap::from([(0i64, "Narrator".to_string())]),
+        };
+        let config = SynthesisConfig {
+            speaker: Some(0),
+            parameters: StdHashMap::new(),
+        };
+        let opts =
+            DengjenGrpcService::synth_options_from_synthesis_config(&model, &config, || Ok(None))
+                .unwrap();
+        assert_eq!(opts.speaker.as_deref(), Some("Narrator"));
+        assert_eq!(opts.length_scale, None);
+        assert_eq!(opts.noise_scale, None);
+        assert_eq!(opts.noise_w, None);
     }
 
     #[test]

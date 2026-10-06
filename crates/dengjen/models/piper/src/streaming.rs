@@ -15,7 +15,7 @@ use dengjen_tts_core::{
 };
 use ndarray::{Array, Array1, ArrayView, Axis, Dim, IxDynImpl};
 use ort::session::{Session, SessionInputValue, SessionOutputs};
-use ort::value::Tensor;
+use ort::value::{Tensor, TensorRef};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, RwLock};
@@ -241,19 +241,27 @@ impl EncoderOutputs {
         })
     }
 
-    fn decoder_inputs(
-        &self,
-        z: ArrayView<'_, f32, Dim<IxDynImpl>>,
-        y_mask: ArrayView<'_, f32, Dim<IxDynImpl>>,
-    ) -> DengjenResult<Vec<SessionInputValue<'static>>> {
+    fn decoder_inputs<'a>(
+        &'a self,
+        z: ArrayView<'a, f32, Dim<IxDynImpl>>,
+        y_mask: ArrayView<'a, f32, Dim<IxDynImpl>>,
+    ) -> DengjenResult<Vec<SessionInputValue<'a>>> {
         // Slicing the frame axis yields non-contiguous views, which ort rejects.
-        let contiguous = |view: ArrayView<'_, f32, Dim<IxDynImpl>>| {
-            Tensor::from_array(view.as_standard_layout().into_owned()).map_err(inference_error)
-        };
-        let mut inputs: Vec<SessionInputValue<'static>> =
-            vec![contiguous(z)?.into(), contiguous(y_mask)?.into()];
+        let input =
+            |view: ArrayView<'a, f32, Dim<IxDynImpl>>| -> DengjenResult<SessionInputValue<'a>> {
+                if view.is_standard_layout() {
+                    Ok(TensorRef::from_array_view(view)
+                        .map_err(inference_error)?
+                        .into())
+                } else {
+                    Ok(Tensor::from_array(view.as_standard_layout().into_owned())
+                        .map_err(inference_error)?
+                        .into())
+                }
+            };
+        let mut inputs = vec![input(z)?, input(y_mask)?];
         if !self.g.is_empty() {
-            inputs.push(contiguous(self.g.view())?.into());
+            inputs.push(input(self.g.view())?);
         }
         Ok(inputs)
     }
