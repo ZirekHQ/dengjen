@@ -147,6 +147,33 @@ fn catch_phonemization<T>(f: impl FnOnce() -> DengjenResult<T>) -> DengjenResult
     })
 }
 
+pub(crate) enum JapaneseDictionary {
+    Loaded(Box<JapaneseG2p>),
+    Unset,
+}
+
+impl JapaneseDictionary {
+    pub(crate) fn from_env() -> DengjenResult<Self> {
+        match std::env::var_os(JAPANESE_DICT_ENV) {
+            None => Ok(Self::Unset),
+            value => JapaneseG2p::from_env_value(value).map(|g2p| Self::Loaded(Box::new(g2p))),
+        }
+    }
+
+    pub(crate) fn phonemize(&self, text: &str) -> DengjenResult<Vec<String>> {
+        match self {
+            Self::Loaded(g2p) => g2p.phonemize(text),
+            Self::Unset => Err(DengjenError::PhonemizationError(unset_dictionary_message())),
+        }
+    }
+}
+
+fn unset_dictionary_message() -> String {
+    format!(
+        "Japanese presets need a jpreprocess dictionary: set {JAPANESE_DICT_ENV} to its directory"
+    )
+}
+
 fn dictionary_error(path: &Path, cause: impl std::fmt::Display) -> DengjenError {
     DengjenError::FailedToLoadResource(format!(
         "Failed to load the Japanese dictionary at `{}` (set by {JAPANESE_DICT_ENV}): {cause}",
@@ -164,16 +191,10 @@ fn load_engine(dir: &Path) -> Result<JPreprocess<jpreprocess::DefaultTokenizer>,
 }
 
 impl JapaneseG2p {
-    pub(crate) fn from_env() -> DengjenResult<Self> {
-        Self::from_env_value(std::env::var_os(JAPANESE_DICT_ENV))
-    }
-
     pub(crate) fn from_env_value(value: Option<std::ffi::OsString>) -> DengjenResult<Self> {
-        let dir = value.map(PathBuf::from).ok_or_else(|| {
-            DengjenError::FailedToLoadResource(format!(
-                "Japanese presets need a jpreprocess dictionary: set {JAPANESE_DICT_ENV} to its directory"
-            ))
-        })?;
+        let dir = value
+            .map(PathBuf::from)
+            .ok_or_else(|| DengjenError::FailedToLoadResource(unset_dictionary_message()))?;
         let engine = std::panic::catch_unwind(|| load_engine(&dir))
             .unwrap_or_else(|_| {
                 Err("the dictionary is corrupt or from another jpreprocess version".to_string())
@@ -401,8 +422,11 @@ mod tests {
     }
 
     fn dictionary() -> Option<JapaneseG2p> {
-        std::env::var_os(JAPANESE_DICT_ENV)?;
-        Some(JapaneseG2p::from_env().expect("DENGJEN_JA_DICT_DIR is set but does not load"))
+        let value = std::env::var_os(JAPANESE_DICT_ENV)?;
+        Some(
+            JapaneseG2p::from_env_value(Some(value))
+                .expect("DENGJEN_JA_DICT_DIR is set but does not load"),
+        )
     }
 
     #[test]
