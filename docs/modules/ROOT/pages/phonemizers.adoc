@@ -82,9 +82,10 @@ OpenJTalk, and misaki's katakana-to-phoneme table. Without the feature, `j*` pre
 The feature needs a jpreprocess-format NAIST-jdic dictionary, which the binary does not bundle.
 Download `naist-jdic-jpreprocess.tar.gz` from the jpreprocess `v0.15.0` release (the dictionary
 version must match the crate version), extract it, and set `DENGJEN_JA_DICT_DIR` to the extracted
-directory. A Kokoro config that lists a `j*` voice fails to load with an error naming the variable
-when it is unset or the directory is not a valid, matching dictionary. Configs without `j*` voices do not
-need it.
+directory. With the variable unset, a Kokoro config that lists `j*` voices still loads, and
+synthesizing with a `j*` preset fails with an error naming the variable; other presets are
+unaffected. A variable pointing at a directory that is not a valid, matching dictionary fails the
+load with an error naming the variable.
 
 Symbols that Kokoro's vocabulary lacks are remapped (`g` to `ɡ`, palatalized consonants to
 consonant + `ʲ`, labialized `kw`/`gw` to `kᵝ`/`ɡᵝ`), because the tokenizer drops unknown symbols

@@ -1,3 +1,5 @@
+#[cfg(feature = "japanese")]
+use dengjen_tts_core::DengjenError;
 use dengjen_tts_core::{DengjenModel, DengjenResult, SynthesisConfig};
 use dengjen_tts_kokoro::{KokoroModel, KokoroVoiceConfig};
 use std::collections::HashMap;
@@ -349,9 +351,41 @@ fn hold_dictionary_var(unset: bool) -> DictionaryVarGuard {
 
 #[cfg(feature = "japanese")]
 #[test]
-fn a_japanese_voice_without_the_dictionary_variable_fails_to_load() {
+fn a_japanese_voice_without_the_dictionary_variable_still_loads() {
     let _guard = hold_dictionary_var(true);
-    let result = try_build_model_with_voices("ja_no_dict", &["jf_test"]);
+    assert!(try_build_model_with_voices("ja_no_dict", &["af_test", "jf_test"]).is_ok());
+}
+
+#[cfg(feature = "japanese")]
+#[test]
+fn a_japanese_preset_without_the_dictionary_variable_errors_when_used_naming_it() {
+    let _guard = hold_dictionary_var(true);
+    let (model, dir) = build_model_with_voices("ja_no_dict_use", &["jf_test"]);
+    let result = model.phonemize_text("こんにちは。");
+    std::fs::remove_dir_all(dir).ok();
+    assert!(
+        matches!(result, Err(DengjenError::PhonemizationError(m)) if m.contains("DENGJEN_JA_DICT_DIR"))
+    );
+}
+
+#[cfg(feature = "japanese")]
+#[test]
+fn a_non_japanese_preset_still_phonemizes_when_the_dictionary_variable_is_unset() {
+    let _guard = hold_dictionary_var(true);
+    let (model, dir) = build_model_with_voices("ja_other_preset", &["af_test", "jf_test"]);
+    let result = model.phonemize_text("hello");
+    std::fs::remove_dir_all(dir).ok();
+    assert!(
+        !matches!(result, Err(DengjenError::PhonemizationError(m)) if m.contains("DENGJEN_JA_DICT_DIR"))
+    );
+}
+
+#[cfg(feature = "japanese")]
+#[test]
+fn a_dictionary_variable_pointing_nowhere_fails_to_load_naming_the_variable() {
+    let _guard = hold_dictionary_var(false);
+    std::env::set_var("DENGJEN_JA_DICT_DIR", "/nonexistent-dengjen-ja-dict");
+    let result = try_build_model_with_voices("ja_bad_dict", &["jf_test"]);
     let message = result.err().map(|e| e.to_string()).unwrap_or_default();
     assert!(message.contains("DENGJEN_JA_DICT_DIR"), "{message}");
 }

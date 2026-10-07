@@ -1,6 +1,6 @@
 use crate::config::KokoroVoiceConfig;
 #[cfg(feature = "japanese")]
-use crate::ja::JapaneseG2p;
+use crate::ja::JapaneseDictionary;
 use crate::phonemize::{espeak_language_for_voice, text_to_kokoro_phonemes};
 use crate::vocab::Vocab;
 use crate::voice_style::VoiceStyles;
@@ -38,7 +38,7 @@ pub struct KokoroModel {
     speaker_map: HashMap<i64, String>,
     synth_config: RwLock<SynthesisConfig>,
     #[cfg(feature = "japanese")]
-    japanese: Option<JapaneseG2p>,
+    japanese: Option<JapaneseDictionary>,
 }
 
 #[allow(clippy::vec_init_then_push)]
@@ -85,7 +85,7 @@ impl KokoroModel {
             .voices
             .iter()
             .any(|voice| voice.starts_with('j'))
-            .then(JapaneseG2p::from_env)
+            .then(JapaneseDictionary::from_env)
             .transpose()?;
         Ok(Self {
             session: Mutex::new(session),
