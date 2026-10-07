@@ -34,7 +34,7 @@ dengjen-tts.workspace = true
 
 
 
-dengjen-tts-piper = { path = "../../dengjen/models/piper", version = "2.1.0", default-features = false }
+dengjen-tts-piper = { path = "../../dengjen/models/piper", version = "2.1.1", default-features = false }
 dengjen-tts-kokoro.workspace = true
 dengjen-tts-melotts.workspace = true
 once_cell = "1.18.0"
