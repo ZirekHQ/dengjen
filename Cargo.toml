@@ -23,7 +23,7 @@ members = [
 
 
 
-version = "2.0.3"
+version = "2.1.0"
 # Floor set by the highest dependency-declared rust-version in the tree (ort/ort-sys at
 # 1.88, per `cargo metadata`), then confirmed to actually compile at that version with
 # both default and --all-features.
@@ -36,16 +36,16 @@ homepage = "https://github.com/ZirekHQ/dengjen-tts"
 
 
 [workspace.dependencies]
-dengjen-tts-core = { path = "crates/dengjen/core", version = "2.0.3" }
-dengjen-tts = { path = "crates/dengjen/synth", version = "2.0.3" }
-dengjen-tts-piper = { path = "crates/dengjen/models/piper", version = "2.0.3" }
-dengjen-tts-kokoro = { path = "crates/dengjen/models/kokoro", version = "2.0.3", default-features = false }
-dengjen-tts-melotts = { path = "crates/dengjen/models/melotts", version = "2.0.3", default-features = false }
-dengjen-espeak-phonemizer = { path = "crates/text/espeak-phonemizer", version = "2.0.3" }
-dengjen-hebrew-phonemizer = { path = "crates/text/hebrew-phonemizer", version = "2.0.3" }
-dengjen-pinyin-phonemizer = { path = "crates/text/pinyin-phonemizer", version = "2.0.3" }
-dengjen-sonic-sys = { path = "crates/audio/sonic-sys", version = "2.0.3" }
-dengjen-audio-ops = { path = "crates/audio/ops", version = "2.0.3" }
+dengjen-tts-core = { path = "crates/dengjen/core", version = "2.1.0" }
+dengjen-tts = { path = "crates/dengjen/synth", version = "2.1.0" }
+dengjen-tts-piper = { path = "crates/dengjen/models/piper", version = "2.1.0" }
+dengjen-tts-kokoro = { path = "crates/dengjen/models/kokoro", version = "2.1.0", default-features = false }
+dengjen-tts-melotts = { path = "crates/dengjen/models/melotts", version = "2.1.0", default-features = false }
+dengjen-espeak-phonemizer = { path = "crates/text/espeak-phonemizer", version = "2.1.0" }
+dengjen-hebrew-phonemizer = { path = "crates/text/hebrew-phonemizer", version = "2.1.0" }
+dengjen-pinyin-phonemizer = { path = "crates/text/pinyin-phonemizer", version = "2.1.0" }
+dengjen-sonic-sys = { path = "crates/audio/sonic-sys", version = "2.1.0" }
+dengjen-audio-ops = { path = "crates/audio/ops", version = "2.1.0" }
 tracing = "0.1"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 
