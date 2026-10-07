@@ -7,14 +7,14 @@ fn phoneme_id_map_json() -> &'static str {
     r#"{"^": [1], "$": [2], "_": [3], "t": [4], "ɛ": [5], "s": [6]}"#
 }
 
-fn synthetic_model_config_json() -> String {
+fn synthetic_model_config_json(speaker_id_map: &str) -> String {
     format!(
         r#"{{
             "key": null,
             "language": {{"code": "en-US"}},
             "audio": {{"sample_rate": 22050, "quality": null}},
             "num_speakers": 1,
-            "speaker_id_map": {{"default": 0}},
+            "speaker_id_map": {speaker_id_map},
             "streaming": false,
             "espeak": {{"voice": "en-us"}},
             "inference": {{"noise_scale": 0.667, "length_scale": 1.0, "noise_w": 0.8}},
@@ -25,12 +25,20 @@ fn synthetic_model_config_json() -> String {
             "hop_length": 256
         }}"#,
         phoneme_map = phoneme_id_map_json(),
+        speaker_id_map = speaker_id_map,
     )
 }
 
 /// Loads a real (synthetic-fixture) `VitsModel` -- exercises the same config/session
 /// wiring as `dengjen_tts_piper::from_config_path` without needing a real trained voice.
 fn load_synthetic_model(dir_name: &str) -> Arc<dyn dengjen_tts_core::DengjenModel + Send + Sync> {
+    load_synthetic_model_with_speaker_map(dir_name, r#"{"default": 0}"#)
+}
+
+fn load_synthetic_model_with_speaker_map(
+    dir_name: &str,
+    speaker_id_map: &str,
+) -> Arc<dyn dengjen_tts_core::DengjenModel + Send + Sync> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture_path = manifest_dir.join("tests/fixtures/synthetic_piper_batch.onnx");
 
@@ -38,7 +46,7 @@ fn load_synthetic_model(dir_name: &str) -> Arc<dyn dengjen_tts_core::DengjenMode
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::copy(&fixture_path, dir.join("model.onnx")).unwrap();
     let config_path = dir.join("model.onnx.json");
-    std::fs::write(&config_path, synthetic_model_config_json()).unwrap();
+    std::fs::write(&config_path, synthetic_model_config_json(speaker_id_map)).unwrap();
 
     let model = dengjen_tts_piper::from_config_path(&config_path)
         .expect("failed to load synthetic Piper model");
@@ -87,21 +95,32 @@ fn audio_output_info_reflects_the_configured_sample_rate() {
 }
 
 #[test]
-fn get_default_synthesis_config_reflects_the_config_file_inference_settings() {
+fn a_single_speaker_voice_reports_no_default_speaker() {
     let model = load_synthetic_model("dengjen_piper_synthetic_default_synth_config_test");
     let default = model
         .get_default_synthesis_config()
         .unwrap()
         .expect("Piper models always report a default synthesis config");
-    assert_eq!(default.speaker, Some(0));
+    assert_eq!(default.speaker, None);
+}
+
+#[test]
+fn a_voice_with_an_empty_speaker_map_accepts_its_own_default_config_and_speaks() {
+    let model = load_synthetic_model_with_speaker_map(
+        "dengjen_piper_synthetic_empty_speaker_map_test",
+        "{}",
+    );
+    let default = model.get_default_synthesis_config().unwrap().unwrap();
+    model
+        .set_fallback_synthesis_config(&default)
+        .expect("a single-speaker voice must accept its own default config");
+    assert!(model.speak_one_sentence("t".to_string()).is_ok());
 }
 
 #[test]
 fn fallback_synthesis_config_starts_at_the_factory_default_then_updates_on_set() {
     let model = load_synthetic_model("dengjen_piper_synthetic_fallback_config_roundtrip_test");
     let initial = model.get_fallback_synthesis_config().unwrap().unwrap();
-    // Unlike get_default_synthesis_config (which resolves a factory default speaker), the
-    // live fallback config starts with no speaker override until one is explicitly set.
     assert_eq!(initial.speaker, None);
 
     let mut parameters = HashMap::new();

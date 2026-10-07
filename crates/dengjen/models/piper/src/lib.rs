@@ -104,7 +104,7 @@ trait VitsModelCommons {
 
     fn factory_synthesis_config(&self) -> PiperSynthesisConfig {
         let config = self.get_config();
-        let speaker = (config.num_speakers > 0).then(|| resolve_default_speaker_id(config));
+        let speaker = (config.num_speakers > 1).then(|| resolve_default_speaker_id(config));
         PiperSynthesisConfig {
             speaker,
             length_scale: config.inference.length_scale,
@@ -332,6 +332,31 @@ mod tests {
         };
         let result = commons._do_set_default_synth_config(&new_config);
         assert!(matches!(result, Err(DengjenError::InvalidConfiguration(_))));
+    }
+
+    fn commons_with(num_speakers: u32, speaker_map: HashMap<i64, String>) -> TestVitsCommons {
+        TestVitsCommons {
+            synth_config: RwLock::new(PiperSynthesisConfig::default()),
+            config: ModelConfig {
+                num_speakers,
+                ..Default::default()
+            },
+            speaker_map,
+        }
+    }
+
+    #[test]
+    fn a_single_speaker_voice_with_an_empty_speaker_map_accepts_its_factory_config() {
+        let commons = commons_with(1, HashMap::new());
+        let factory = commons.factory_synthesis_config();
+        assert_eq!(factory.speaker, None);
+        assert!(commons._do_set_default_synth_config(&factory).is_ok());
+    }
+
+    #[test]
+    fn a_multi_speaker_voice_keeps_a_default_speaker_in_its_factory_config() {
+        let commons = commons_with(2, HashMap::from([(0, "a".into()), (1, "b".into())]));
+        assert_eq!(commons.factory_synthesis_config().speaker, Some(0));
     }
 
     #[test]
