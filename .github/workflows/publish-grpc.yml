@@ -91,7 +91,7 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - name: cargo build (release)
-        run: cargo build --release --locked -p dengjen-tts-grpc --target x86_64-pc-windows-msvc
+        run: cargo build --release --locked -p dengjen-tts-grpc --features japanese --target x86_64-pc-windows-msvc
       - name: assert no unbundled runtime dependency
         # Same check as publish-go.yml's build-windows job: ort's copy-dylibs feature can drop a
         # companion ONNX Runtime DLL next to the build output instead of statically linking it -- the
