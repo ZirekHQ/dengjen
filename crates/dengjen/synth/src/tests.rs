@@ -200,7 +200,7 @@ fn build_synthetic_kokoro_model() -> (dengjen_tts_kokoro::KokoroModel, tempfile:
     let root = tempfile::tempdir().expect("failed to create fixture temp dir");
     let voices_dir = root.path().join("voices");
     std::fs::create_dir_all(&voices_dir).expect("failed to create fixture voices dir");
-    write_synthetic_voice(&voices_dir, "test_voice");
+    write_synthetic_voice(&voices_dir, "af_test");
     let vocab_path = write_minimal_vocab(root.path());
 
     let model_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -211,7 +211,7 @@ fn build_synthetic_kokoro_model() -> (dengjen_tts_kokoro::KokoroModel, tempfile:
         voices_dir,
         vocab_path,
         sample_rate: 24000,
-        voices: vec!["test_voice".to_string()],
+        voices: vec!["af_test".to_string()],
     };
     let model = dengjen_tts_kokoro::KokoroModel::from_config(config)
         .expect("failed to build synthetic Kokoro model");

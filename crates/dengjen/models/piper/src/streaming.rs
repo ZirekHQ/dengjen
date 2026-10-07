@@ -10,8 +10,9 @@ use crate::phonemize::{
 use crate::synth_config::PiperSynthesisConfig;
 use crate::VitsModelCommons;
 use dengjen_tts_core::{
-    lock_ignoring_poison, Audio, AudioInfo, AudioSamples, AudioStreamIterator, CancellationToken,
-    DengjenAudioResult, DengjenError, DengjenModel, DengjenResult, Phonemes, SynthesisConfig,
+    lock_ignoring_poison, read_ignoring_poison, Audio, AudioInfo, AudioSamples,
+    AudioStreamIterator, CancellationToken, DengjenAudioResult, DengjenError, DengjenModel,
+    DengjenResult, Phonemes, SynthesisConfig,
 };
 use ndarray::{Array, Array1, ArrayView, Axis, Dim, IxDynImpl};
 use ort::session::{Session, SessionInputValue, SessionOutputs};
@@ -139,7 +140,7 @@ impl DengjenModel for VitsStreamingModel {
     }
     fn get_fallback_synthesis_config(&self) -> DengjenResult<Option<SynthesisConfig>> {
         Ok(Some(SynthesisConfig::from(
-            &self.synth_config.read().unwrap().clone(),
+            &read_ignoring_poison(&self.synth_config).clone(),
         )))
     }
     fn set_fallback_synthesis_config(

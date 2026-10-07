@@ -5,8 +5,8 @@ use dengjen_tts::{
     DengjenSpeechStreamParallel, DengjenSpeechSynthesizer,
 };
 use dengjen_tts_core::{
-    CancellationToken, DengjenAudioResult, DengjenError, DengjenModel, DengjenResult,
-    SynthesisConfig,
+    read_ignoring_poison, write_ignoring_poison, CancellationToken, DengjenAudioResult,
+    DengjenError, DengjenModel, DengjenResult, SynthesisConfig,
 };
 use grpc::dengjen_grpc_server::{DengjenGrpc, DengjenGrpcServer};
 use std::collections::HashMap;
@@ -121,7 +121,7 @@ impl DengjenGrpcService {
             )));
         }
         let voice_key = Self::voice_key_for_path(&config_path)?;
-        if let Some(voice) = self.0.read().unwrap().get(&voice_key) {
+        if let Some(voice) = read_ignoring_poison(&self.0).get(&voice_key) {
             return self.build_voice_info(voice_key, voice.model_ref());
         }
 
@@ -133,12 +133,12 @@ impl DengjenGrpcService {
         );
         let voice = Voice::new(model)?;
         let voice_info = self.build_voice_info(voice_key.clone(), voice.model_ref())?;
-        self.0.write().unwrap().insert(voice_key, voice);
+        write_ignoring_poison(&self.0).insert(voice_key, voice);
         Ok(voice_info)
     }
 
     fn lookup_synth(&self, voice_key: &str) -> DengjenGrpcResult<Arc<DengjenSpeechSynthesizer>> {
-        let voices = self.0.read().unwrap();
+        let voices = read_ignoring_poison(&self.0);
         let voice = voices.get(voice_key).ok_or_else(|| {
             DengjenGrpcError::VoiceNotFound(format!(
                 "A voice with the key `{}` has not been loaded",
@@ -250,7 +250,7 @@ impl DengjenGrpcService {
     }
 
     fn lookup_synth_options(&self, voice_key: &str) -> DengjenGrpcResult<grpc::SynthesisSettings> {
-        let voices = self.0.read().unwrap();
+        let voices = read_ignoring_poison(&self.0);
         let voice = voices.get(voice_key).ok_or_else(|| {
             DengjenGrpcError::VoiceNotFound(format!(
                 "A voice with the key `{}` has not been loaded",
@@ -265,7 +265,7 @@ impl DengjenGrpcService {
         voice_key: &str,
         synth_opts: grpc::SynthesisSettings,
     ) -> DengjenGrpcResult<grpc::SynthesisSettings> {
-        let voices = self.0.read().unwrap();
+        let voices = read_ignoring_poison(&self.0);
         let voice = voices.get(voice_key).ok_or_else(|| {
             DengjenGrpcError::VoiceNotFound(format!(
                 "A voice with the key `{}` has not been loaded",
@@ -490,7 +490,7 @@ impl DengjenGrpc for DengjenGrpcService {
         request: Request<grpc::VoiceRef>,
     ) -> Result<Response<grpc::VoiceDescriptor>, Status> {
         let voice_key = request.into_inner().voice_key;
-        let voices = self.0.read().unwrap();
+        let voices = read_ignoring_poison(&self.0);
         let voice = voices.get(&voice_key).ok_or_else(|| {
             DengjenGrpcError::VoiceNotFound(format!(
                 "A voice with the key `{}` has not been loaded",
@@ -573,7 +573,7 @@ impl DengjenGrpc for DengjenGrpcService {
         let output_config =
             output_config_from_prosody(req.prosody).map_err(Status::invalid_argument)?;
         let synth = {
-            let voices = self.0.read().unwrap();
+            let voices = read_ignoring_poison(&self.0);
             let voice = voices.get(&req.voice_key).ok_or_else(|| {
                 DengjenGrpcError::VoiceNotFound(format!(
                     "A voice with the key `{}` has not been loaded",

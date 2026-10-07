@@ -97,7 +97,8 @@ fn speak_batch_synthesizes_each_sentence_independently() {
 #[traced_test]
 #[test]
 fn phonemize_text_emits_its_instrumentation_span() {
-    let (model, dir) = build_model_with_voices("phonemize_text_span", &["test_voice"]);
+    let _guard = lock_espeak();
+    let (model, dir) = build_model_with_voices("phonemize_text_span", &["af_test"]);
 
     match model.phonemize_text("hi") {
         Ok(_) => {}
@@ -199,6 +200,57 @@ fn synthesis_falls_back_to_the_default_voice_for_an_unset_speaker() {
         .expect("synthesis with no speaker selected should use the default voice");
     assert!(!audio.samples.into_vec().is_empty());
 
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[cfg(feature = "espeak")]
+static ESPEAK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(feature = "espeak")]
+fn lock_espeak() -> std::sync::MutexGuard<'static, ()> {
+    ESPEAK_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+#[cfg(feature = "espeak")]
+#[test]
+fn phonemize_text_rejects_a_preset_without_a_language_prefix() {
+    let _guard = lock_espeak();
+    let (model, dir) = build_model_with_voices("phonemize_unprefixed", &["test_voice"]);
+
+    let error = model.phonemize_text("hi").err();
+
+    assert!(
+        matches!(&error, Some(dengjen_tts_core::DengjenError::PhonemizationError(msg)) if msg.contains("test_voice")),
+        "{error:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[cfg(feature = "espeak")]
+#[test]
+fn phonemize_text_follows_the_selected_presets_language() {
+    let _guard = lock_espeak();
+    let (model, dir) = build_model_with_voices("phonemize_language", &["af_test", "jf_test"]);
+    let english = match model.phonemize_text("こんにちは") {
+        Ok(phonemes) => phonemes.to_vec(),
+        Err(dengjen_tts_core::DengjenError::PhonemizationError(msg))
+            if msg.contains(dengjen_espeak_phonemizer::ESPEAKNG_INIT_FAILURE_MARKER) =>
+        {
+            std::fs::remove_dir_all(&dir).ok();
+            return;
+        }
+        Err(e) => panic!("phonemization failed: {e}"),
+    };
+    model
+        .set_fallback_synthesis_config(&SynthesisConfig {
+            speaker: Some(1),
+            parameters: HashMap::new(),
+        })
+        .unwrap();
+
+    let japanese = model.phonemize_text("こんにちは").unwrap().to_vec();
+
+    assert_ne!(english, japanese);
     std::fs::remove_dir_all(&dir).ok();
 }
 

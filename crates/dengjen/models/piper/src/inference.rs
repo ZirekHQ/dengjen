@@ -6,8 +6,8 @@ use crate::phonemize::{
 use crate::synth_config::PiperSynthesisConfig;
 use crate::VitsModelCommons;
 use dengjen_tts_core::{
-    lock_ignoring_poison, Audio, AudioInfo, DengjenAudioResult, DengjenError, DengjenModel,
-    DengjenResult, Phonemes, SynthesisConfig,
+    lock_ignoring_poison, read_ignoring_poison, Audio, AudioInfo, DengjenAudioResult, DengjenError,
+    DengjenModel, DengjenResult, Phonemes, SynthesisConfig,
 };
 use ndarray::{Array1, Array2};
 use ort::session::{Session, SessionInputValue};
@@ -84,7 +84,7 @@ pub(crate) fn snapshot_scales_and_speaker(
     synth_config: &RwLock<PiperSynthesisConfig>,
     num_speakers: u32,
 ) -> ([f32; 3], Option<i64>) {
-    let synth_config = synth_config.read().unwrap();
+    let synth_config = read_ignoring_poison(synth_config);
     let scales = [
         synth_config.noise_scale,
         synth_config.length_scale,
@@ -205,7 +205,7 @@ impl DengjenModel for VitsModel {
     }
     fn get_fallback_synthesis_config(&self) -> DengjenResult<Option<SynthesisConfig>> {
         Ok(Some(SynthesisConfig::from(
-            &self.synth_config.read().unwrap().clone(),
+            &read_ignoring_poison(&self.synth_config).clone(),
         )))
     }
     fn set_fallback_synthesis_config(

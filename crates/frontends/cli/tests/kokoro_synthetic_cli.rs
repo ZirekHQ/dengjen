@@ -25,7 +25,7 @@ fn cli_loads_a_kokoro_voice_without_panicking() {
     std::fs::remove_dir_all(&dir).ok();
     let voices_dir = dir.join("voices");
     std::fs::create_dir_all(&voices_dir).unwrap();
-    write_synthetic_voice_file(&voices_dir, "test_voice");
+    write_synthetic_voice_file(&voices_dir, "af_test");
     std::fs::write(
         dir.join("tokenizer.json"),
         r#"{"model": {"vocab": {"$": 0, "t": 1, "ɛ": 2, "s": 3}}}"#,
@@ -46,7 +46,7 @@ fn cli_loads_a_kokoro_voice_without_panicking() {
                 "voices_dir": "voices",
                 "vocab_path": "tokenizer.json",
                 "sample_rate": 24000,
-                "voices": ["test_voice"]
+                "voices": ["af_test"]
             }}"#
         ),
     )
