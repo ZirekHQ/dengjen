@@ -71,3 +71,22 @@ supports it), but whether a *given Piper or MeloTTS ONNX voice* — trained on s
 language's phoneme set — actually produces intelligible speech from that phonemization is
 untested by this project and depends entirely on the voice model itself.
 ====
+
+== Japanese phonemizer for Kokoro (optional)
+
+Kokoro was trained on misaki phonemes, and eSpeak's Japanese output approximates them poorly. The
+`japanese` Cargo feature on `dengjen-tts-kokoro` (forwarded as `--features japanese` by the CLI,
+gRPC, C API and Python frontends) phonemizes `j*` presets with jpreprocess, a Rust rewrite of
+OpenJTalk, and misaki's katakana-to-phoneme table. Without the feature, `j*` presets use eSpeak.
+
+The feature needs a jpreprocess-format NAIST-jdic dictionary, which the binary does not bundle.
+Download `naist-jdic-jpreprocess.tar.gz` from the jpreprocess `v0.15.0` release (the dictionary
+version must match the crate version), extract it, and set `DENGJEN_JA_DICT_DIR` to the extracted
+directory. A Kokoro config that lists a `j*` voice fails to load with an error naming the variable
+when it is unset or the directory is not a valid, matching dictionary. Configs without `j*` voices do not
+need it.
+
+Symbols that Kokoro's vocabulary lacks are remapped (`g` to `ɡ`, palatalized consonants to
+consonant + `ʲ`, labialized `kw`/`gw` to `kᵝ`/`ɡᵝ`), because the tokenizer drops unknown symbols
+silently. Pitch accent is not
+encoded in the phonemes, matching misaki.

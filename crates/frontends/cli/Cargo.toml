@@ -17,6 +17,7 @@ path = "src/main.rs"
 [features]
 default = ["espeak"]
 espeak = ["dengjen-tts-piper/espeak", "dengjen-tts-kokoro/espeak", "dengjen-tts-melotts/espeak"]
+japanese = ["dengjen-tts-kokoro/japanese"]
 
 
 cuda = ["dengjen-tts-piper/cuda", "dengjen-tts-kokoro/cuda", "dengjen-tts-melotts/cuda"]

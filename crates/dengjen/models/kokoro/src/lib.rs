@@ -2,6 +2,10 @@
 
 mod config;
 mod inference;
+#[cfg(feature = "japanese")]
+mod ja;
+#[cfg(feature = "japanese")]
+mod ja_map;
 mod phonemize;
 mod vocab;
 mod voice_style;

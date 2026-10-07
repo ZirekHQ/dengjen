@@ -44,6 +44,8 @@ jobs:
           set -o pipefail
           cargo clippy --workspace --lib --bins --benches --message-format=json -- -D warnings \
             | clippy-sarif | tee clippy-results.sarif | sarif-fmt
+      - name: cargo clippy (dengjen-tts-kokoro, japanese feature)
+        run: cargo clippy -p dengjen-tts-kokoro --features japanese --lib -- -D warnings
       - name: upload clippy SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
@@ -319,6 +321,8 @@ jobs:
         run: cargo llvm-cov --no-report -p dengjen-tts-piper --no-default-features --features tashkeel
       - name: cargo llvm-cov (dengjen-tts-kokoro, espeak feature enabled)
         run: cargo llvm-cov --no-report -p dengjen-tts-kokoro --features espeak
+      - name: cargo llvm-cov (dengjen-tts-kokoro, espeak and japanese features enabled)
+        run: cargo llvm-cov --no-report -p dengjen-tts-kokoro --features espeak,japanese
       - name: cargo llvm-cov (dengjen-tts-kokoro, espeak feature disabled)
         run: cargo llvm-cov --no-report -p dengjen-tts-kokoro --no-default-features
       - name: cargo llvm-cov (dengjen-tts-melotts, espeak and pinyin features enabled)

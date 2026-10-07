@@ -1,6 +1,11 @@
 This project (dengjen) is licensed under the GNU General Public License v3.0 or
 later (GPL-3.0-or-later) — see LICENSE.
 
+Kokoro's optional Japanese phonemizer (the `japanese` Cargo feature) uses jpreprocess
+(https://github.com/jpreprocess/jpreprocess, BSD-3-Clause, a rewrite of OpenJTalk) and
+ports the katakana-to-phoneme table and word-joining rules from misaki
+(https://github.com/hexgrad/misaki, Apache-2.0, hexgrad).
+
 dengjen originated as a fork of Sonata (https://github.com/mush42/sonata) by
 Musharraf Omer, originally distributed under the MIT License. The engine has
 since been substantially rewritten; no code from that origin remains in this
