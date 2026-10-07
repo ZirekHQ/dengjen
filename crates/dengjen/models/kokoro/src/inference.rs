@@ -1,4 +1,6 @@
 use crate::config::KokoroVoiceConfig;
+#[cfg(feature = "japanese")]
+use crate::ja::JapaneseG2p;
 use crate::phonemize::{espeak_language_for_voice, text_to_kokoro_phonemes};
 use crate::vocab::Vocab;
 use crate::voice_style::VoiceStyles;
@@ -35,6 +37,8 @@ pub struct KokoroModel {
     default_voice: String,
     speaker_map: HashMap<i64, String>,
     synth_config: RwLock<SynthesisConfig>,
+    #[cfg(feature = "japanese")]
+    japanese: Option<JapaneseG2p>,
 }
 
 #[allow(clippy::vec_init_then_push)]
@@ -76,6 +80,13 @@ impl KokoroModel {
             .enumerate()
             .map(|(index, name)| (index as i64, name.clone()))
             .collect();
+        #[cfg(feature = "japanese")]
+        let japanese = config
+            .voices
+            .iter()
+            .any(|voice| voice.starts_with('j'))
+            .then(JapaneseG2p::from_env)
+            .transpose()?;
         Ok(Self {
             session: Mutex::new(session),
             vocab,
@@ -84,6 +95,8 @@ impl KokoroModel {
             default_voice,
             speaker_map,
             synth_config: RwLock::new(SynthesisConfig::default()),
+            #[cfg(feature = "japanese")]
+            japanese,
         })
     }
 
@@ -137,6 +150,10 @@ impl DengjenModel for KokoroModel {
             let voice = resolve_voice_name(&self.speaker_map, &self.default_voice, &synth_config);
             espeak_language_for_voice(voice)?
         };
+        #[cfg(feature = "japanese")]
+        if let (Some(japanese), "ja") = (&self.japanese, language) {
+            return Ok(Phonemes::from(japanese.phonemize(text)?));
+        }
         let sentences = text_to_kokoro_phonemes(text, language)?;
         Ok(Phonemes::from(sentences))
     }

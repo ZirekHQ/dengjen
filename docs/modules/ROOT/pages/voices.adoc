@@ -58,6 +58,8 @@ selected voice's name prefix (`espeak_language_for_voice` in
 `crates/dengjen/models/kokoro/src/phonemize.rs`): `a` en-US, `b` en-GB, `j` Japanese, `z` Mandarin,
 `e` Spanish, `f` French, `h` Hindi, `i` Italian, `p` Brazilian Portuguese. A voice name with
 any other prefix fails with a `PhonemizationError`, so custom voices need one of these prefixes.
+With the optional `japanese` feature, `j*` voices use a Japanese G2P that reads its dictionary from
+`DENGJEN_JA_DICT_DIR`; see xref:phonemizers.adoc[Phonemizer language coverage].
 
 Kokoro does implement `stream_synthesis`, so realtime mode is available, but
 `KokoroAudioStreamer` slices an already-fully-synthesized sentence into chunks rather than

@@ -16,9 +16,11 @@ publish = false
 
 ### BEGIN HAKARI SECTION
 [dependencies]
+aho-corasick = { version = "1" }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "std", "suggestions", "usage", "wrap_help"] }
 either = { version = "1", features = ["use_std"] }
+fastrand = { version = "2" }
 futures-core = { version = "0.3" }
 futures-sink = { version = "0.3" }
 http = { version = "1" }
@@ -31,6 +33,7 @@ ndarray = { version = "0.17" }
 nom = { version = "7" }
 num-traits = { version = "0.2", default-features = false, features = ["i128", "std"] }
 once_cell = { version = "1" }
+phf_shared = { version = "0.13", default-features = false, features = ["std"] }
 ppv-lite86 = { version = "0.2", default-features = false, features = ["simd", "std"] }
 prost = { version = "0.14" }
 rand = { version = "0.9" }
@@ -45,9 +48,11 @@ tracing = { version = "0.1" }
 tracing-core = { version = "0.1" }
 
 [build-dependencies]
+aho-corasick = { version = "1" }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "std", "suggestions", "usage", "wrap_help"] }
 either = { version = "1", features = ["use_std"] }
+fastrand = { version = "2" }
 http = { version = "1" }
 httparse = { version = "1" }
 indexmap = { version = "2" }
@@ -56,6 +61,7 @@ log = { version = "0.4", default-features = false, features = ["std"] }
 memchr = { version = "2" }
 nom = { version = "7" }
 once_cell = { version = "1" }
+phf_shared = { version = "0.13", default-features = false, features = ["std"] }
 prost = { version = "0.14" }
 quote = { version = "1" }
 regex = { version = "1" }
@@ -63,7 +69,7 @@ regex-automata = { version = "0.4", default-features = false, features = ["dfa-b
 regex-syntax = { version = "0.8" }
 serde = { version = "1", features = ["alloc", "derive"] }
 serde_core = { version = "1", features = ["alloc"] }
-syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["full", "visit-mut"] }
+syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "fold", "full", "visit-mut"] }
 
 [target.x86_64-unknown-linux-gnu.dependencies]

@@ -1,4 +1,4 @@
-use dengjen_tts_core::{DengjenModel, SynthesisConfig};
+use dengjen_tts_core::{DengjenModel, DengjenResult, SynthesisConfig};
 use dengjen_tts_kokoro::{KokoroModel, KokoroVoiceConfig};
 use std::collections::HashMap;
 use std::io::Write;
@@ -36,6 +36,14 @@ fn build_model_with_scaled_voices(
     test_name: &str,
     voices: &[(&str, f32)],
 ) -> (KokoroModel, PathBuf) {
+    try_build_model_with_scaled_voices(test_name, voices)
+        .expect("failed to load synthetic Kokoro model")
+}
+
+fn try_build_model_with_scaled_voices(
+    test_name: &str,
+    voices: &[(&str, f32)],
+) -> DengjenResult<(KokoroModel, PathBuf)> {
     let dir = std::env::temp_dir().join(format!("dengjen_kokoro_synthetic_inference_{test_name}"));
     std::fs::create_dir_all(&dir).unwrap();
     let voices_dir = dir.join("voices");
@@ -55,8 +63,16 @@ fn build_model_with_scaled_voices(
         sample_rate: 24000,
         voices: voices.iter().map(|(v, _)| v.to_string()).collect(),
     };
-    let model = KokoroModel::from_config(config).expect("failed to load synthetic Kokoro model");
-    (model, dir)
+    KokoroModel::from_config(config).map(|model| (model, dir))
+}
+
+#[cfg(feature = "japanese")]
+fn try_build_model_with_voices(
+    test_name: &str,
+    voices: &[&str],
+) -> DengjenResult<(KokoroModel, PathBuf)> {
+    let scaled_voices: Vec<(&str, f32)> = voices.iter().map(|&v| (v, 1.0)).collect();
+    try_build_model_with_scaled_voices(test_name, &scaled_voices)
 }
 
 #[traced_test]
@@ -226,7 +242,7 @@ fn phonemize_text_rejects_a_preset_without_a_language_prefix() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[cfg(feature = "espeak")]
+#[cfg(all(feature = "espeak", not(feature = "japanese")))]
 #[test]
 fn phonemize_text_follows_the_selected_presets_language() {
     let _guard = lock_espeak();
@@ -297,4 +313,109 @@ fn from_config_path_logs_the_load_error_via_tracing() {
 
     assert!(result.is_err(), "loading a missing config file should fail");
     assert!(logs_contain("from_config_path"));
+}
+
+#[cfg(feature = "japanese")]
+static JA_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(feature = "japanese")]
+struct DictionaryVarGuard {
+    previous: Option<std::ffi::OsString>,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(feature = "japanese")]
+impl Drop for DictionaryVarGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var("DENGJEN_JA_DICT_DIR", value),
+            None => std::env::remove_var("DENGJEN_JA_DICT_DIR"),
+        }
+    }
+}
+
+#[cfg(feature = "japanese")]
+fn hold_dictionary_var(unset: bool) -> DictionaryVarGuard {
+    let lock = JA_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let previous = std::env::var_os("DENGJEN_JA_DICT_DIR");
+    if unset {
+        std::env::remove_var("DENGJEN_JA_DICT_DIR");
+    }
+    DictionaryVarGuard {
+        previous,
+        _lock: lock,
+    }
+}
+
+#[cfg(feature = "japanese")]
+#[test]
+fn a_japanese_voice_without_the_dictionary_variable_fails_to_load() {
+    let _guard = hold_dictionary_var(true);
+    let result = try_build_model_with_voices("ja_no_dict", &["jf_test"]);
+    let message = result.err().map(|e| e.to_string()).unwrap_or_default();
+    assert!(message.contains("DENGJEN_JA_DICT_DIR"), "{message}");
+}
+
+#[cfg(feature = "japanese")]
+#[test]
+fn a_config_without_japanese_voices_loads_without_the_variable() {
+    let _guard = hold_dictionary_var(true);
+    assert!(try_build_model_with_voices("ja_not_needed", &["af_test"]).is_ok());
+}
+
+#[cfg(feature = "japanese")]
+#[test]
+fn a_japanese_preset_phonemizes_through_the_japanese_g2p() {
+    let _guard = hold_dictionary_var(false);
+    if std::env::var_os("DENGJEN_JA_DICT_DIR").is_none() {
+        return;
+    }
+    let (model, dir) = build_model_with_voices("ja_g2p", &["jf_test"]);
+    let sentences = model.phonemize_text("こんにちは。").unwrap().to_vec();
+    assert_eq!(sentences, vec!["koɴniʨiwa."]);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[cfg(all(feature = "espeak", feature = "japanese"))]
+#[test]
+fn switching_between_japanese_and_other_presets_picks_the_matching_g2p() {
+    let _dict = hold_dictionary_var(false);
+    let _espeak = lock_espeak();
+    if std::env::var_os("DENGJEN_JA_DICT_DIR").is_none() {
+        return;
+    }
+    let (model, dir) = build_model_with_voices("ja_switch", &["jf_test", "af_test"]);
+    let select = |speaker: i64| {
+        model
+            .set_fallback_synthesis_config(&SynthesisConfig {
+                speaker: Some(speaker),
+                parameters: HashMap::new(),
+            })
+            .unwrap()
+    };
+    let japanese = model.phonemize_text("こんにちは。").unwrap().to_vec();
+    select(1);
+    let other = model.phonemize_text("こんにちは。").unwrap().to_vec();
+    select(0);
+    assert_eq!(japanese, vec!["koɴniʨiwa."]);
+    assert_ne!(japanese, other);
+    assert_eq!(
+        model.phonemize_text("こんにちは。").unwrap().to_vec(),
+        japanese
+    );
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[cfg(all(feature = "espeak", not(feature = "japanese")))]
+#[test]
+fn a_japanese_preset_still_phonemizes_through_espeak_without_the_feature() {
+    let _guard = lock_espeak();
+    let (model, dir) = build_model_with_voices("ja_espeak_fallback", &["jf_test"]);
+    match model.phonemize_text("こんにちは") {
+        Ok(phonemes) => assert!(!phonemes.to_vec().is_empty()),
+        Err(dengjen_tts_core::DengjenError::PhonemizationError(msg))
+            if msg.contains(dengjen_espeak_phonemizer::ESPEAKNG_INIT_FAILURE_MARKER) => {}
+        Err(e) => panic!("phonemization failed: {e}"),
+    }
+    std::fs::remove_dir_all(dir).ok();
 }
