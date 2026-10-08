@@ -115,6 +115,10 @@ jobs:
       JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.JRELEASER_GPG_PUBLIC_KEY }}
       DEPLOY_APP_CLIENT_ID: ${{ secrets.DEPLOY_APP_CLIENT_ID }}
       DEPLOY_APP_PRIVATE_KEY: ${{ secrets.DEPLOY_APP_PRIVATE_KEY }}
+      MASTODON_INSTANCE_URL: ${{ secrets.MASTODON_INSTANCE_URL }}
+      MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
+      BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+      BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
     with:
       new_tag: ${{ inputs.new_tag }}
       previous_tag: ${{ inputs.previous_tag }}
