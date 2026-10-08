@@ -25,6 +25,7 @@ const DEFAULT_DENGJEN_GRPC_SERVER_PORT: u16 = 49314;
 
 type DengjenGrpcResult<T> = Result<T, DengjenGrpcError>;
 
+#[allow(clippy::double_must_use)]
 pub mod grpc {
     tonic::include_proto!("dengjen_grpc");
 }
