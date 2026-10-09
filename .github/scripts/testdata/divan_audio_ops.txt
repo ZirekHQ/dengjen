@@ -1,0 +1,3 @@
+Timer precision: 10 ns
+benchmarks             fastest       │ slowest       │ median        │ mean          │ samples │ iters
+╰─ bench_overlap_with  229.7 µs      │ 509.5 µs      │ 362.2 µs      │ 372.4 µs      │ 100     │ 100
