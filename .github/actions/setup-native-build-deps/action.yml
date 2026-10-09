@@ -31,7 +31,7 @@ runs:
         APT_PACKAGES: ${{ inputs.apt-packages }}
       run: |
         for attempt in 1 2 3; do
-          if timeout 60 sudo apt-get update && timeout 180 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y $APT_PACKAGES; then
+          if timeout 60 sudo apt-get update && timeout 180 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 $APT_PACKAGES; then
             exit 0
           fi
           echo "::warning::apt-get install attempt ${attempt} failed, retrying" >&2
