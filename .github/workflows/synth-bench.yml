@@ -13,8 +13,11 @@ on:
       - "rust-toolchain.toml"
       - ".github/workflows/synth-bench.yml"
       - ".github/scripts/bench-compare.py"
+      - ".github/scripts/test_bench_compare.py"
+      - ".github/scripts/testdata/**"
       - ".github/scripts/build-bench-fixtures.sh"
       - ".github/scripts/fetch-bench-fixture.sh"
+      - ".github/scripts/fetch-manifest-fixtures.sh"
       - ".github/bench-fixtures.json"
   schedule:
     - cron: "0 4 * * 1"
@@ -25,7 +28,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   bench:
@@ -64,13 +67,13 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: restore piper fixture
         id: piper-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: crates/dengjen/synth/models/std
           key: bench-fixture-piper-std-${{ steps.manifest.outputs.piper_sha }}
       - name: restore kokoro fixture
         id: kokoro-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: crates/dengjen/synth/models/kokoro
           key: bench-fixture-kokoro-${{ steps.manifest.outputs.kokoro_sha }}
@@ -88,26 +91,47 @@ jobs:
           TAG: ${{ steps.manifest.outputs.tag }}
           SHA: ${{ steps.manifest.outputs.kokoro_sha }}
         run: bash .github/scripts/fetch-bench-fixture.sh "$TAG" kokoro.tar.gz "$SHA" crates/dengjen/synth/models/kokoro
+      # PR-scoped caches are invisible to other PRs, so only main saves.
+      - name: save piper fixture
+        if: github.ref == 'refs/heads/main' && steps.piper-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: crates/dengjen/synth/models/std
+          key: bench-fixture-piper-std-${{ steps.manifest.outputs.piper_sha }}
+      - name: save kokoro fixture
+        if: github.ref == 'refs/heads/main' && steps.kokoro-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: crates/dengjen/synth/models/kokoro
+          key: bench-fixture-kokoro-${{ steps.manifest.outputs.kokoro_sha }}
       - name: unit-test compare script
         run: python3 -I -m unittest discover -s .github/scripts -p 'test_bench_compare.py'
+      - name: bench merge base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          base="$(git merge-base "origin/${BASE_REF}" HEAD)"
+          git worktree add ../base-tree "$base"
+          # Manifest changed: head's fixtures may not match what base code loads,
+          # so fetch the base's pinned set.
+          if [ -f ../base-tree/.github/bench-fixtures.json ] \
+             && ! cmp -s .github/bench-fixtures.json ../base-tree/.github/bench-fixtures.json; then
+            bash .github/scripts/fetch-manifest-fixtures.sh ../base-tree/.github/bench-fixtures.json ../base-tree
+          else
+            mkdir -p ../base-tree/crates/dengjen/synth/models
+            cp -r crates/dengjen/synth/models/. ../base-tree/crates/dengjen/synth/models/
+          fi
+          cd ../base-tree
+          cargo bench -p dengjen-tts --bench benchmarks -- --skip bench_realtime | tee "$GITHUB_WORKSPACE/base-synth.txt"
+          cargo bench -p dengjen-audio-ops --bench benchmarks | tee "$GITHUB_WORKSPACE/base-audio.txt"
       - name: bench head
         run: |
           set -o pipefail
           cargo bench -p dengjen-tts --bench benchmarks -- --skip bench_realtime | tee head-synth.txt
           cargo bench -p dengjen-audio-ops --bench benchmarks | tee head-audio.txt
-      - name: bench merge base
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          set -o pipefail
-          base="$(git merge-base "origin/${BASE_REF}" HEAD)"
-          git worktree add ../base-tree "$base"
-          mkdir -p ../base-tree/crates/dengjen/synth/models
-          cp -r crates/dengjen/synth/models/. ../base-tree/crates/dengjen/synth/models/
-          cd ../base-tree
-          cargo bench -p dengjen-tts --bench benchmarks -- --skip bench_realtime | tee "$GITHUB_WORKSPACE/base-synth.txt"
-          cargo bench -p dengjen-audio-ops --bench benchmarks | tee "$GITHUB_WORKSPACE/base-audio.txt"
       - name: compare head with merge base
         if: github.event_name == 'pull_request'
         run: |
@@ -115,15 +139,17 @@ jobs:
           python3 -I .github/scripts/bench-compare.py base-audio.txt head-audio.txt --title "audio/ops: head vs merge base (median)"
       - name: publish raw results
         if: github.event_name != 'pull_request'
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           {
-            echo '### synth benchmarks (main)'
+            echo "### synth benchmarks (${REF_NAME})"
             echo '```'
             cat head-synth.txt head-audio.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: upload raw results
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bench-main-${{ github.sha }}

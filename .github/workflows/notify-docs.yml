@@ -21,6 +21,8 @@ permissions:
 
 jobs:
   dispatch:
+    # Non-version releases (e.g. bench-fixtures-v1) must not ping the docs site.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
