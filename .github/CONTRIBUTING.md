@@ -38,15 +38,18 @@ target exercises.
   requests that touch the synth path (`crates/dengjen/synth`, `core`, `models/piper`,
   `models/kokoro`, `crates/text/espeak-phonemizer`), `crates/audio/**`, `Cargo.lock`,
   `rust-toolchain.toml`, or the bench scripts and fixture manifest, benches the merge base and
-  the PR merged onto it on the same runner, and writes base-vs-head tables of median times to
-  the job summary. A case
-  that is 2x or more slower than the base raises a warning annotation. The job is advisory and
-  never a required check. A weekly run on `main` stores the raw output as a `bench-main-<sha>`
-  artifact.
+  the PR merged onto it on the same runner, and writes base-vs-head tables of median
+  times to the job summary. If a PR changes `bench-fixtures.json`, the base run downloads the
+  fixtures pinned by the base's manifest instead of reusing the PR's. A case that is 2x or more slower than the base raises a warning
+  annotation. The job is advisory and never a required check. A weekly run on `main` stores the
+  raw output as a `bench-main-<sha>` artifact; manual runs on other refs only write the job
+  summary.
 - **Fixtures** are one Piper voice (`en_US-lessac-medium`) and one Kokoro voice (`af_bella`).
   They are archives on the `bench-fixtures-v1` release of this repo, pinned by sha256 in
-  [`bench-fixtures.json`](bench-fixtures.json), cached with `actions/cache` and downloaded from
-  the release on a miss.
+  [`bench-fixtures.json`](bench-fixtures.json) and downloaded from the release on a cache miss.
+  Only runs on `main` save the `actions/cache` entries, because a PR-scoped cache is invisible to
+  other PRs. After merging a fixture change, dispatch the workflow on `main` to seed the cache; the
+  weekly run does too. Until then PR runs download from the release.
 - **Piper `rt`** (`encoder.onnx` + `decoder.onnx`) has no upstream export. Its tests run in
   `piper-real-voice-e2e` when `PIPER_RT_TEST_VOICE_ARCHIVE_URL` is set; `synth-bench.yml` skips
   its benches (`--skip bench_realtime`), so run them locally.
@@ -59,7 +62,8 @@ tests self-skip and the benches panic.
 
 Changing a fixture: run `.github/scripts/build-bench-fixtures.sh OUT_DIR` with `PIPER_REV` and
 `KOKORO_REV` set to the upstream commits, upload the archives to a new release tag, and update
-`tag` and `sha256` in `bench-fixtures.json`. Never overwrite an existing release asset.
+`tag` and `sha256` in `bench-fixtures.json`. Never overwrite an existing release asset. Fixture
+tags must not start with `v`, which is what keeps `notify-docs.yml` from pinging the docs site.
 
 CI's `piper-real-voice-e2e` and `kokoro-real-voice-e2e` jobs still run the real-voice *tests* on
 the weekly schedule, provisioned from the `*_TEST_VOICE_ARCHIVE_URL` repo variables.
