@@ -30,19 +30,39 @@ target exercises.
 
 ## Benchmarks
 
-`crates/audio/ops` and `crates/dengjen/synth` each have `divan` benches. CI's `benchmarks` job
-runs audio/ops's bench for real and posts the numbers to the job summary — it's self-contained, no
-fixtures needed. Synth's benches, and its `test_lazy_stream`/`test_parallel_stream`/
-`test_realtime_stream` tests, need real Piper voice fixtures that aren't committed to this repo, so
-by default the tests self-skip and CI's `clippy` job only compile-checks the benches (via
-`--benches`). Running either for real, locally or in CI, needs fixtures at
-`crates/dengjen/synth/models/std/model.onnx.json` and `crates/dengjen/synth/models/rt/config.json`.
+`crates/audio/ops` and `crates/dengjen/synth` each have `divan` benches.
 
-CI's `piper-real-voice-e2e` job (mirroring `kokoro-real-voice-e2e`) provisions these the same
-way: set the `PIPER_STD_TEST_VOICE_ARCHIVE_URL` and/or `PIPER_RT_TEST_VOICE_ARCHIVE_URL` repo
-variables to `.tar.gz` URLs of a maintainer-sourced, license-vetted Piper voice export (`std/` and
-`rt/` respectively), and it downloads, extracts, and runs the corresponding tests/benches on the
-weekly schedule or on `workflow_dispatch`.
+- **`audio/ops`** is self-contained (synthetic samples). The `benchmarks` job in `rust-lint.yml`
+  runs it and posts the numbers to the job summary.
+- **`synth`** needs real voices. [`synth-bench.yml`](workflows/synth-bench.yml) runs on pull
+  requests that touch the synth path (`crates/dengjen/synth`, `core`, `models/piper`,
+  `models/kokoro`, `crates/text/espeak-phonemizer`), `crates/audio/**`, `Cargo.lock`,
+  `rust-toolchain.toml`, or the bench scripts and fixture manifest, benches the merge base and
+  the PR merged onto it on the same runner, and writes base-vs-head tables of median times to
+  the job summary. A case
+  that is 2x or more slower than the base raises a warning annotation. The job is advisory and
+  never a required check. A weekly run on `main` stores the raw output as a `bench-main-<sha>`
+  artifact.
+- **Fixtures** are one Piper voice (`en_US-lessac-medium`) and one Kokoro voice (`af_bella`).
+  They are archives on the `bench-fixtures-v1` release of this repo, pinned by sha256 in
+  [`bench-fixtures.json`](bench-fixtures.json), cached with `actions/cache` and downloaded from
+  the release on a miss.
+- **Piper `rt`** (`encoder.onnx` + `decoder.onnx`) has no upstream export. Its tests run in
+  `piper-real-voice-e2e` when `PIPER_RT_TEST_VOICE_ARCHIVE_URL` is set; `synth-bench.yml` skips
+  its benches (`--skip bench_realtime`), so run them locally.
+
+Running synth benches locally: download the release archives, extract `piper-std.tar.gz` into
+`crates/dengjen/synth/models/std` and `kokoro.tar.gz` into `crates/dengjen/synth/models/kokoro`,
+point `DENGJEN_ESPEAKNG_DATA_DIRECTORY` at the directory holding `espeak-ng-data`, then run
+`cargo bench -p dengjen-tts --bench benchmarks -- --skip bench_realtime`. Without fixtures the
+tests self-skip and the benches panic.
+
+Changing a fixture: run `.github/scripts/build-bench-fixtures.sh OUT_DIR` with `PIPER_REV` and
+`KOKORO_REV` set to the upstream commits, upload the archives to a new release tag, and update
+`tag` and `sha256` in `bench-fixtures.json`. Never overwrite an existing release asset.
+
+CI's `piper-real-voice-e2e` and `kokoro-real-voice-e2e` jobs still run the real-voice *tests* on
+the weekly schedule, provisioned from the `*_TEST_VOICE_ARCHIVE_URL` repo variables.
 
 ## Workspace dependencies
 

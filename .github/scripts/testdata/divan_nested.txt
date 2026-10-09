@@ -1,0 +1,7 @@
+Timer precision: 10 ns
+benchmarks                         fastest       │ slowest       │ median        │ mean          │ samples │ iters
+╰─ speech_streams                                │               │               │               │         │
+   ├─ bench_lazy_stream            1.2 s         │ 1.9 s         │ 1.4 s         │ 1.5 s         │ 20      │ 200
+   │  ├─ t=1                       1.2 s         │ 1.9 s         │ 1.4 s         │ 1.5 s         │ 20      │ 200
+   │  ╰─ t=4                       2.0 s         │ 2.6 s         │ 2.2 s         │ 2.3 s         │ 20      │ 200
+   ╰─ bench_lazy_stream_latency    310.5 ms      │ 420.1 ms      │ 350.0 ms      │ 360.2 ms      │ 20      │ 200

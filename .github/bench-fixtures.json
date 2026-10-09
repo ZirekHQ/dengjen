@@ -1,0 +1,17 @@
+{
+  "tag": "bench-fixtures-v1",
+  "fixtures": [
+    {
+      "name": "piper-std",
+      "asset": "piper-std.tar.gz",
+      "sha256": "acfb8bef855785baa77e7bbc6037ef4fd642904538f9af34e68ea98cbbeaef85",
+      "dest": "crates/dengjen/synth/models/std"
+    },
+    {
+      "name": "kokoro",
+      "asset": "kokoro.tar.gz",
+      "sha256": "6349f37a42883a07b207c29389da2c8de5ae28163bdd6b86b51848b0703eb3c1",
+      "dest": "crates/dengjen/synth/models/kokoro"
+    }
+  ]
+}

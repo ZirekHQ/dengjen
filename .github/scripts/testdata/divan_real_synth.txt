@@ -1,0 +1,6 @@
+Timer precision: 30 ns
+benchmarks                              fastest       │ slowest       │ median        │ mean          │ samples │ iters
+╰─ speech_streams                                     │               │               │               │         │
+   ├─ bench_kokoro_lazy_stream          3.677 s       │ 3.781 s       │ 3.704 s       │ 3.715 s       │ 5       │ 5
+   ├─ bench_kokoro_lazy_stream_latency  1.554 s       │ 1.599 s       │ 1.571 s       │ 1.574 s       │ 5       │ 5
+   ╰─ bench_lazy_stream_latency         182.5 ms      │ 193.3 ms      │ 186.8 ms      │ 187 ms        │ 20      │ 200
