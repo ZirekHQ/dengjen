@@ -3,7 +3,7 @@
 This page shows dengjen-tts's own structure as a https://c4model.com/[C4]
 Container, Component, and Code diagram. For how it fits into the wider
 ZirekHQ speech stack, see the
-https://zirekhq.github.io/en/home/architecture.html[org-wide System Context
+https://zirekhq.github.io/home/architecture.html[org-wide System Context
 diagram].
 
 == Container
