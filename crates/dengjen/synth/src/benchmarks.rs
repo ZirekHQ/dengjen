@@ -135,4 +135,38 @@ mod speech_streams {
                 });
             });
     }
+
+    #[divan::bench]
+    fn bench_kokoro_lazy_stream(bencher: Bencher) {
+        bencher
+            .with_inputs(|| {
+                dev_utils::gen_params("kokoro")
+                    .expect("failed to load kokoro voice fixture")
+                    .expect("kokoro voice fixture missing; see CONTRIBUTING.md#benchmarks")
+            })
+            .bench_local_refs(|(synth, text, output_config)| {
+                let stream = synth
+                    .synthesize_lazy(text.clone(), output_config.clone())
+                    .unwrap()
+                    .map(|result| result.map(|chunk| chunk.samples));
+                dev_utils::iterate_stream(black_box(stream)).unwrap();
+            });
+    }
+
+    #[divan::bench]
+    fn bench_kokoro_lazy_stream_latency(bencher: Bencher) {
+        bencher
+            .with_inputs(|| {
+                dev_utils::gen_params("kokoro")
+                    .expect("failed to load kokoro voice fixture")
+                    .expect("kokoro voice fixture missing; see CONTRIBUTING.md#benchmarks")
+            })
+            .bench_local_refs(|(synth, text, output_config)| {
+                let stream = synth
+                    .synthesize_lazy(text.clone(), output_config.clone())
+                    .unwrap();
+                let _ =
+                    first_chunk_wave_len(black_box(stream), |audio| audio.as_wave_bytes().len());
+            });
+    }
 }

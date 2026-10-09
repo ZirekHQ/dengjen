@@ -82,3 +82,6 @@ htmlReport/
 
 # Locally downloaded TTS models
 /.local-models/
+
+# Real voice fixtures for synth benches/tests (see .github/CONTRIBUTING.md#benchmarks)
+/crates/dengjen/synth/models/
