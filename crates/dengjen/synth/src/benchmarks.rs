@@ -136,7 +136,7 @@ mod speech_streams {
             });
     }
 
-    #[divan::bench]
+    #[divan::bench(sample_count = 5, sample_size = 1)]
     fn bench_kokoro_lazy_stream(bencher: Bencher) {
         bencher
             .with_inputs(|| {
@@ -153,7 +153,7 @@ mod speech_streams {
             });
     }
 
-    #[divan::bench]
+    #[divan::bench(sample_count = 5, sample_size = 1)]
     fn bench_kokoro_lazy_stream_latency(bencher: Bencher) {
         bencher
             .with_inputs(|| {
