@@ -26,6 +26,16 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(parsed["speech_streams/bench_lazy_stream/t=4"], 2.2e9)
         self.assertEqual(parsed["speech_streams/bench_lazy_stream_latency"], 350.0e6)
 
+    def test_real_synth_output_yields_every_leaf(self):
+        self.assertEqual(
+            bc.parse(data("divan_real_synth.txt")),
+            {
+                "speech_streams/bench_kokoro_lazy_stream": 3.704e9,
+                "speech_streams/bench_kokoro_lazy_stream_latency": 1.571e9,
+                "speech_streams/bench_lazy_stream_latency": 186.8e6,
+            },
+        )
+
     def test_group_rows_without_values_are_not_emitted(self):
         self.assertNotIn("speech_streams", bc.parse(data("divan_nested.txt")))
 
