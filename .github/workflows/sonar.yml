@@ -39,7 +39,7 @@ jobs:
       # Go/Java bindings compile against libdengjen; building it here is what lets their coverage
       # steps below produce real numbers instead of leaving sonar.coverage at 0% (channel comes
       # from rust-toolchain.toml).
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
 
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:

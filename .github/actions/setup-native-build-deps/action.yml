@@ -31,10 +31,12 @@ runs:
         APT_PACKAGES: ${{ inputs.apt-packages }}
       run: |
         for attempt in 1 2 3; do
-          if timeout 60 sudo apt-get update && timeout 180 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y $APT_PACKAGES; then
+          if timeout 60 sudo apt-get update && timeout 120 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y $APT_PACKAGES; then
             exit 0
           fi
-          echo "::warning::apt-get install attempt ${attempt} failed, retrying" >&2
+          echo "::warning::apt-get install attempt ${attempt} failed, switching mirror and retrying" >&2
+          # The Azure mirror can serve large packages at a trickle, which no apt timeout detects.
+          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' /etc/apt/sources.list.d/ubuntu.sources
           sleep 10
         done
         echo "::error::apt-get install failed after 3 attempts" >&2
