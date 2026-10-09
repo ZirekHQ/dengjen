@@ -368,9 +368,9 @@ jobs:
       - name: cargo test (dengjen-tts-cli, kokoro real voice e2e)
         run: cargo test -p dengjen-tts-cli --test kokoro_e2e
 
-  # Gated by PIPER_STD_TEST_VOICE_ARCHIVE_URL / PIPER_RT_TEST_VOICE_ARCHIVE_URL (unset until a
-  # maintainer vets a real Piper export's license, so this job's `if:` skips entirely). Tests
-  # self-skip on a missing fixture; the benches live in synth-bench.yml.
+  # Gated by PIPER_STD_TEST_VOICE_ARCHIVE_URL / PIPER_RT_TEST_VOICE_ARCHIVE_URL (unset by
+  # default, so this job's `if:` skips). Tests self-skip on a missing fixture; the benches live
+  # in synth-bench.yml.
   piper-real-voice-e2e:
     if: |
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&

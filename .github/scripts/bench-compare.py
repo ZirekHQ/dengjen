@@ -9,6 +9,7 @@ from typing import Callable, Optional, TextIO
 UNIT_NS = {"ps": 1e-3, "ns": 1.0, "µs": 1e3, "us": 1e3, "ms": 1e6, "s": 1e9}
 PREFIX = re.compile(r"^((?:[│ ]  )*)[├╰]─ ")
 MEDIAN_COLUMN = 2
+INDENT_WIDTH = 3
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,7 @@ def parse(text: str) -> dict[str, float]:
         prefix = PREFIX.match(line)
         if prefix is None:
             continue
-        depth = len(prefix.group(1)) // 3
+        depth = len(prefix.group(1)) // INDENT_WIDTH
         cells = [c.strip() for c in line[prefix.end():].split("│")]
         del stack[depth:]
         stack.append(cells[0].split()[0])
@@ -73,7 +74,7 @@ def render(rows: list[Row], threshold: float) -> str:
         )
     lines.append("")
     lines.append(
-        f"Warning threshold: {threshold:.1f}x. Runner noise is 20-50%; advisory only."
+        f"Warning threshold: {threshold:.1f}x. Shared-runner noise; advisory only."
     )
     return "\n".join(lines) + "\n"
 

@@ -6,7 +6,7 @@ piper_rev="${PIPER_REV:?set PIPER_REV to a rhasspy/piper-voices commit}"
 kokoro_rev="${KOKORO_REV:?set KOKORO_REV to an onnx-community/Kokoro-82M-ONNX commit}"
 voice="${KOKORO_VOICE:-af_bella}"
 
-# crates/dengjen/models/kokoro/src/voice_style.rs: MAX_TOKEN_LEN x STYLE_DIM x f32.
+# Mirrors EXPECTED_FILE_BYTES in crates/dengjen/models/kokoro/src/voice_style.rs.
 style_rows=510
 style_dim=256
 voice_bytes=$((style_rows * style_dim * 4))
@@ -24,7 +24,7 @@ curl -fsSL "$kokoro_base/onnx/model.onnx" -o "$work/kokoro/model.onnx"
 curl -fsSL "$kokoro_base/tokenizer.json" -o "$work/kokoro/tokenizer.json"
 curl -fsSL "$kokoro_base/voices/${voice}.bin" -o "$work/voice-full.bin"
 
-# Upstream ships 512 style rows; the loader requires exactly the first 510.
+# Upstream onnx-community voices are 524288 bytes (512 rows); the loader wants exactly 510.
 head -c "$voice_bytes" "$work/voice-full.bin" > "$work/kokoro/voices/${voice}.bin"
 actual="$(stat -c %s "$work/kokoro/voices/${voice}.bin")"
 if [ "$actual" -ne "$voice_bytes" ]; then

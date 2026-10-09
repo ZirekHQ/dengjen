@@ -39,10 +39,9 @@ fn load_voice(
         .map(Arc::clone)
 }
 
-/// Returns `Ok(None)` when the fixture backing `kind` isn't present on disk, so
-/// callers can skip rather than fail on machines without real Piper voices
-/// (see CONTRIBUTING.md#benchmarks and issue #220). A present-but-invalid
-/// fixture surfaces as `Err` rather than a silent skip.
+/// Returns `Ok(None)` when the fixture backing `kind` (`std`, `rt` or `kokoro`)
+/// isn't on disk, so callers can skip instead of failing (see
+/// CONTRIBUTING.md#benchmarks). A present but invalid fixture surfaces as `Err`.
 pub fn gen_params(
     kind: &str,
 ) -> DengjenResult<Option<(DengjenSpeechSynthesizer, String, Option<AudioOutputConfig>)>> {

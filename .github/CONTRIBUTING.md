@@ -35,16 +35,19 @@ target exercises.
 - **`audio/ops`** is self-contained (synthetic samples). The `benchmarks` job in `rust-lint.yml`
   runs it and posts the numbers to the job summary.
 - **`synth`** needs real voices. [`synth-bench.yml`](workflows/synth-bench.yml) runs on pull
-  requests that touch `crates/dengjen/synth/**` or `crates/audio/**`, benches the merge base and
-  the PR head on the same runner, and writes a median-by-median table to the job summary. A case
+  requests that touch `crates/dengjen/synth/**`, `crates/audio/**`, or the bench scripts and
+  fixture manifest, benches the merge base and the PR head on the same runner, and writes a
+  base-vs-head table of median times to the job summary. A case
   that is 2x or more slower than the base raises a warning annotation. The job is advisory and
   never a required check. A weekly run on `main` stores the raw output as a `bench-main-<sha>`
   artifact.
 - **Fixtures** are one Piper voice (`en_US-lessac-medium`) and one Kokoro voice (`af_bella`).
   They are archives on the `bench-fixtures-v1` release of this repo, pinned by sha256 in
-  [`bench-fixtures.json`](bench-fixtures.json) and restored with `actions/cache`.
-- **Piper `rt`** (`encoder.onnx` + `decoder.onnx`) has no upstream export, so its benches and
-  tests need `PIPER_RT_TEST_VOICE_ARCHIVE_URL` and stay compile-only in CI.
+  [`bench-fixtures.json`](bench-fixtures.json), cached with `actions/cache` and downloaded from
+  the release on a miss.
+- **Piper `rt`** (`encoder.onnx` + `decoder.onnx`) has no upstream export. Its tests run in
+  `piper-real-voice-e2e` when `PIPER_RT_TEST_VOICE_ARCHIVE_URL` is set; `synth-bench.yml` skips
+  its benches (`--skip bench_realtime`), so run them locally.
 
 Running synth benches locally: download the release archives, extract `piper-std.tar.gz` into
 `crates/dengjen/synth/models/std` and `kokoro.tar.gz` into `crates/dengjen/synth/models/kokoro`,

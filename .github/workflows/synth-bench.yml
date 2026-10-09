@@ -11,7 +11,6 @@ on:
       - ".github/scripts/fetch-bench-fixture.sh"
       - ".github/bench-fixtures.json"
   schedule:
-    # Weekly on main so the trend can be read from the stored artifacts.
     - cron: "0 4 * * 1"
   workflow_dispatch:
 
