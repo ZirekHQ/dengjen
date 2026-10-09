@@ -59,9 +59,9 @@ def fmt_ns(ns: Optional[float]) -> str:
     return "n/a" if ns is None else f"{ns / 1e6:.3f} ms"
 
 
-def render(rows: list[Row], threshold: float) -> str:
+def render(rows: list[Row], threshold: float, title: str) -> str:
     lines = [
-        "### Synth benchmarks: head vs merge base (median)",
+        f"### {title}",
         "",
         "| bench | base | head | ratio |",
         "|---|---|---|---|",
@@ -88,6 +88,7 @@ def main(
     ap.add_argument("base")
     ap.add_argument("head")
     ap.add_argument("--threshold", type=float, default=2.0)
+    ap.add_argument("--title", default="Benchmarks: head vs merge base (median)")
     args = ap.parse_args(argv)
 
     base, head = parse(read(args.base)), parse(read(args.head))
@@ -100,7 +101,7 @@ def main(
         return 2
 
     rows = compare(base, head, args.threshold)
-    table = render(rows, args.threshold)
+    table = render(rows, args.threshold, args.title)
     out.write(table)
     for r in rows:
         if r.regressed:

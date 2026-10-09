@@ -69,10 +69,10 @@ class CompareTest(unittest.TestCase):
 
 
 class MainTest(unittest.TestCase):
-    def run_main(self, base, head):
+    def run_main(self, base, head, *extra):
         out = io.StringIO()
         code = bc.main(
-            ["base", "head"],
+            ["base", "head", *extra],
             read=lambda p: {"base": base, "head": head}[p],
             out=out,
         )
@@ -84,6 +84,13 @@ class MainTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("::warning::", out)
         self.assertIn("bench_overlap_with", out)
+
+    def test_title_flag_names_the_summary_section(self):
+        code, out = self.run_main(
+            data("divan_audio_ops.txt"), data("divan_audio_ops.txt"), "--title", "audio/ops"
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("### audio/ops", out)
 
     def test_zero_rows_in_head_fails(self):
         code, _ = self.run_main(data("divan_audio_ops.txt"), "Timer precision: 10 ns\n")

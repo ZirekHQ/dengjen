@@ -4,7 +4,13 @@ on:
   pull_request:
     paths:
       - "crates/dengjen/synth/**"
+      - "crates/dengjen/core/**"
+      - "crates/dengjen/models/piper/**"
+      - "crates/dengjen/models/kokoro/**"
+      - "crates/text/espeak-phonemizer/**"
       - "crates/audio/**"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/synth-bench.yml"
       - ".github/scripts/bench-compare.py"
       - ".github/scripts/build-bench-fixtures.sh"
@@ -87,10 +93,8 @@ jobs:
       - name: bench head
         run: |
           set -o pipefail
-          {
-            cargo bench -p dengjen-tts --bench benchmarks -- --skip bench_realtime
-            cargo bench -p dengjen-audio-ops --bench benchmarks
-          } 2>&1 | tee head.txt
+          cargo bench -p dengjen-tts --bench benchmarks -- --skip bench_realtime | tee head-synth.txt
+          cargo bench -p dengjen-audio-ops --bench benchmarks | tee head-audio.txt
       - name: bench merge base
         if: github.event_name == 'pull_request'
         env:
@@ -102,20 +106,20 @@ jobs:
           mkdir -p ../base-tree/crates/dengjen/synth/models
           cp -r crates/dengjen/synth/models/. ../base-tree/crates/dengjen/synth/models/
           cd ../base-tree
-          {
-            cargo bench -p dengjen-tts --bench benchmarks -- --skip bench_realtime
-            cargo bench -p dengjen-audio-ops --bench benchmarks
-          } 2>&1 | tee "$GITHUB_WORKSPACE/base.txt"
+          cargo bench -p dengjen-tts --bench benchmarks -- --skip bench_realtime | tee "$GITHUB_WORKSPACE/base-synth.txt"
+          cargo bench -p dengjen-audio-ops --bench benchmarks | tee "$GITHUB_WORKSPACE/base-audio.txt"
       - name: compare head with merge base
         if: github.event_name == 'pull_request'
-        run: python3 -I .github/scripts/bench-compare.py base.txt head.txt
+        run: |
+          python3 -I .github/scripts/bench-compare.py base-synth.txt head-synth.txt --title "dengjen-tts synth: head vs merge base (median)"
+          python3 -I .github/scripts/bench-compare.py base-audio.txt head-audio.txt --title "audio/ops: head vs merge base (median)"
       - name: publish raw results
         if: github.event_name != 'pull_request'
         run: |
           {
             echo '### synth benchmarks (main)'
             echo '```'
-            cat head.txt
+            cat head-synth.txt head-audio.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: upload raw results
@@ -123,5 +127,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bench-main-${{ github.sha }}
-          path: head.txt
+          path: |
+            head-synth.txt
+            head-audio.txt
           retention-days: 90

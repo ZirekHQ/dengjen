@@ -35,9 +35,11 @@ target exercises.
 - **`audio/ops`** is self-contained (synthetic samples). The `benchmarks` job in `rust-lint.yml`
   runs it and posts the numbers to the job summary.
 - **`synth`** needs real voices. [`synth-bench.yml`](workflows/synth-bench.yml) runs on pull
-  requests that touch `crates/dengjen/synth/**`, `crates/audio/**`, or the bench scripts and
-  fixture manifest, benches the merge base and the PR head on the same runner, and writes a
-  base-vs-head table of median times to the job summary. A case
+  requests that touch the synth path (`crates/dengjen/synth`, `core`, `models/piper`,
+  `models/kokoro`, `crates/text/espeak-phonemizer`), `crates/audio/**`, `Cargo.lock`,
+  `rust-toolchain.toml`, or the bench scripts and fixture manifest, benches the merge base and
+  the PR merged onto it on the same runner, and writes base-vs-head tables of median times to
+  the job summary. A case
   that is 2x or more slower than the base raises a warning annotation. The job is advisory and
   never a required check. A weekly run on `main` stores the raw output as a `bench-main-<sha>`
   artifact.
