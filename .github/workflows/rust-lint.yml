@@ -249,8 +249,8 @@ jobs:
         run: cargo +nightly fuzz build
 
   # audio/ops's bench is self-contained (synthetic samples) so it runs for real here. synth's
-  # divan benches need real Piper voice fixtures not committed to this repo -- see
-  # CONTRIBUTING.md#benchmarks -- so they only get the clippy job's compile-time check above.
+  # divan benches need real voice fixtures and run, compared against the merge base, in
+  # synth-bench.yml -- see CONTRIBUTING.md#benchmarks.
   benchmarks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -369,8 +369,8 @@ jobs:
         run: cargo test -p dengjen-tts-cli --test kokoro_e2e
 
   # Gated by PIPER_STD_TEST_VOICE_ARCHIVE_URL / PIPER_RT_TEST_VOICE_ARCHIVE_URL (unset until a
-  # maintainer vets a real Piper export's license, so this job's `if:` skips entirely). Divan
-  # panics on a missing fixture, so bench steps are gated per-voice; tests self-skip instead.
+  # maintainer vets a real Piper export's license, so this job's `if:` skips entirely). Tests
+  # self-skip on a missing fixture; the benches live in synth-bench.yml.
   piper-real-voice-e2e:
     if: |
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
@@ -406,24 +406,6 @@ jobs:
           VARS_PIPER_RT_TEST_VOICE_ARCHIVE_URL: ${{ vars.PIPER_RT_TEST_VOICE_ARCHIVE_URL }}
       - name: cargo test (dengjen-tts, real Piper voice streams)
         run: cargo test -p dengjen-tts --test tests -- test_lazy_stream test_parallel_stream test_realtime_stream
-      - name: cargo bench (dengjen-tts, std voice)
-        if: vars.PIPER_STD_TEST_VOICE_ARCHIVE_URL != ''
-        run: |
-          {
-            echo '### dengjen-tts (std voice) benchmarks'
-            echo '```'
-            cargo bench -p dengjen-tts --bench benchmarks -- bench_lazy_stream bench_parallel_stream bench_lazy_stream_latency bench_parallel_stream_latency
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: cargo bench (dengjen-tts, rt voice)
-        if: vars.PIPER_RT_TEST_VOICE_ARCHIVE_URL != ''
-        run: |
-          {
-            echo '### dengjen-tts (rt voice) benchmarks'
-            echo '```'
-            cargo bench -p dengjen-tts --bench benchmarks -- bench_realtime_stream bench_realtime_stream_latency
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
 
   # libdengjen (crates/frontends/capi) depends on nearly the whole crate graph, so this
   # filters on all of crates/** rather than a narrow subset -- a hand-picked shorter list
