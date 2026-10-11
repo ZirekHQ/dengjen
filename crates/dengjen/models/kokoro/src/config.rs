@@ -24,17 +24,17 @@ pub struct KokoroVoiceConfig {
 pub fn load_config(config_path: &Path) -> DengjenResult<KokoroVoiceConfig> {
     let file = std::fs::File::open(config_path).map_err(|e| {
         DengjenError::FailedToLoadResource(format!(
-            "Failed to open Kokoro config at `{}`: {}",
-            config_path.display(),
-            e
+            "Failed to open Kokoro config at `{}`",
+            config_path.display()
         ))
+        .with_source(e)
     })?;
     let raw: RawKokoroVoiceConfig = serde_json::from_reader(file).map_err(|e| {
         DengjenError::FailedToLoadResource(format!(
-            "Failed to parse Kokoro config at `{}`: {}",
-            config_path.display(),
-            e
+            "Failed to parse Kokoro config at `{}`",
+            config_path.display()
         ))
+        .with_source(e)
     })?;
     if raw.model_type != "kokoro" {
         return Err(DengjenError::FailedToLoadResource(format!(
@@ -97,14 +97,20 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let config_path = write_temp_config(&dir, "{ not valid json");
         let result = load_config(&config_path);
-        assert!(matches!(result, Err(DengjenError::FailedToLoadResource(_))));
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            DengjenError::FailedToLoadResource(_)
+        ));
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn load_config_errors_on_missing_file() {
         let result = load_config(Path::new("/nonexistent/path/config.json"));
-        assert!(matches!(result, Err(DengjenError::FailedToLoadResource(_))));
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            DengjenError::FailedToLoadResource(_)
+        ));
     }
 
     #[test]
@@ -123,7 +129,10 @@ mod tests {
             }"#,
         );
         let result = load_config(&config_path);
-        assert!(matches!(result, Err(DengjenError::FailedToLoadResource(_))));
+        assert!(matches!(
+            result.unwrap_err().kind(),
+            DengjenError::FailedToLoadResource(_)
+        ));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -92,14 +92,16 @@ impl From<DengjenError> for PyDengjenError {
 
 impl From<PyDengjenError> for PyErr {
     fn from(py_err: PyDengjenError) -> Self {
-        let message = py_err.0.to_string();
-        match py_err.0 {
+        let message = format!("{}{}", py_err.0, py_err.0.cause_chain());
+        match py_err.0.kind() {
             DengjenError::FailedToLoadResource(_) => ResourceLoadError::new_err(message),
             DengjenError::PhonemizationError(_) => PhonemizationError::new_err(message),
             DengjenError::InferenceError(_) => InferenceError::new_err(message),
             DengjenError::InvalidConfiguration(_) => InvalidConfigurationError::new_err(message),
             DengjenError::UnsupportedOperation(_) => UnsupportedOperationError::new_err(message),
-            DengjenError::OperationError(_) => DengjenException::new_err(message),
+            DengjenError::OperationError(_) | DengjenError::Caused { .. } => {
+                DengjenException::new_err(message)
+            }
         }
     }
 }

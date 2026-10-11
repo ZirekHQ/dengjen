@@ -193,22 +193,17 @@ impl DengjenFFIError {
 
 impl From<DengjenError> for DengjenFFIError {
     fn from(error: DengjenError) -> Self {
-        let code = match &error {
+        let code = match error.kind() {
             DengjenError::FailedToLoadResource(_) => error_codes::FAILED_TO_LOAD_RESOURCE,
             DengjenError::PhonemizationError(_) => error_codes::PHONEMIZATION_ERROR,
             DengjenError::InferenceError(_) => error_codes::INFERENCE_ERROR,
             DengjenError::InvalidConfiguration(_) => error_codes::INVALID_CONFIGURATION,
             DengjenError::UnsupportedOperation(_) => error_codes::UNSUPPORTED_OPERATION,
-            DengjenError::OperationError(_) => error_codes::OPERATION_ERROR,
+            DengjenError::OperationError(_) | DengjenError::Caused { .. } => {
+                error_codes::OPERATION_ERROR
+            }
         };
-
-        let (DengjenError::FailedToLoadResource(message)
-        | DengjenError::PhonemizationError(message)
-        | DengjenError::InferenceError(message)
-        | DengjenError::InvalidConfiguration(message)
-        | DengjenError::UnsupportedOperation(message)
-        | DengjenError::OperationError(message)) = error;
-        Self::with_code(code, message)
+        Self::with_code(code, format!("{}{}", error.message(), error.cause_chain()))
     }
 }
 
