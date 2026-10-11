@@ -51,7 +51,8 @@ target exercises.
   other PRs. After merging a fixture change, dispatch the workflow on `main` to seed the cache; the
   weekly run does too. Until then PR runs download from the release.
 - **Piper `rt`** (`encoder.onnx` + `decoder.onnx`) has no upstream export. Its tests run in
-  `piper-real-voice-e2e` when `PIPER_RT_TEST_VOICE_ARCHIVE_URL` is set; `synth-bench.yml` skips
+  `piper-real-voice-e2e` when `PIPER_RT_TEST_VOICE_ARCHIVE_URL` and
+  `PIPER_RT_TEST_VOICE_ARCHIVE_SHA256` are set; `synth-bench.yml` skips
   its benches (`--skip bench_realtime`), so run them locally.
 
 Running synth benches locally: download the release archives, extract `piper-std.tar.gz` into
@@ -66,7 +67,8 @@ Changing a fixture: run `.github/scripts/build-bench-fixtures.sh OUT_DIR` with `
 tags must not start with `v`, which is what keeps `notify-docs.yml` from pinging the docs site.
 
 CI's `piper-real-voice-e2e` and `kokoro-real-voice-e2e` jobs still run the real-voice *tests* on
-the weekly schedule, provisioned from the `*_TEST_VOICE_ARCHIVE_URL` repo variables.
+the weekly schedule and on manual dispatch, using the same sha256-pinned fixtures from
+`bench-fixtures.json`.
 
 Some tests return early (and pass) unless their fixture environment variable is set. CI sets only
 the ones whose fixture a job already downloads:

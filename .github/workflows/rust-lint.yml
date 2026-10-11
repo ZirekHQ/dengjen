@@ -345,13 +345,10 @@ jobs:
           file: cobertura.xml
           language: Rust
 
-  # Gated by the KOKORO_TEST_VOICE_ARCHIVE_URL repo variable (a .tar.gz with config.json +
-  # the paths it names) -- unset until a maintainer vets a real Kokoro export's license and
-  # layout, so this job's `if:` skips entirely rather than running against nothing.
+  # Real voices come from the sha256-pinned release assets in .github/bench-fixtures.json, the
+  # same fixtures synth-bench.yml uses. Tests self-skip when a fixture is missing.
   kokoro-real-voice-e2e:
-    if: |
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
-      vars.KOKORO_TEST_VOICE_ARCHIVE_URL != ''
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -365,16 +362,15 @@ jobs:
         with:
           apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: download real Kokoro voice fixture
-        run: |
-          mkdir -p /tmp/kokoro-real-voice
-          curl -fsSL "${VARS_KOKORO_TEST_VOICE_ARCHIVE_URL}" -o /tmp/kokoro-voice.tar.gz
-          tar -xzf /tmp/kokoro-voice.tar.gz -C /tmp/kokoro-real-voice --strip-components=1
-          echo "DENGJEN_KOKORO_TEST_VOICE_CONFIG=/tmp/kokoro-real-voice/config.json" >> "$GITHUB_ENV"
-          vocab="$(jq -r '.vocab_path' /tmp/kokoro-real-voice/config.json)"
-          echo "DENGJEN_KOKORO_VOCAB=/tmp/kokoro-real-voice/${vocab}" >> "$GITHUB_ENV"
+      - name: fetch real Kokoro voice fixture
         env:
-          VARS_KOKORO_TEST_VOICE_ARCHIVE_URL: ${{ vars.KOKORO_TEST_VOICE_ARCHIVE_URL }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json . kokoro
+          voice_dir="$PWD/crates/dengjen/synth/models/kokoro"
+          echo "DENGJEN_KOKORO_TEST_VOICE_CONFIG=${voice_dir}/config.json" >> "$GITHUB_ENV"
+          vocab="$(jq -r '.vocab_path' "${voice_dir}/config.json")"
+          echo "DENGJEN_KOKORO_VOCAB=${voice_dir}/${vocab}" >> "$GITHUB_ENV"
       - name: cargo test (dengjen-tts-kokoro, real voice e2e)
         run: cargo test -p dengjen-tts-kokoro --features espeak --test e2e_real_voice
       - name: cargo test (dengjen-tts-cli, kokoro real voice e2e)
@@ -383,13 +379,9 @@ jobs:
       - name: cargo test (dengjen-tts-kokoro, Japanese table symbols exist in the real vocab)
         run: cargo test -p dengjen-tts-kokoro --features japanese --lib every_table_symbol_exists_in_the_kokoro_vocab
 
-  # Gated by PIPER_STD_TEST_VOICE_ARCHIVE_URL / PIPER_RT_TEST_VOICE_ARCHIVE_URL (unset by
-  # default, so this job's `if:` skips). Tests self-skip on a missing fixture; the benches live
-  # in synth-bench.yml.
+  # Real Piper voice from the pinned release asset; the benches live in synth-bench.yml.
   piper-real-voice-e2e:
-    if: |
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
-      (vars.PIPER_STD_TEST_VOICE_ARCHIVE_URL != '' || vars.PIPER_RT_TEST_VOICE_ARCHIVE_URL != '')
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -403,22 +395,21 @@ jobs:
         with:
           apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: download real Piper std voice fixture
-        if: vars.PIPER_STD_TEST_VOICE_ARCHIVE_URL != ''
-        run: |
-          mkdir -p crates/dengjen/synth/models/std
-          curl -fsSL "${VARS_PIPER_STD_TEST_VOICE_ARCHIVE_URL}" -o /tmp/piper-std-voice.tar.gz
-          tar -xzf /tmp/piper-std-voice.tar.gz -C crates/dengjen/synth/models/std
+      - name: fetch real Piper std voice fixture
         env:
-          VARS_PIPER_STD_TEST_VOICE_ARCHIVE_URL: ${{ vars.PIPER_STD_TEST_VOICE_ARCHIVE_URL }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json . piper-std
+      # `rt` has no upstream export, so its archive is operator-provided and must carry a hash.
       - name: download real Piper rt voice fixture
-        if: vars.PIPER_RT_TEST_VOICE_ARCHIVE_URL != ''
+        if: vars.PIPER_RT_TEST_VOICE_ARCHIVE_URL != '' && vars.PIPER_RT_TEST_VOICE_ARCHIVE_SHA256 != ''
         run: |
           mkdir -p crates/dengjen/synth/models/rt
           curl -fsSL "${VARS_PIPER_RT_TEST_VOICE_ARCHIVE_URL}" -o /tmp/piper-rt-voice.tar.gz
+          echo "${VARS_PIPER_RT_TEST_VOICE_ARCHIVE_SHA256}  /tmp/piper-rt-voice.tar.gz" | sha256sum -c -
           tar -xzf /tmp/piper-rt-voice.tar.gz -C crates/dengjen/synth/models/rt
         env:
           VARS_PIPER_RT_TEST_VOICE_ARCHIVE_URL: ${{ vars.PIPER_RT_TEST_VOICE_ARCHIVE_URL }}
+          VARS_PIPER_RT_TEST_VOICE_ARCHIVE_SHA256: ${{ vars.PIPER_RT_TEST_VOICE_ARCHIVE_SHA256 }}
       - name: cargo test (dengjen-tts, real Piper voice streams)
         run: cargo test -p dengjen-tts --test tests -- test_lazy_stream test_parallel_stream test_realtime_stream
 

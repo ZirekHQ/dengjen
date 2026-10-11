@@ -1,4 +1,4 @@
-use dengjen_tts_core::{DengjenError, DengjenResult};
+use dengjen_tts_core::{resolve_within, DengjenError, DengjenResult};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -44,9 +44,9 @@ pub fn load_config(config_path: &Path) -> DengjenResult<KokoroVoiceConfig> {
     }
     let base_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
     Ok(KokoroVoiceConfig {
-        model_path: base_dir.join(raw.model_path),
-        voices_dir: base_dir.join(raw.voices_dir),
-        vocab_path: base_dir.join(raw.vocab_path),
+        model_path: resolve_within(base_dir, "model_path", &raw.model_path)?,
+        voices_dir: resolve_within(base_dir, "voices_dir", &raw.voices_dir)?,
+        vocab_path: resolve_within(base_dir, "vocab_path", &raw.vocab_path)?,
         sample_rate: raw.sample_rate,
         voices: raw.voices,
     })
@@ -134,5 +134,24 @@ mod tests {
             DengjenError::FailedToLoadResource(_)
         ));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_config_rejects_paths_that_escape_the_config_dir() {
+        let dir = std::env::temp_dir().join("dengjen_kokoro_config_escape_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let config_path = write_temp_config(
+            &dir,
+            r#"{
+                "model_type": "kokoro",
+                "model_path": "../model.onnx",
+                "voices_dir": "voices",
+                "vocab_path": "/etc/passwd",
+                "sample_rate": 24000,
+                "voices": []
+            }"#,
+        );
+        let result = load_config(&config_path);
+        assert!(matches!(result, Err(DengjenError::InvalidConfiguration(_))));
     }
 }

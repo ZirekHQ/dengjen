@@ -8,11 +8,13 @@ use std::sync::{Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockW
 pub use dengjen_audio_ops::{Audio, AudioInfo, AudioSamples, WaveWriterError};
 
 mod cancellation;
+mod config_path;
 #[cfg(feature = "ort-providers")]
 mod ort_providers;
 mod synthesis_config;
 
 pub use cancellation::CancellationToken;
+pub use config_path::resolve_within;
 #[cfg(feature = "ort-providers")]
 pub use ort_providers::execution_providers;
 pub use synthesis_config::SynthesisConfig;

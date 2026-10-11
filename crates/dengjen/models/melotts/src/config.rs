@@ -64,10 +64,11 @@ pub fn load_config(path: &Path) -> DengjenResult<MeloVoiceConfig> {
         ))
         .with_source(e)
     })?;
-    let model_path = path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(&parsed.model_path);
+    let model_path = dengjen_tts_core::resolve_within(
+        path.parent().unwrap_or_else(|| Path::new(".")),
+        "model_path",
+        &parsed.model_path,
+    )?;
     Ok(MeloVoiceConfig {
         audio: parsed.audio,
         phonemizer: parsed.phonemizer,
