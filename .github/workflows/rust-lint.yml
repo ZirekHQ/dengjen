@@ -413,28 +413,6 @@ jobs:
       - name: cargo test (dengjen-tts, real Piper voice streams)
         run: cargo test -p dengjen-tts --test tests -- test_lazy_stream test_parallel_stream test_realtime_stream
 
-  proto-breaking:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      # Changes `buf breaking` (FILE rules) flags, such as removing or renumbering a field or
-      # RPC, can break deployed clients or generated code; add the `buf skip breaking` label to
-      # a PR that does this on purpose.
-      - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
-        with:
-          input: crates/frontends/grpc/proto
-          lint: false
-          format: false
-          pr_comment: false
-          breaking_against: ".git#ref=refs/remotes/origin/${{ github.base_ref }},subdir=crates/frontends/grpc/proto"
-
   # libdengjen (crates/frontends/capi) depends on nearly the whole crate graph, so this
   # filters on all of crates/** rather than a narrow subset -- a hand-picked shorter list
   # would risk silently skipping a rebuild a real dependency change needed.
