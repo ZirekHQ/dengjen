@@ -38,6 +38,20 @@ func boolToUint8(b bool) C.uint8_t {
 	return 0
 }
 
+// newCParams allocates the parameter struct in C memory. The caller sets `callback` and
+// `user_data` where needed and frees it with C.free.
+func newCParams(params SynthesisParams) *C.struct_SynthesisParams {
+	cParams := (*C.struct_SynthesisParams)(C.calloc(1, C.sizeof_struct_SynthesisParams))
+	cParams.struct_size = C.uint32_t(C.sizeof_struct_SynthesisParams)
+	cParams.mode = C.int32_t(params.Mode)
+	cParams.rate = C.uint8_t(params.Rate)
+	cParams.volume = C.uint8_t(params.Volume)
+	cParams.pitch = C.uint8_t(params.Pitch)
+	cParams.appended_silence_ms = C.uint32_t(params.AppendedSilenceMs)
+	cParams.nonblocking = boolToUint8(params.Nonblocking)
+	return cParams
+}
+
 func (v *Voice) SpeakToFile(text string, params SynthesisParams, outFilename string) (bool, error) {
 	if v.ptr == nil {
 		return false, ErrVoiceClosed
@@ -47,14 +61,8 @@ func (v *Voice) SpeakToFile(text string, params SynthesisParams, outFilename str
 	cOutFilename := C.CString(outFilename)
 	defer C.free(unsafe.Pointer(cOutFilename))
 
-	cParams := C.struct_SynthesisParams{
-		mode:                C.int32_t(params.Mode),
-		rate:                C.uint8_t(params.Rate),
-		volume:              C.uint8_t(params.Volume),
-		pitch:               C.uint8_t(params.Pitch),
-		appended_silence_ms: C.uint32_t(params.AppendedSilenceMs),
-		nonblocking:         boolToUint8(params.Nonblocking),
-	}
+	cParams := newCParams(params)
+	defer C.free(unsafe.Pointer(cParams))
 	var cErr C.struct_ExternError
 	wrote := C.libdengjenSpeakToFile(v.ptr, C.FfiStr(cText), cParams, C.FfiStr(cOutFilename), &cErr)
 	if err := checkError(cErr); err != nil {
@@ -73,16 +81,10 @@ func (v *Voice) Speak(text string, params SynthesisParams, onEvent func(Synthesi
 
 	token := registerCallback(onEvent)
 
-	cParams := C.struct_SynthesisParams{
-		mode:                C.int32_t(params.Mode),
-		rate:                C.uint8_t(params.Rate),
-		volume:              C.uint8_t(params.Volume),
-		pitch:               C.uint8_t(params.Pitch),
-		appended_silence_ms: C.uint32_t(params.AppendedSilenceMs),
-		callback:            C.SpeechSynthesisCallback(C.goDengjenSpeechCallback),
-		nonblocking:         boolToUint8(params.Nonblocking),
-		user_data:           unsafe.Pointer(token),
-	}
+	cParams := newCParams(params)
+	defer C.free(unsafe.Pointer(cParams))
+	cParams.callback = C.SpeechSynthesisCallback(C.goDengjenSpeechCallback)
+	cParams.user_data = unsafe.Pointer(token)
 
 	var cErr C.struct_ExternError
 	C.libdengjenSpeak(v.ptr, C.FfiStr(cText), cParams, &cErr)

@@ -81,6 +81,7 @@ fn split_into_sentences(text: &str) -> Vec<String> {
     sentences
 }
 
+#[non_exhaustive]
 pub enum PinyinToken {
     Syllable {
         initial: String,

@@ -17,6 +17,7 @@ pub struct InferenceConfig {
 
 #[derive(Deserialize, PartialEq, Debug, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum PhonemizerConfig {
     Espeak { voice: String },
     Pinyin { model_dir: PathBuf },

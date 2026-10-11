@@ -53,6 +53,7 @@ pub type AudioStreamIterator<'a> =
     Box<dyn Iterator<Item = DengjenResult<AudioSamples>> + Send + Sync + 'a>;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum DengjenError {
     FailedToLoadResource(String),
     PhonemizationError(String),
@@ -94,6 +95,18 @@ impl DengjenError {
         }
     }
 
+    /// The failure category, ignoring any attached cause.
+    pub fn category(&self) -> ErrorCategory {
+        match self.kind() {
+            Self::FailedToLoadResource(_) => ErrorCategory::FailedToLoadResource,
+            Self::PhonemizationError(_) => ErrorCategory::Phonemization,
+            Self::InferenceError(_) => ErrorCategory::Inference,
+            Self::InvalidConfiguration(_) => ErrorCategory::InvalidConfiguration,
+            Self::UnsupportedOperation(_) => ErrorCategory::UnsupportedOperation,
+            Self::OperationError(_) | Self::Caused { .. } => ErrorCategory::Operation,
+        }
+    }
+
     /// The category-bearing error, with any attached cause stripped.
     pub fn kind(&self) -> &DengjenError {
         match self {
@@ -127,6 +140,18 @@ impl DengjenError {
         }
         chain
     }
+}
+
+/// What kind of failure a [`DengjenError`] reports, independent of any attached cause.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ErrorCategory {
+    FailedToLoadResource,
+    Phonemization,
+    Inference,
+    InvalidConfiguration,
+    UnsupportedOperation,
+    Operation,
 }
 
 #[derive(Debug)]
@@ -546,5 +571,16 @@ mod panic_message_tests {
             .with_source(second);
         assert_eq!(error.cause_chain(), ": second: first");
         assert_eq!(error.message(), "op");
+    }
+
+    #[test]
+    fn category_sees_through_an_attached_cause() {
+        let io = std::io::Error::other("disk");
+        let error = DengjenError::InvalidConfiguration("bad".into()).with_source(io);
+        assert_eq!(error.category(), ErrorCategory::InvalidConfiguration);
+        assert_eq!(
+            DengjenError::OperationError("x".into()).category(),
+            ErrorCategory::Operation
+        );
     }
 }

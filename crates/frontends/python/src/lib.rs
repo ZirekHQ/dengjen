@@ -99,9 +99,7 @@ impl From<PyDengjenError> for PyErr {
             DengjenError::InferenceError(_) => InferenceError::new_err(message),
             DengjenError::InvalidConfiguration(_) => InvalidConfigurationError::new_err(message),
             DengjenError::UnsupportedOperation(_) => UnsupportedOperationError::new_err(message),
-            DengjenError::OperationError(_) | DengjenError::Caused { .. } => {
-                DengjenException::new_err(message)
-            }
+            _ => DengjenException::new_err(message),
         }
     }
 }
@@ -415,6 +413,9 @@ fn load_voice(config_path: &std::path::Path) -> DengjenResult<Arc<dyn DengjenMod
         dengjen_tts::ModelType::Piper => dengjen_tts_piper::from_config_path(path),
         dengjen_tts::ModelType::Kokoro => dengjen_tts_kokoro::from_config_path(path),
         dengjen_tts::ModelType::MeloTts => dengjen_tts_melotts::from_config_path(path),
+        other => Err(DengjenError::InvalidConfiguration(format!(
+            "unsupported model type `{other}`"
+        ))),
     })
 }
 
