@@ -2,6 +2,10 @@ package io.github.zirekhq.dengjen;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 class DengjenLayoutsTest {
@@ -50,5 +54,13 @@ class DengjenLayoutsTest {
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS_CALLBACK_OFFSET).isEqualTo(16);
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS_NONBLOCKING_OFFSET).isEqualTo(24);
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS_USER_DATA_OFFSET).isEqualTo(32);
+  }
+
+  @Test
+  void expectedAbiVersionMatchesTheCHeader() throws IOException {
+    String header = Files.readString(Path.of("../../crates/frontends/capi/libdengjen.h"));
+    var matcher = Pattern.compile("#define DENGJEN_ABI_VERSION (\\d+)").matcher(header);
+    assertThat(matcher.find()).isTrue();
+    assertThat(Integer.parseInt(matcher.group(1))).isEqualTo(DengjenLib.EXPECTED_ABI_VERSION);
   }
 }

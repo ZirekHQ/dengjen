@@ -299,8 +299,10 @@ unsafe impl Send for SynthesisParams {}
 /// Bumped on any incompatible change to the exported functions or structs.
 pub const DENGJEN_ABI_VERSION: u32 = 1;
 
-/// The `struct_size` of the first `SynthesisParams` layout; callers must provide at least this.
-const SYNTHESIS_PARAMS_V1_SIZE: u32 = std::mem::size_of::<SynthesisParams>() as u32;
+/// The `struct_size` of the first `SynthesisParams` layout, ending at its last field. Fields
+/// appended later do not move it, so callers built against this layout stay valid.
+const SYNTHESIS_PARAMS_V1_SIZE: u32 =
+    (std::mem::offset_of!(SynthesisParams, user_data) + std::mem::size_of::<*mut c_void>()) as u32;
 
 /// # Safety
 /// `params_ptr` must be null or point to a `SynthesisParams` whose first field, `struct_size`,
@@ -320,8 +322,19 @@ unsafe fn read_params(params_ptr: *const SynthesisParams) -> DengjenFFIResult<Sy
             ),
         ));
     }
-    // SAFETY: `declared` covers every field this version reads, and the caller vouches for it.
-    Ok(unsafe { params_ptr.read_unaligned() })
+    // Only the bytes the caller declared are copied; fields beyond them keep their zero default.
+    let readable = (declared as usize).min(std::mem::size_of::<SynthesisParams>());
+    let mut params = std::mem::MaybeUninit::<SynthesisParams>::zeroed();
+    // SAFETY: the caller vouches that `declared` bytes are readable at `params_ptr`, `readable`
+    // never exceeds `declared` or the destination, and an all-zero `SynthesisParams` is valid.
+    Ok(unsafe {
+        std::ptr::copy_nonoverlapping(
+            params_ptr.cast::<u8>(),
+            params.as_mut_ptr().cast::<u8>(),
+            readable,
+        );
+        params.assume_init()
+    })
 }
 
 /// The ABI version this library was built with; bindings compare it with the one they were
@@ -684,8 +697,9 @@ pub unsafe extern "C" fn libdengjenGetSynthesisParameter(
 /// # Safety
 /// If non-null, `voice_ptr` must be well-aligned and point to a valid `DengjenVoice`. Passing
 /// null is handled gracefully: a NULL_POINTER error is written to `out_error`. A null
-/// `params`, or a null `params->callback`, is handled the same way — this call has no other way
-/// to report results. `params->struct_size` must be the caller's `sizeof(SynthesisParams)`.
+/// `params_ptr`, or a null callback in it, is handled the same way — this call has no other way
+/// to report results. `(*params_ptr).struct_size` must be the caller's
+/// `sizeof(SynthesisParams)`.
 #[no_mangle]
 #[allow(non_snake_case)]
 pub unsafe extern "C" fn libdengjenSpeak(
@@ -748,8 +762,8 @@ pub unsafe extern "C" fn libdengjenCancel(
 /// # Safety
 /// If non-null, `voice_ptr` must be well-aligned and point to a valid `DengjenVoice`. Passing
 /// null is handled gracefully: a NULL_POINTER error is written to `out_error` and `0` is
-/// returned. A null `params` is handled the same way, and `params->struct_size` must be the
-/// caller's `sizeof(SynthesisParams)`.
+/// returned. A null `params_ptr` is handled the same way, and `(*params_ptr).struct_size` must
+/// be the caller's `sizeof(SynthesisParams)`.
 #[no_mangle]
 #[allow(non_snake_case)]
 pub unsafe extern "C" fn libdengjenSpeakToFile(

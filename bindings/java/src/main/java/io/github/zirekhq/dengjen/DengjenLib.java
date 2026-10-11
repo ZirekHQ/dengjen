@@ -29,16 +29,13 @@ final class DengjenLib {
   static {
     int actual;
     try {
-      actual =
-          (int)
-              handle("libdengjenAbiVersion", FunctionDescriptor.of(JAVA_INT)).invokeExact();
+      actual = (int) handle("libdengjenAbiVersion", FunctionDescriptor.of(JAVA_INT)).invokeExact();
     } catch (Throwable t) {
       throw new ExceptionInInitializerError(t);
     }
     if (actual != EXPECTED_ABI_VERSION) {
-      throw new IllegalStateException(
-          "native library ABI version " + actual + " does not match the bindings' "
-              + EXPECTED_ABI_VERSION);
+      String message = "native library ABI " + actual + " != bindings ABI " + EXPECTED_ABI_VERSION;
+      throw new IllegalStateException(message);
     }
   }
 
@@ -82,9 +79,7 @@ final class DengjenLib {
           FunctionDescriptor.of(JAVA_BOOLEAN, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
 
   static final MethodHandle SPEAK =
-      handle(
-          "libdengjenSpeak",
-          FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+      handle("libdengjenSpeak", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS, ADDRESS));
 
   static final MethodHandle CANCEL =
       handle("libdengjenCancel", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS));
@@ -92,8 +87,7 @@ final class DengjenLib {
   static final MethodHandle SPEAK_TO_FILE =
       handle(
           "libdengjenSpeakToFile",
-          FunctionDescriptor.of(
-              JAVA_BYTE, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+          FunctionDescriptor.of(JAVA_BYTE, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
 
   private DengjenLib() {}
 }

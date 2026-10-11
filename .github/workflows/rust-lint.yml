@@ -424,8 +424,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # A field or RPC removal or renumbering breaks deployed gRPC clients; add the
-      # `buf skip breaking` label to a PR that does it on purpose.
+      # Changes `buf breaking` (FILE rules) flags, such as removing or renumbering a field or
+      # RPC, can break deployed clients or generated code; add the `buf skip breaking` label to
+      # a PR that does this on purpose.
       - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
         with:
           input: crates/frontends/grpc/proto

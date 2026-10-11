@@ -95,9 +95,7 @@ impl DengjenError {
         }
     }
 
-    /// The stable way to branch on what went wrong: it sees through an attached cause and, being
-    /// a fieldless enum, cannot silently stop matching the way a variant pattern on a wrapped
-    /// error does.
+    /// The failure category, ignoring any attached cause.
     pub fn category(&self) -> ErrorCategory {
         match self.kind() {
             Self::FailedToLoadResource(_) => ErrorCategory::FailedToLoadResource,

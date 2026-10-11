@@ -38,8 +38,8 @@ func boolToUint8(b bool) C.uint8_t {
 	return 0
 }
 
-// newCParams allocates the parameter struct in C memory, so the pinned callback token stored in
-// it never sits in Go memory that C holds a pointer to. The caller frees it.
+// newCParams allocates the parameter struct in C memory. The caller sets `callback` and
+// `user_data` where needed and frees it with C.free.
 func newCParams(params SynthesisParams) *C.struct_SynthesisParams {
 	cParams := (*C.struct_SynthesisParams)(C.calloc(1, C.sizeof_struct_SynthesisParams))
 	cParams.struct_size = C.uint32_t(C.sizeof_struct_SynthesisParams)
