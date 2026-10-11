@@ -8,20 +8,18 @@ fn melotts_fixture_model() -> PathBuf {
         .join("../../dengjen/models/melotts/tests/fixtures/synthetic_melotts.onnx")
 }
 
-fn write_config(dir: &Path, model_path: &Path) {
+fn write_config(dir: &Path) {
     std::fs::write(
         dir.join("config.json"),
-        format!(
-            r#"{{
-                "model_type": "melotts",
-                "audio": {{"sample_rate": 24000}},
-                "phonemizer": {{"type": "espeak", "voice": "en-us"}},
-                "phone_id_map": {{"^": [1], "$": [2], "_": [3], "t": [4]}},
-                "tone_id_map": {{"_": 0}},
-                "inference": {{"noise_scale": 0.667, "length_scale": 1.0, "noise_scale_w": 0.8}},
-                "model_path": {model_path:?}
-            }}"#
-        ),
+        r#"{
+            "model_type": "melotts",
+            "audio": {"sample_rate": 24000},
+            "phonemizer": {"type": "espeak", "voice": "en-us"},
+            "phone_id_map": {"^": [1], "$": [2], "_": [3], "t": [4]},
+            "tone_id_map": {"_": 0},
+            "inference": {"noise_scale": 0.667, "length_scale": 1.0, "noise_scale_w": 0.8},
+            "model_path": "model.onnx"
+        }"#,
     )
     .unwrap();
 }
@@ -40,7 +38,8 @@ fn cli_loads_a_melotts_voice_without_panicking() {
         "missing fixture at {}",
         model_path.display()
     );
-    write_config(&dir, &model_path);
+    std::fs::copy(&model_path, dir.join("model.onnx")).unwrap();
+    write_config(&dir);
     let input_path = dir.join("input.txt");
     std::fs::write(&input_path, "Test.").unwrap();
     let output_path = dir.join("output.wav");

@@ -966,7 +966,7 @@ mod model_and_synthesizer_tests {
 
         let path = write_temp_config(&dir, "config.json", r#"{"model_type": "kokoro"}"#);
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete Kokoro config"),
         };
         assert!(
@@ -1004,7 +1004,7 @@ mod model_and_synthesizer_tests {
             r#"{"model_type": "melotts", "audio": {"sample_rate": 24000}}"#,
         );
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete MeloTTS config"),
         };
         assert!(
@@ -1021,7 +1021,7 @@ mod model_and_synthesizer_tests {
 
         let path = write_temp_config(&dir, "config.json", r#"{"model_type": "vits"}"#);
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete VITS config"),
         };
         assert!(

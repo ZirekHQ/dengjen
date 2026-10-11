@@ -65,7 +65,9 @@ impl From<DengjenGrpcError> for Status {
     fn from(err: DengjenGrpcError) -> Self {
         match err {
             DengjenGrpcError::DengjenError(e) => {
-                let msg = format!("{}{}", e.message(), e.cause_chain());
+                // Causes can carry OS and parser detail; clients get the category message only.
+                log::warn!("request failed: {}{}", e.message(), e.cause_chain());
+                let msg = e.message().to_owned();
                 match e.kind() {
                     DengjenError::FailedToLoadResource(_) => Status::aborted(msg),
                     DengjenError::PhonemizationError(_) => Status::aborted(msg),

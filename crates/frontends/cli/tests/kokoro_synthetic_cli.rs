@@ -41,18 +41,17 @@ fn cli_synthesizes_a_wav_from_a_synthetic_kokoro_voice_when_espeak_data_is_avail
         "missing fixture at {}",
         model_path.display()
     );
+    std::fs::copy(&model_path, dir.join("model.onnx")).unwrap();
     std::fs::write(
         dir.join("config.json"),
-        format!(
-            r#"{{
-                "model_type": "kokoro",
-                "model_path": {model_path:?},
-                "voices_dir": "voices",
-                "vocab_path": "tokenizer.json",
-                "sample_rate": 24000,
-                "voices": ["af_test"]
-            }}"#
-        ),
+        r#"{
+            "model_type": "kokoro",
+            "model_path": "model.onnx",
+            "voices_dir": "voices",
+            "vocab_path": "tokenizer.json",
+            "sample_rate": 24000,
+            "voices": ["af_test"]
+        }"#,
     )
     .unwrap();
     let input_path = dir.join("input.txt");
