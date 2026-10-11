@@ -35,7 +35,7 @@ tracing = { workspace = true }
 workspace-hack = { version = "0.1", path = "../../../workspace-hack" }
 
 [dependencies.dengjen-tashkeel]
-version = "1.6.2"
+version = "2.0.0"
 default-features = false
 features = ["ort-static", "rayon"]
 optional = true
