@@ -10,7 +10,8 @@ use std::ops::Deref;
 use std::os::raw::c_void;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 #[repr(transparent)]
 struct UserDataPtr(*mut c_void);
@@ -66,6 +67,8 @@ pub struct DengjenVoice {
     synth: AssertUnwindSafe<Arc<DengjenSpeechSynthesizer>>,
 
     active_cancel_token: Arc<Mutex<Option<CancellationToken>>>,
+
+    in_flight: Arc<InFlight>,
 }
 
 impl DengjenVoice {
@@ -73,6 +76,65 @@ impl DengjenVoice {
         Self {
             active_cancel_token: Arc::new(Mutex::new(None)),
             synth: AssertUnwindSafe(synth),
+            in_flight: Arc::new(InFlight::default()),
+        }
+    }
+}
+
+impl Drop for DengjenVoice {
+    fn drop(&mut self) {
+        // Realtime syntheses stop through the token; every mode stops at the next chunk once
+        // `closing` is set, so no nonblocking worker callback fires after unload returns, except
+        // when unloading from that voice's own callback.
+        let _ = _cancel(&self.active_cancel_token);
+        self.in_flight.close_and_wait();
+    }
+}
+
+thread_local! {
+    static ACTIVE_WORKER_VOICE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Tracks nonblocking synthesis workers so unloading a voice can stop and drain them.
+#[derive(Default)]
+struct InFlight {
+    closing: AtomicBool,
+    running: Mutex<usize>,
+    idle: Condvar,
+}
+
+impl InFlight {
+    fn enter(self: &Arc<Self>) -> InFlightGuard {
+        *self.running.lock().unwrap_or_else(|p| p.into_inner()) += 1;
+        InFlightGuard(Arc::clone(self))
+    }
+
+    fn is_closing(&self) -> bool {
+        self.closing.load(Ordering::Acquire)
+    }
+
+    fn close_and_wait(&self) {
+        self.closing.store(true, Ordering::Release);
+        // A callback that unloads its own voice runs on one of its workers; waiting there would
+        // never end. Unloading a different voice from a callback still drains that voice.
+        if ACTIVE_WORKER_VOICE.with(std::cell::Cell::get) == self as *const Self as usize {
+            return;
+        }
+        let mut running = self.running.lock().unwrap_or_else(|p| p.into_inner());
+        while *running > 0 {
+            running = self.idle.wait(running).unwrap_or_else(|p| p.into_inner());
+        }
+    }
+}
+
+struct InFlightGuard(Arc<InFlight>);
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        let mut running = self.0.running.lock().unwrap_or_else(|p| p.into_inner());
+        *running -= 1;
+        if *running == 0 {
+            self.0.idle.notify_all();
         }
     }
 }
@@ -133,22 +195,17 @@ impl DengjenFFIError {
 
 impl From<DengjenError> for DengjenFFIError {
     fn from(error: DengjenError) -> Self {
-        let code = match &error {
+        let code = match error.kind() {
             DengjenError::FailedToLoadResource(_) => error_codes::FAILED_TO_LOAD_RESOURCE,
             DengjenError::PhonemizationError(_) => error_codes::PHONEMIZATION_ERROR,
             DengjenError::InferenceError(_) => error_codes::INFERENCE_ERROR,
             DengjenError::InvalidConfiguration(_) => error_codes::INVALID_CONFIGURATION,
             DengjenError::UnsupportedOperation(_) => error_codes::UNSUPPORTED_OPERATION,
-            DengjenError::OperationError(_) => error_codes::OPERATION_ERROR,
+            DengjenError::OperationError(_) | DengjenError::Caused { .. } => {
+                error_codes::OPERATION_ERROR
+            }
         };
-
-        let (DengjenError::FailedToLoadResource(message)
-        | DengjenError::PhonemizationError(message)
-        | DengjenError::InferenceError(message)
-        | DengjenError::InvalidConfiguration(message)
-        | DengjenError::UnsupportedOperation(message)
-        | DengjenError::OperationError(message)) = error;
-        Self::with_code(code, message)
+        Self::with_code(code, format!("{}{}", error.message(), error.cause_chain()))
     }
 }
 
@@ -388,8 +445,15 @@ pub extern "C" fn libdengjenLoadVoiceFromConfigPath(
     call_with_result(out_error, load_from_config)
 }
 
+/// Cancels any running synthesis, waits for nonblocking workers to stop, then frees the voice.
+/// No callback fires after this returns, so `user_data` may be released immediately afterwards.
+/// The exception is a call from inside a callback of the same voice: it frees the voice without
+/// waiting, and that worker still delivers a final FINISHED event, so keep `user_data` alive
+/// until it arrives.
+///
 /// # Safety
-/// `voice_ptr` must be non-null and well-aligned.
+/// `voice_ptr` must be non-null and well-aligned, and no other call may use the voice
+/// concurrently with or after this one.
 #[no_mangle]
 #[allow(non_snake_case)]
 pub unsafe extern "C" fn libdengjenUnloadDengjenVoice(voice_ptr: *mut DengjenVoice) {
@@ -595,8 +659,9 @@ pub unsafe extern "C" fn libdengjenSpeak(
     };
     let owned_synth = AssertUnwindSafe(Arc::clone(&voice.synth));
     let owned_cancel_slot = Arc::clone(&voice.active_cancel_token);
+    let in_flight = Arc::clone(&voice.in_flight);
     call_with_result(out_error, move || {
-        _synthesize(owned_synth, owned_cancel_slot, text_ptr, params)
+        _synthesize(owned_synth, owned_cancel_slot, in_flight, text_ptr, params)
     })
 }
 
@@ -743,6 +808,7 @@ impl Drop for CancelSlotGuard {
 fn _synthesize(
     synth: AssertUnwindSafe<Arc<DengjenSpeechSynthesizer>>,
     cancel_slot: Arc<Mutex<Option<CancellationToken>>>,
+    in_flight: Arc<InFlight>,
     text_ptr: FfiStr,
     params: SynthesisParams,
 ) -> DengjenFFIResult<()> {
@@ -753,15 +819,19 @@ fn _synthesize(
         return Err(DengjenFFIError::null_pointer("params.callback"));
     };
     if params.nonblocking == 0 {
-        return _do_synthesize(synth, cancel_slot, text, callback, params);
+        return _do_synthesize(synth, cancel_slot, &in_flight, text, callback, params);
     }
 
     let report_to_caller = callback;
     let report_user_data = UserDataPtr(params.user_data);
+    let worker_guard = in_flight.enter();
     // An unwinding job would abort the host process; report it as an error event.
     synthesis_thread_pool()?.spawn(move || {
+        let _worker_guard = worker_guard;
+        let voice_id = Arc::as_ptr(&_worker_guard.0) as usize;
+        let previous_voice = ACTIVE_WORKER_VOICE.with(|id| id.replace(voice_id));
         let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            _do_synthesize(synth, cancel_slot, text, callback, params)
+            _do_synthesize(synth, cancel_slot, &_worker_guard.0, text, callback, params)
         }))
         .unwrap_or_else(|payload| {
             Err(DengjenError::InferenceError(format!(
@@ -777,6 +847,7 @@ fn _synthesize(
                 report_user_data,
             );
         }
+        ACTIVE_WORKER_VOICE.with(|id| id.set(previous_voice));
     });
     Ok(())
 }
@@ -784,6 +855,7 @@ fn _synthesize(
 fn _do_synthesize(
     synth: AssertUnwindSafe<Arc<DengjenSpeechSynthesizer>>,
     cancel_slot: Arc<Mutex<Option<CancellationToken>>>,
+    in_flight: &InFlight,
     text: String,
     callback: SpeechSynthesisCallback,
     params: SynthesisParams,
@@ -822,15 +894,19 @@ fn _do_synthesize(
     let stream = synth
         .synthesize_samples(text, output_config, mode)
         .map_err(DengjenFFIError::from)?;
-    iterate_stream(stream, callback, user_data)
+    iterate_stream(stream, callback, user_data, in_flight)
 }
 
 fn iterate_stream(
     stream: impl Iterator<Item = DengjenResult<AudioSamples>> + Send + Sync + 'static,
     callback: SpeechSynthesisCallback,
     user_data: *mut c_void,
+    in_flight: &InFlight,
 ) -> DengjenFFIResult<()> {
     for item in stream {
+        if in_flight.is_closing() {
+            break;
+        }
         let audio = match item {
             Ok(audio) => audio,
             Err(error) => {
@@ -1167,7 +1243,7 @@ mod tests {
 
         let path = write_temp_config(&dir, "config.json", r#"{"model_type": "kokoro"}"#);
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete Kokoro config"),
         };
         assert!(
@@ -1188,7 +1264,7 @@ mod tests {
             r#"{"model_type": "melotts", "audio": {"sample_rate": 24000}}"#,
         );
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete MeloTTS config"),
         };
         assert!(
@@ -1205,7 +1281,7 @@ mod tests {
 
         let path = write_temp_config(&dir, "config.json", r#"{"model_type": "vits"}"#);
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete VITS config"),
         };
         assert!(
@@ -1886,6 +1962,62 @@ mod ffi_flow_tests {
         assert!(log.count(synth_event::SYNTH_EVENT_SPEECH) < SLOW_STREAM_CHUNKS);
         // SAFETY: `voice` is live and not used again.
         unsafe { libdengjenUnloadDengjenVoice(voice) };
+    }
+
+    #[test]
+    fn unloading_a_voice_stops_and_drains_a_running_lazy_synthesis() {
+        static LOG: EventLog = EventLog::new();
+        let log = &LOG;
+        let voice = voice_with(Script::SlowStream);
+        let out_error = speak(voice, params(synth_mode::SYNTH_MODE_LAZY, 1, log));
+        assert!(out_error.get_code().is_success());
+        assert!(log.wait_for(synth_event::SYNTH_EVENT_SPEECH, 1));
+
+        // SAFETY: `voice` is live and not used again.
+        unsafe { libdengjenUnloadDengjenVoice(voice) };
+
+        let settled = log.entries.lock().unwrap().len();
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(log.entries.lock().unwrap().len(), settled);
+        assert_eq!(log.count(synth_event::SYNTH_EVENT_FINISHED), 1);
+        assert!(log.count(synth_event::SYNTH_EVENT_SPEECH) < SLOW_STREAM_CHUNKS);
+    }
+
+    static OTHER_VOICE: std::sync::atomic::AtomicPtr<DengjenVoice> =
+        std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+    extern "C" fn unload_the_other_voice(event: SynthesisEvent, user_data: *mut c_void) -> u8 {
+        let other = OTHER_VOICE.swap(std::ptr::null_mut(), Ordering::SeqCst);
+        if !other.is_null() {
+            // SAFETY: the test stores a live voice that nothing else uses afterwards.
+            unsafe { libdengjenUnloadDengjenVoice(other) };
+        }
+        record_event(event, user_data)
+    }
+
+    #[test]
+    fn unloading_another_voice_from_a_callback_still_drains_it() {
+        static OWNER_LOG: EventLog = EventLog::new();
+        static OTHER_LOG: EventLog = EventLog::new();
+        let other = voice_with(Script::SlowStream);
+        let out_error = speak(other, params(synth_mode::SYNTH_MODE_LAZY, 1, &OTHER_LOG));
+        assert!(out_error.get_code().is_success());
+        assert!(OTHER_LOG.wait_for(synth_event::SYNTH_EVENT_SPEECH, 1));
+        OTHER_VOICE.store(other, Ordering::SeqCst);
+
+        let owner = voice_with(Script::Speak);
+        let mut owner_params = params(synth_mode::SYNTH_MODE_LAZY, 1, &OWNER_LOG);
+        owner_params.callback = Some(unload_the_other_voice);
+        let out_error = speak(owner, owner_params);
+        assert!(out_error.get_code().is_success());
+        assert!(OWNER_LOG.wait_for(synth_event::SYNTH_EVENT_FINISHED, 1));
+
+        let settled = OTHER_LOG.entries.lock().unwrap().len();
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(OTHER_LOG.entries.lock().unwrap().len(), settled);
+        assert_eq!(OTHER_LOG.count(synth_event::SYNTH_EVENT_FINISHED), 1);
+        // SAFETY: `owner` is live and not used again.
+        unsafe { libdengjenUnloadDengjenVoice(owner) };
     }
 
     #[test]

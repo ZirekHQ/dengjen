@@ -64,14 +64,21 @@ impl From<DengjenError> for DengjenGrpcError {
 impl From<DengjenGrpcError> for Status {
     fn from(err: DengjenGrpcError) -> Self {
         match err {
-            DengjenGrpcError::DengjenError(e) => match e {
-                DengjenError::FailedToLoadResource(msg) => Status::aborted(msg),
-                DengjenError::PhonemizationError(msg) => Status::aborted(msg),
-                DengjenError::InferenceError(msg) => Status::internal(msg),
-                DengjenError::InvalidConfiguration(msg) => Status::invalid_argument(msg),
-                DengjenError::UnsupportedOperation(msg) => Status::unimplemented(msg),
-                DengjenError::OperationError(msg) => Status::unknown(msg),
-            },
+            DengjenGrpcError::DengjenError(e) => {
+                // Causes can carry OS and parser detail; clients get the category message only.
+                log::warn!("request failed: {}{}", e.message(), e.cause_chain());
+                let msg = e.message().to_owned();
+                match e.kind() {
+                    DengjenError::FailedToLoadResource(_) => Status::aborted(msg),
+                    DengjenError::PhonemizationError(_) => Status::aborted(msg),
+                    DengjenError::InferenceError(_) => Status::internal(msg),
+                    DengjenError::InvalidConfiguration(_) => Status::invalid_argument(msg),
+                    DengjenError::UnsupportedOperation(_) => Status::unimplemented(msg),
+                    DengjenError::OperationError(_) | DengjenError::Caused { .. } => {
+                        Status::unknown(msg)
+                    }
+                }
+            }
             DengjenGrpcError::VoiceNotFound(msg) => Status::not_found(msg),
             DengjenGrpcError::InvalidArgument(msg) => Status::invalid_argument(msg),
             DengjenGrpcError::ResourceExhausted(msg) => Status::resource_exhausted(msg),
@@ -396,7 +403,9 @@ fn sanitize_load_error(config_path: &std::path::Path, err: DengjenGrpcError) -> 
         DengjenGrpcError::VoiceNotFound(_) => DengjenGrpcError::VoiceNotFound(
             "The voice config was not found or is not readable".to_string(),
         ),
-        DengjenGrpcError::DengjenError(DengjenError::InvalidConfiguration(_)) => {
+        DengjenGrpcError::DengjenError(e)
+            if matches!(e.kind(), DengjenError::InvalidConfiguration(_)) =>
+        {
             DengjenGrpcError::DengjenError(DengjenError::InvalidConfiguration(
                 "The voice config is invalid".to_string(),
             ))
@@ -1529,7 +1538,7 @@ mod load_voice_dispatch_tests {
         let path = write_temp_config(&dir, "config.json", r#"{"model_type": "kokoro"}"#);
 
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete Kokoro config"),
         };
         assert!(
@@ -1567,7 +1576,7 @@ mod load_voice_dispatch_tests {
             r#"{"model_type": "melotts", "audio": {"sample_rate": 24000}}"#,
         );
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete MeloTTS config"),
         };
         assert!(

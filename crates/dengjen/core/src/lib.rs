@@ -8,11 +8,13 @@ use std::sync::{Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockW
 pub use dengjen_audio_ops::{Audio, AudioInfo, AudioSamples, WaveWriterError};
 
 mod cancellation;
+mod config_path;
 #[cfg(feature = "ort-providers")]
 mod ort_providers;
 mod synthesis_config;
 
 pub use cancellation::CancellationToken;
+pub use config_path::resolve_within;
 #[cfg(feature = "ort-providers")]
 pub use ort_providers::execution_providers;
 pub use synthesis_config::SynthesisConfig;
@@ -58,15 +60,101 @@ pub enum DengjenError {
     InvalidConfiguration(String),
     UnsupportedOperation(String),
     OperationError(String),
+    /// An error that keeps the underlying cause reachable through [`StdError::source`].
+    Caused {
+        error: Box<DengjenError>,
+        cause: Box<dyn StdError + Send + Sync + 'static>,
+    },
 }
 
 impl DengjenError {
     pub fn with_message(message: impl Into<String>) -> Self {
         Self::OperationError(message.into())
     }
+
+    /// Attaches the underlying cause, keeping this error's category. A cause attached earlier
+    /// stays reachable behind the new one through [`StdError::source`].
+    #[must_use]
+    pub fn with_source(self, cause: impl StdError + Send + Sync + 'static) -> Self {
+        match self {
+            Self::Caused {
+                error,
+                cause: earlier,
+            } => Self::Caused {
+                error,
+                cause: Box::new(StackedCause {
+                    cause: Box::new(cause),
+                    earlier,
+                }),
+            },
+            other => Self::Caused {
+                error: Box::new(other),
+                cause: Box::new(cause),
+            },
+        }
+    }
+
+    /// The category-bearing error, with any attached cause stripped.
+    pub fn kind(&self) -> &DengjenError {
+        match self {
+            Self::Caused { error, .. } => error.kind(),
+            other => other,
+        }
+    }
+
+    /// The bare message of the category-bearing error, without the `Failed to load resource: `
+    /// prefix `Display` adds to `FailedToLoadResource`.
+    pub fn message(&self) -> &str {
+        match self.kind() {
+            Self::FailedToLoadResource(msg)
+            | Self::PhonemizationError(msg)
+            | Self::InferenceError(msg)
+            | Self::InvalidConfiguration(msg)
+            | Self::UnsupportedOperation(msg)
+            | Self::OperationError(msg) => msg,
+            Self::Caused { .. } => "",
+        }
+    }
+
+    /// The attached causes, newest first, rendered as `": newest: older"`, or empty when there are
+    /// none.
+    pub fn cause_chain(&self) -> String {
+        let mut chain = String::new();
+        let mut next = self.source();
+        while let Some(cause) = next {
+            chain.push_str(&format!(": {cause}"));
+            next = cause.source();
+        }
+        chain
+    }
 }
 
-impl StdError for DengjenError {}
+#[derive(Debug)]
+struct StackedCause {
+    cause: Box<dyn StdError + Send + Sync + 'static>,
+    earlier: Box<dyn StdError + Send + Sync + 'static>,
+}
+
+impl fmt::Display for StackedCause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.cause.fmt(f)
+    }
+}
+
+impl StdError for StackedCause {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        Some(self.earlier.as_ref())
+    }
+}
+
+impl StdError for DengjenError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Self::Caused { cause, .. } => Some(cause.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 impl fmt::Display for DengjenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -79,6 +167,7 @@ impl fmt::Display for DengjenError {
             | Self::InvalidConfiguration(msg)
             | Self::UnsupportedOperation(msg)
             | Self::OperationError(msg) => write!(f, "{msg}"),
+            Self::Caused { error, .. } => error.fmt(f),
         }
     }
 }
@@ -424,5 +513,38 @@ mod panic_message_tests {
             panic_message(from_other.as_ref()),
             "non-string panic payload"
         );
+    }
+
+    #[test]
+    fn with_source_keeps_the_category_and_exposes_the_cause() {
+        let io = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+        let error = DengjenError::FailedToLoadResource("model".into()).with_source(io);
+        assert!(matches!(
+            error.kind(),
+            DengjenError::FailedToLoadResource(msg) if msg == "model"
+        ));
+        assert_eq!(error.message(), "model");
+        assert_eq!(error.to_string(), "Failed to load resource: model");
+        assert_eq!(error.source().unwrap().to_string(), "no such file");
+        assert_eq!(error.cause_chain(), ": no such file");
+    }
+
+    #[test]
+    fn errors_without_a_cause_have_no_chain() {
+        let error = DengjenError::InferenceError("boom".into());
+        assert!(error.source().is_none());
+        assert_eq!(error.cause_chain(), "");
+        assert_eq!(error.message(), "boom");
+    }
+
+    #[test]
+    fn a_second_cause_keeps_the_first_reachable() {
+        let first = std::io::Error::new(std::io::ErrorKind::NotFound, "first");
+        let second = std::io::Error::other("second");
+        let error = DengjenError::OperationError("op".into())
+            .with_source(first)
+            .with_source(second);
+        assert_eq!(error.cause_chain(), ": second: first");
+        assert_eq!(error.message(), "op");
     }
 }

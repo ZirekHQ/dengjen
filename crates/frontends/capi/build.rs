@@ -1,4 +1,4 @@
-use cbindgen::{Config, ExportConfig};
+use cbindgen::Config;
 use std::env;
 use std::path::Path;
 
@@ -15,23 +15,13 @@ fn main() {
         return;
     }
 
-    let config = Config {
-        export: ExportConfig {
-            include: vec!["SpeechSynthesisCallback".to_string()],
-            ..Default::default()
-        },
-        ..Default::default()
-    };
+    println!("cargo:rerun-if-changed=cbindgen.toml");
+    let config = Config::from_file(Path::new(&crate_root).join("cbindgen.toml"))
+        .expect("cbindgen.toml must parse");
 
     let header = cbindgen::Builder::new()
         .with_crate(crate_root)
         .with_config(config)
-        .with_include_version(true)
-        .with_documentation(false)
-        .with_parse_deps(true)
-        .with_parse_include(&["ffi-support"])
-        .with_cpp_compat(false)
-        .with_language(cbindgen::Language::C)
         .generate()
         .expect("cbindgen failed to generate C bindings");
 

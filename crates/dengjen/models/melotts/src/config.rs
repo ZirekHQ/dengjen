@@ -52,20 +52,23 @@ pub struct MeloVoiceConfig {
 pub fn load_config(path: &Path) -> DengjenResult<MeloVoiceConfig> {
     let raw = std::fs::read_to_string(path).map_err(|e| {
         DengjenError::FailedToLoadResource(format!(
-            "Failed to read MeloTTS voice config at `{}`: {e}",
+            "Failed to read MeloTTS voice config at `{}`",
             path.display()
         ))
+        .with_source(e)
     })?;
     let parsed: RawMeloVoiceConfig = serde_json::from_str(&raw).map_err(|e| {
         DengjenError::InvalidConfiguration(format!(
-            "Failed to parse MeloTTS voice config at `{}`: {e}",
+            "Failed to parse MeloTTS voice config at `{}`",
             path.display()
         ))
+        .with_source(e)
     })?;
-    let model_path = path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(&parsed.model_path);
+    let model_path = dengjen_tts_core::resolve_within(
+        path.parent().unwrap_or_else(|| Path::new(".")),
+        "model_path",
+        &parsed.model_path,
+    )?;
     Ok(MeloVoiceConfig {
         audio: parsed.audio,
         phonemizer: parsed.phonemizer,
@@ -207,7 +210,10 @@ mod tests {
     #[test]
     fn load_config_errors_when_the_file_does_not_exist() {
         let result = load_config(Path::new("/nonexistent/config.json"));
-        assert!(matches!(result, Err(DengjenError::FailedToLoadResource(_))));
+        assert!(matches!(
+            result.err().as_ref().map(DengjenError::kind),
+            Some(DengjenError::FailedToLoadResource(_))
+        ));
     }
 
     #[test]

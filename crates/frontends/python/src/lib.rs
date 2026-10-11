@@ -92,14 +92,16 @@ impl From<DengjenError> for PyDengjenError {
 
 impl From<PyDengjenError> for PyErr {
     fn from(py_err: PyDengjenError) -> Self {
-        let message = py_err.0.to_string();
-        match py_err.0 {
+        let message = format!("{}{}", py_err.0, py_err.0.cause_chain());
+        match py_err.0.kind() {
             DengjenError::FailedToLoadResource(_) => ResourceLoadError::new_err(message),
             DengjenError::PhonemizationError(_) => PhonemizationError::new_err(message),
             DengjenError::InferenceError(_) => InferenceError::new_err(message),
             DengjenError::InvalidConfiguration(_) => InvalidConfigurationError::new_err(message),
             DengjenError::UnsupportedOperation(_) => UnsupportedOperationError::new_err(message),
-            DengjenError::OperationError(_) => DengjenException::new_err(message),
+            DengjenError::OperationError(_) | DengjenError::Caused { .. } => {
+                DengjenException::new_err(message)
+            }
         }
     }
 }
@@ -964,7 +966,7 @@ mod model_and_synthesizer_tests {
 
         let path = write_temp_config(&dir, "config.json", r#"{"model_type": "kokoro"}"#);
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete Kokoro config"),
         };
         assert!(
@@ -1002,7 +1004,7 @@ mod model_and_synthesizer_tests {
             r#"{"model_type": "melotts", "audio": {"sample_rate": 24000}}"#,
         );
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete MeloTTS config"),
         };
         assert!(
@@ -1019,7 +1021,7 @@ mod model_and_synthesizer_tests {
 
         let path = write_temp_config(&dir, "config.json", r#"{"model_type": "vits"}"#);
         let err = match load_voice(&path) {
-            Err(e) => format!("{}", e),
+            Err(e) => format!("{}{}", e, e.cause_chain()),
             Ok(_) => panic!("expected an error for an incomplete VITS config"),
         };
         assert!(

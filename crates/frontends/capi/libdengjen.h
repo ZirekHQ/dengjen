@@ -2,6 +2,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -88,6 +89,10 @@ typedef struct SynthesisParams {
 
 typedef uint8_t (*SpeechSynthesisCallback)(struct SynthesisEvent, void*);
 
+#ifdef __cplusplus
+extern "C" {
+#endif // __cplusplus
+
 void libdengjenFreeString(char *string_ptr);
 
 void libdengjenFreePiperSynthConfig(struct PiperSynthConfig *synth_config);
@@ -132,3 +137,7 @@ uint8_t libdengjenSpeakToFile(struct DengjenVoice *voice_ptr,
                               struct SynthesisParams params,
                               FfiStr out_filename_ptr,
                               struct ExternError *out_error);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
