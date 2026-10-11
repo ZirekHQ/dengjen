@@ -7,6 +7,7 @@ import "C"
 import (
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -24,7 +25,9 @@ type SynthesisEvent struct {
 	Err  error
 }
 
-type callbackToken struct{}
+type callbackToken struct{ id uint64 }
+
+var callbackSeq atomic.Uint64
 
 type callbackEntry struct {
 	fn     func(SynthesisEvent) bool
@@ -37,7 +40,7 @@ var (
 )
 
 func registerCallback(fn func(SynthesisEvent) bool) *callbackToken {
-	token := &callbackToken{}
+	token := &callbackToken{id: callbackSeq.Add(1)}
 	entry := &callbackEntry{fn: fn}
 	entry.pinner.Pin(token)
 
@@ -62,6 +65,17 @@ func releaseCallback(token *callbackToken) {
 }
 
 var testCallbackDataReleased func()
+
+// invokeCallback reports false (stop) when the user callback panics, so the
+// panic never unwinds across the Rust frames above.
+func invokeCallback(fn func(SynthesisEvent) bool, ev SynthesisEvent) (wantsMore bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			wantsMore = false
+		}
+	}()
+	return fn(ev)
+}
 
 //export goDengjenSpeechCallback
 func goDengjenSpeechCallback(event C.struct_SynthesisEvent, userData unsafe.Pointer) C.uint8_t {
@@ -91,7 +105,7 @@ func goDengjenSpeechCallback(event C.struct_SynthesisEvent, userData unsafe.Poin
 
 	C.libdengjenFreeSynthesisEvent(event)
 
-	wantsMore := onEvent == nil || onEvent(goEvent)
+	wantsMore := onEvent == nil || invokeCallback(onEvent, goEvent)
 
 	terminal := event.event_type == C.SYNTH_EVENT_FINISHED || event.event_type == C.SYNTH_EVENT_ERROR
 	if terminal || !wantsMore {

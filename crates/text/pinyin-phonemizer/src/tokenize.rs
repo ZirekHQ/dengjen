@@ -1,3 +1,5 @@
+use dengjen_tts_core::{DengjenError, DengjenResult};
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Word {
     pub text: String,
@@ -56,7 +58,7 @@ pub(crate) fn wordize(text: &str) -> (Vec<Word>, Vec<Option<usize>>) {
 pub(crate) fn tokenize_and_map(
     tokenizer: &tokenizers::Tokenizer,
     text: &str,
-) -> (Vec<Token>, Vec<Option<usize>>) {
+) -> DengjenResult<(Vec<Token>, Vec<Option<usize>>)> {
     let (words, text_to_word) = wordize(text);
     let chars: Vec<char> = text.chars().collect();
 
@@ -66,7 +68,12 @@ pub(crate) fn tokenize_and_map(
     for word in &words {
         let encoding = tokenizer
             .encode(word.text.as_str(), false)
-            .unwrap_or_else(|_| tokenizers::Encoding::default());
+            .map_err(|cause| {
+                DengjenError::PhonemizationError(format!(
+                    "g2pW tokenizer failed to encode {:?}: {cause}",
+                    word.text
+                ))
+            })?;
         let word_tokens: Vec<String> = encoding
             .get_tokens()
             .iter()
@@ -104,7 +111,7 @@ pub(crate) fn tokenize_and_map(
     }
 
     let _ = text_to_word;
-    (tokens, text_to_token)
+    Ok((tokens, text_to_token))
 }
 
 #[cfg(test)]
@@ -146,7 +153,7 @@ mod tests {
             eprintln!("skipping: DENGJEN_PINYIN_TEST_TOKENIZER_PATH not set");
             return;
         };
-        let (tokens, text_to_token) = super::tokenize_and_map(&tokenizer, "你好");
+        let (tokens, text_to_token) = super::tokenize_and_map(&tokenizer, "你好").unwrap();
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].start, 0);
         assert_eq!(tokens[0].end, 1);
@@ -161,7 +168,7 @@ mod tests {
             eprintln!("skipping: DENGJEN_PINYIN_TEST_TOKENIZER_PATH not set");
             return;
         };
-        let (_tokens, text_to_token) = super::tokenize_and_map(&tokenizer, " 你");
+        let (_tokens, text_to_token) = super::tokenize_and_map(&tokenizer, " 你").unwrap();
 
         assert_eq!(text_to_token[0], None);
         assert_eq!(text_to_token[1], Some(0));
@@ -204,7 +211,7 @@ mod tests {
     #[test]
     fn tokenize_and_map_produces_one_token_per_vocabulary_word() {
         let tokenizer = tiny_wordpiece_tokenizer();
-        let (tokens, text_to_token) = super::tokenize_and_map(&tokenizer, "你好");
+        let (tokens, text_to_token) = super::tokenize_and_map(&tokenizer, "你好").unwrap();
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text, "你");
         assert_eq!(tokens[1].text, "好");
@@ -214,7 +221,7 @@ mod tests {
     #[test]
     fn tokenize_and_map_splits_a_word_into_a_root_and_a_continuation_subword() {
         let tokenizer = tiny_wordpiece_tokenizer();
-        let (tokens, text_to_token) = super::tokenize_and_map(&tokenizer, "hello");
+        let (tokens, text_to_token) = super::tokenize_and_map(&tokenizer, "hello").unwrap();
         assert_eq!(
             tokens.iter().map(|t| t.text.as_str()).collect::<Vec<_>>(),
             vec!["hell", "##o"]
@@ -232,7 +239,7 @@ mod tests {
     #[test]
     fn tokenize_and_map_collapses_an_out_of_vocabulary_word_to_a_single_unk_token() {
         let tokenizer = tiny_wordpiece_tokenizer();
-        let (tokens, text_to_token) = super::tokenize_and_map(&tokenizer, "汉");
+        let (tokens, text_to_token) = super::tokenize_and_map(&tokenizer, "汉").unwrap();
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].text, "[UNK]");
         assert_eq!(tokens[0].start, 0);
@@ -243,7 +250,7 @@ mod tests {
     #[test]
     fn tokenize_and_map_leaves_whitespace_positions_unmapped_with_a_tiny_tokenizer() {
         let tokenizer = tiny_wordpiece_tokenizer();
-        let (_tokens, text_to_token) = super::tokenize_and_map(&tokenizer, " 你");
+        let (_tokens, text_to_token) = super::tokenize_and_map(&tokenizer, " 你").unwrap();
         assert_eq!(text_to_token[0], None);
         assert_eq!(text_to_token[1], Some(0));
     }

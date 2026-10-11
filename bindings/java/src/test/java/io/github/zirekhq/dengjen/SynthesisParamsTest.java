@@ -53,6 +53,23 @@ class SynthesisParamsTest {
   }
 
   @Test
+  void rejectsNegativeAppendedSilence() {
+    assertThatThrownBy(() -> new SynthesisParams(SynthesisMode.LAZY, 0, 0, 0, -1))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void rejectsNullMode() {
+    assertThatThrownBy(() -> new SynthesisParams(null, 0, 0, 0, 0))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void batchedModeCarriesHeaderValue() {
+    assertThat(SynthesisMode.BATCHED.value()).isEqualTo(3);
+  }
+
+  @Test
   void defaultsNonblockingToFalse() {
     var params = new SynthesisParams(SynthesisMode.LAZY, 10, 100, 50, 0);
     assertThat(params.nonblocking()).isFalse();

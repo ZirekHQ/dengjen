@@ -20,6 +20,8 @@ ort-dylib = ["ort/load-dynamic"]
 tashkeel = ["dep:dengjen-tashkeel", "dengjen-tts-piper/tashkeel"]
 espeak = ["dep:dengjen-espeak-phonemizer", "dengjen-tts-piper/espeak", "dengjen-tts-kokoro/espeak", "dengjen-tts-melotts/espeak"]
 japanese = ["dengjen-tts-kokoro/japanese"]
+hebrew = ["dengjen-tts-piper/hebrew"]
+pinyin = ["dengjen-tts-piper/pinyin", "dengjen-tts-melotts/pinyin"]
 
 
 cuda = ["dengjen-tts-piper/cuda", "dengjen-tts-kokoro/cuda", "dengjen-tts-melotts/cuda"]

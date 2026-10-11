@@ -23,16 +23,17 @@ fn main() {
     let package_dir = crate_dir.join("python").join("pydengjen");
     let espeak_data_dst = package_dir.join("espeak-ng-data");
 
-    if espeak_data_dst.exists() {
-        return;
-    }
-
     if !espeak_data_src.exists() {
         println!(
             "cargo:warning=espeak-ng-data source not found at `{}`; skipping staging into pydengjen",
             espeak_data_src.display()
         );
         return;
+    }
+
+    if espeak_data_dst.exists() {
+        std::fs::remove_dir_all(&espeak_data_dst)
+            .expect("failed to remove the stale staged espeak-ng-data");
     }
 
     let options = fs_extra::dir::CopyOptions::new();

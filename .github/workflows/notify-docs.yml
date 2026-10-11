@@ -7,8 +7,21 @@ on:
       - 'docs/**'
       - 'examples/python/**'
       - 'examples/grpc/**'
+  # Fires only for releases created by a person or a PAT. release.yml creates its releases with
+  # GITHUB_TOKEN, which does not trigger workflows, so it calls this file via workflow_call.
   release:
     types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to notify about
+        required: true
+        type: string
+    secrets:
+      DOCS_APP_CLIENT_ID:
+        required: true
+      DOCS_APP_PRIVATE_KEY:
+        required: true
   workflow_dispatch:
     inputs:
       ref:
@@ -32,9 +45,12 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_REF: ${{ inputs.ref }}
+          INPUT_TAG: ${{ inputs.tag }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "$EVENT_NAME" = "release" ]; then
+          if [ -n "$INPUT_TAG" ]; then
+            ref="$INPUT_TAG"
+          elif [ "$EVENT_NAME" = "release" ]; then
             ref="$RELEASE_TAG"
           else
             ref="${INPUT_REF:-$REF_NAME}"

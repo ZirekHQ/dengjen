@@ -77,8 +77,13 @@ def run(args):
 
 
 def key_value(text):
-    key, _, value = text.partition("=")
-    return key, float(value)
+    key, sep, value = text.partition("=")
+    if not key or not sep:
+        raise argparse.ArgumentTypeError(f"expected KEY=VALUE, got {text!r}")
+    try:
+        return key, float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"value for {key!r} must be a number, got {value!r}") from None
 
 
 def add_arguments(parser):

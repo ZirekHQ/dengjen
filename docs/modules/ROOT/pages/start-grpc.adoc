@@ -6,7 +6,7 @@ add-on uses it this way.
 
 == What is published
 
-* GitHub release `grpc-release-v2.0.3`, asset `dengjen-tts-grpc-v2.0.3-windows-x64.zip` (13.8 MB).
+* GitHub release `grpc-release-v2.1.1`, asset `dengjen-tts-grpc-v2.1.1-windows-x64.zip`.
   It holds `dengjen-tts-grpc.exe` and `NOTICE`. ONNX Runtime is linked into the executable.
 * The release is Windows x64 only. On other platforms, build from source with
   `cargo build --release -p dengjen-tts-grpc`. See xref:installation.adoc[Build from source].
@@ -21,8 +21,8 @@ In PowerShell:
 
 [source,powershell]
 ----
-curl.exe -LO https://github.com/ZirekHQ/dengjen-tts/releases/download/grpc-release-v2.0.3/dengjen-tts-grpc-v2.0.3-windows-x64.zip
-Expand-Archive dengjen-tts-grpc-v2.0.3-windows-x64.zip -DestinationPath dengjen-tts-grpc
+curl.exe -LO https://github.com/ZirekHQ/dengjen-tts/releases/download/grpc-release-v2.1.1/dengjen-tts-grpc-v2.1.1-windows-x64.zip
+Expand-Archive dengjen-tts-grpc-v2.1.1-windows-x64.zip -DestinationPath dengjen-tts-grpc
 ----
 
 == Prerequisites
@@ -34,8 +34,8 @@ Expand-Archive dengjen-tts-grpc-v2.0.3-windows-x64.zip -DestinationPath dengjen-
 +
 [source,powershell]
 ----
-curl.exe -LO https://github.com/ZirekHQ/dengjen-tts/archive/refs/tags/v2.0.3.tar.gz
-tar -xzf v2.0.3.tar.gz --strip-components=3 -C dengjen-tts-grpc dengjen-tts-2.0.3/deps/dev/espeak-ng-data
+curl.exe -LO https://github.com/ZirekHQ/dengjen-tts/archive/refs/tags/v2.1.1.tar.gz
+tar -xzf v2.1.1.tar.gz --strip-components=3 -C dengjen-tts-grpc dengjen-tts-2.1.1/deps/dev/espeak-ng-data
 ----
 
 == Start the server
@@ -45,7 +45,7 @@ tar -xzf v2.0.3.tar.gz --strip-components=3 -C dengjen-tts-grpc dengjen-tts-2.0.
 .\dengjen-tts-grpc\dengjen-tts-grpc.exe
 ----
 
-The server binds `127.0.0.1` only. Version 2.0.3 prints `DENGJEN_GRPC_LISTENING port=<port>` on stdout
+The server binds `127.0.0.1` only. Version 2.1.1 prints `DENGJEN_GRPC_LISTENING port=<port>` on stdout
 after it binds its port, and writes its log to stderr. Three environment variables change its behavior:
 
 [cols="2,1,3"]
@@ -79,7 +79,7 @@ in WSL2 cannot reach a server running on the Windows host. Run the client on the
 
 [source,sh]
 ----
-curl -LO https://raw.githubusercontent.com/ZirekHQ/dengjen-tts/v2.0.3/crates/frontends/grpc/proto/dengjen_grpc.proto
+curl -LO https://raw.githubusercontent.com/ZirekHQ/dengjen-tts/v2.1.1/crates/frontends/grpc/proto/dengjen_grpc.proto
 grpcurl -plaintext -import-path . -proto dengjen_grpc.proto -d '{}' \
     127.0.0.1:49314 dengjen_grpc.DengjenGrpc/GetDengjenVersion
 ----
@@ -100,7 +100,7 @@ The reply carries the server version, which equals the release version:
 [source,json]
 ----
 {
-  "version": "2.0.3"
+  "version": "2.1.1"
 }
 ----
 

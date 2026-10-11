@@ -16,12 +16,12 @@ espeak = ["dep:dengjen-espeak-phonemizer"]
 japanese = ["dep:jpreprocess"]
 
 
-cuda = ["ort/cuda"]
-coreml = ["ort/coreml"]
-directml = ["ort/directml"]
+cuda = ["ort/cuda", "dengjen-tts-core/cuda"]
+coreml = ["ort/coreml", "dengjen-tts-core/coreml"]
+directml = ["ort/directml", "dengjen-tts-core/directml"]
 
 [dependencies]
-dengjen-tts-core.workspace = true
+dengjen-tts-core = { workspace = true, features = ["ort-providers"] }
 dengjen-espeak-phonemizer = { workspace = true, optional = true }
 jpreprocess = { version = "=0.15.0", optional = true }
 serde = { version = "1.0.160", features = ["derive"] }

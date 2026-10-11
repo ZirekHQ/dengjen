@@ -66,6 +66,24 @@ class CheckTests(unittest.TestCase):
             problems = check(root)
         self.assertTrue(any("copy" in p for p in problems))
 
+    def test_symlink_outside_examples_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = build_repo(Path(tmp))
+            (root / "elsewhere").mkdir()
+            (root / "docs" / "modules" / "ROOT" / "examples" / "out").symlink_to("../../../../elsewhere")
+            problems = check(root)
+        self.assertTrue(any("out" in p for p in problems))
+
+    def test_multi_tag_include_reports_only_the_missing_tag(self):
+        problems = self.check(page="include::example$python/demo.py[tags=body;nope]\n")
+        self.assertTrue(any("nope" in p for p in problems))
+        self.assertFalse(any("tag::body" in p for p in problems))
+
+    def test_json_block_with_extra_attributes_is_validated(self):
+        page = "[source,json,subs=attributes]\n----\n{\"a\": }\n----\n"
+        problems = self.check(page=page)
+        self.assertTrue(any("json" in p.lower() for p in problems))
+
 
 if __name__ == "__main__":
     unittest.main()

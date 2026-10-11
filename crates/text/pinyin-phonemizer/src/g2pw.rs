@@ -107,11 +107,19 @@ pub(crate) fn create_g2pw_engine(
 }
 
 impl G2pwEngine {
-    pub fn resolve_polyphonic(&self, text: &str, query_char_index: usize) -> DengjenResult<String> {
-        let chars: Vec<char> = text.chars().collect();
+    pub fn is_polyphonic(&self, c: char) -> bool {
+        self.config.char2phonemes.contains_key(&c)
+    }
+
+    pub fn resolve_polyphonic(
+        &self,
+        chars: &[char],
+        query_char_index: usize,
+    ) -> DengjenResult<String> {
         let query_char = *chars.get(query_char_index).ok_or_else(|| {
             DengjenError::PhonemizationError(format!(
-                "query_char_index {query_char_index} is out of bounds for text {text:?}"
+                "query_char_index {query_char_index} is out of bounds for a sentence of {} characters",
+                chars.len()
             ))
         })?;
         let candidates = self.config.char2phonemes.get(&query_char).ok_or_else(|| {
@@ -126,7 +134,7 @@ impl G2pwEngine {
         let windowed_query_id = query_char_index - win_start;
 
         let (tokens, text_to_token) =
-            tokenize_and_map(&self.tokenizer, &windowed_text.to_lowercase());
+            tokenize_and_map(&self.tokenizer, &windowed_text.to_lowercase())?;
         let token_position = text_to_token
             .get(windowed_query_id)
             .copied()

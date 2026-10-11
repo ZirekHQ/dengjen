@@ -64,8 +64,9 @@ def run(args):
         print(f"wrote {args.out}")
         if voice.supports_streaming_output:
             pcm = synthesize_realtime(stub, voice.voice_key, args.text)
-            write_pcm("realtime.wav", pcm, voice.audio)
-            print("wrote realtime.wav")
+            realtime_out = f"{os.path.splitext(args.out)[0]}.realtime.wav"
+            write_pcm(realtime_out, pcm, voice.audio)
+            print(f"wrote {realtime_out}")
 
 
 def parse_args(argv):

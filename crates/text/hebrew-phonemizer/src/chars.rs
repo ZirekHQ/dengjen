@@ -31,21 +31,26 @@ pub(crate) fn dagesh_classes() -> Vec<char> {
     vec![RAFE, DAGESH_LETTER]
 }
 
+const PUNCTUATION: &str = " !\"'(),-.:;?";
+
 pub(crate) fn valid_letters() -> Vec<char> {
-    let mut letters: Vec<char> = " !\"'(),-.:;?".chars().collect();
+    let mut letters: Vec<char> = PUNCTUATION.chars().collect();
     letters.extend(hebrew_letters());
     letters
 }
 
-const SPECIAL_TOKENS: [char; 3] = ['H', 'O', '5'];
-
-#[allow(dead_code)]
-fn endings_to_regular() -> HashMap<char, char> {
-    ['\u{05DA}', '\u{05DD}', '\u{05DF}', '\u{05E3}', '\u{05E5}']
-        .into_iter()
-        .zip(['\u{05DB}', '\u{05DE}', '\u{05E0}', '\u{05E4}', '\u{05E6}'])
-        .collect()
+fn is_valid_letter(c: char) -> bool {
+    PUNCTUATION.contains(c) || ('\u{05D0}'..='\u{05EA}').contains(&c)
 }
+
+/// True for Hebrew points and marks, excluding maqaf, paseq, sof pasuq and
+/// nun hafukha, which are punctuation.
+pub(crate) fn is_niqqud(c: char) -> bool {
+    ('\u{05B0}'..='\u{05C7}').contains(&c)
+        && !matches!(c, '\u{05BE}' | '\u{05C0}' | '\u{05C3}' | '\u{05C6}')
+}
+
+const SPECIAL_TOKENS: [char; 3] = ['H', 'O', '5'];
 
 pub(crate) fn char_to_id_map() -> HashMap<char, usize> {
     let mut chars: Vec<char> = SPECIAL_TOKENS.to_vec();
@@ -58,15 +63,8 @@ pub(crate) fn char_to_id_map() -> HashMap<char, usize> {
 }
 
 pub(crate) fn normalize(c: char) -> char {
-    let valid = valid_letters();
-    if valid.contains(&c) {
+    if is_valid_letter(c) {
         return c;
-    }
-    // Dead: valid_letters() already covers final forms so this never fires (mirrors
-    // upstream piper1-gpl); the model was trained with final forms passing through unchanged.
-    let endings = endings_to_regular();
-    if let Some(&base) = endings.get(&c) {
-        return base;
     }
     match c {
         '\n' | '\t' => ' ',
@@ -131,6 +129,23 @@ mod tests {
         assert_eq!(normalize('\u{05DF}'), '\u{05DF}');
         assert_eq!(normalize('\u{05E3}'), '\u{05E3}');
         assert_eq!(normalize('\u{05E5}'), '\u{05E5}');
+    }
+
+    #[test]
+    fn normalize_maps_maqaf_to_hyphen() {
+        assert_eq!(normalize('\u{05BE}'), '-');
+    }
+
+    #[test]
+    fn is_niqqud_accepts_points_and_rejects_punctuation_marks() {
+        assert!(is_niqqud('\u{05B8}'));
+        assert!(is_niqqud('\u{05C1}'));
+        assert!(is_niqqud('\u{05C7}'));
+        assert!(!is_niqqud('\u{05BE}'));
+        assert!(!is_niqqud('\u{05C0}'));
+        assert!(!is_niqqud('\u{05C3}'));
+        assert!(!is_niqqud('\u{05C6}'));
+        assert!(!is_niqqud('\u{05D0}'));
     }
 
     #[test]

@@ -59,7 +59,7 @@ xref:start-python.adoc[Get started with Python].
 The Hebrew and pinyin phonemizers are opt-in Cargo features (`hebrew`, `pinyin`) that no frontend in
 this repository enables, so the prebuilt `dengjen-tts-grpc` server and the `pydengjen` wheels do not
 include them; embedding the Rust crates lets you enable them. Arabic diacritization (the `tashkeel`
-feature) is enabled by default in every frontend this repository publishes. See
+feature) is enabled by default in `pydengjen` only; the CLI, gRPC server and C API do not enable it. See
 xref:voices.adoc[Choosing and tuning a model backend] and
 xref:streaming.adoc[Streaming synthesis and the gRPC frontend] for detail.
 

@@ -5,7 +5,7 @@
 # repro under ASan and a stack trace showing the allocation is entirely inside third-party/
 # vendored code we don't patch.
 #
-# DoVoiceChange (deps/espeak-ng/src/libespeak-ng/synthesize.c): espeak-ng's own voice-table
+# DoVoiceChange (espeak-ng src/libespeak-ng/synthesize.c): espeak-ng's own voice-table
 # allocation leaks ~1.3KB per call to espeak_(ng_)SetVoiceByName when the requested voice
 # differs from the currently loaded one. This is vendored upstream C code, not something
 # dengjen's Rust FFI layer controls. Reproduced locally on 2026-08-16 via:

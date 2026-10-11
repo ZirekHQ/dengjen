@@ -1,4 +1,4 @@
-use crate::config::{load_model_config, ModelConfig};
+use crate::config::{load_model_config, resolve_default_speaker_id, ModelConfig};
 use crate::phonemize::{
     create_hebrew_engine, create_pinyin_engine, create_tashkeel_engine, HebrewEngine, PinyinEngine,
     TashkeelEngine,
@@ -27,22 +27,9 @@ where
         .collect()
 }
 
-#[allow(clippy::vec_init_then_push)]
-pub(crate) fn execution_providers() -> Vec<ort::ep::ExecutionProviderDispatch> {
-    #[allow(unused_mut)]
-    let mut providers = Vec::new();
-    #[cfg(feature = "cuda")]
-    providers.push(ort::ep::CUDA::default().build());
-    #[cfg(feature = "directml")]
-    providers.push(ort::ep::DirectML::default().build());
-    #[cfg(feature = "coreml")]
-    providers.push(ort::ep::CoreML::default().build());
-    providers
-}
-
 pub(crate) fn create_inference_session(model_path: &Path) -> Result<Session, ort::Error> {
     Session::builder()?
-        .with_execution_providers(execution_providers())?
+        .with_execution_providers(dengjen_tts_core::execution_providers())?
         .commit_from_file(model_path)
 }
 
@@ -61,28 +48,30 @@ pub(crate) fn build_vits_inputs(
     phoneme_ids: Vec<i64>,
     scales: [f32; 3],
     speaker: Option<i64>,
-) -> Vec<SessionInputValue<'static>> {
+) -> DengjenResult<Vec<SessionInputValue<'static>>> {
     let phoneme_count = phoneme_ids.len();
-    let ids = Array2::<i64>::from_shape_vec((1, phoneme_count), phoneme_ids).unwrap();
+    let ids =
+        Array2::<i64>::from_shape_vec((1, phoneme_count), phoneme_ids).map_err(inference_error)?;
     let lengths = Array1::<i64>::from_iter([phoneme_count as i64]);
     let scales = Array1::<f32>::from_iter(scales);
 
-    let mut inputs: Vec<SessionInputValue<'static>> = ort::inputs![
-        Tensor::from_array(ids).unwrap(),
-        Tensor::from_array(lengths).unwrap(),
-        Tensor::from_array(scales).unwrap(),
-    ]
-    .into();
+    let mut inputs: Vec<SessionInputValue<'static>> = vec![
+        Tensor::from_array(ids).map_err(inference_error)?.into(),
+        Tensor::from_array(lengths).map_err(inference_error)?.into(),
+        Tensor::from_array(scales).map_err(inference_error)?.into(),
+    ];
     if let Some(speaker_id) = speaker {
-        let speaker_tensor = Tensor::from_array(Array1::<i64>::from_iter([speaker_id])).unwrap();
+        let speaker_tensor =
+            Tensor::from_array(Array1::<i64>::from_iter([speaker_id])).map_err(inference_error)?;
         inputs.push(speaker_tensor.into());
     }
-    inputs
+    Ok(inputs)
 }
 
 pub(crate) fn snapshot_scales_and_speaker(
     synth_config: &RwLock<PiperSynthesisConfig>,
     num_speakers: u32,
+    default_speaker_id: i64,
 ) -> ([f32; 3], Option<i64>) {
     let synth_config = read_ignoring_poison(synth_config);
     let scales = [
@@ -90,7 +79,7 @@ pub(crate) fn snapshot_scales_and_speaker(
         synth_config.length_scale,
         synth_config.noise_w,
     ];
-    let speaker = (num_speakers > 1).then(|| synth_config.speaker.unwrap_or(0));
+    let speaker = (num_speakers > 1).then(|| synth_config.speaker.unwrap_or(default_speaker_id));
     (scales, speaker)
 }
 
@@ -134,9 +123,12 @@ impl VitsModel {
         })
     }
     fn infer_with_values(&self, input_phonemes: Vec<i64>) -> DengjenAudioResult {
-        let (scales, speaker) =
-            snapshot_scales_and_speaker(&self.synth_config, self.config.num_speakers);
-        let inputs = build_vits_inputs(input_phonemes, scales, speaker);
+        let (scales, speaker) = snapshot_scales_and_speaker(
+            &self.synth_config,
+            self.config.num_speakers,
+            resolve_default_speaker_id(&self.config),
+        );
+        let inputs = build_vits_inputs(input_phonemes, scales, speaker)?;
 
         let mut session = lock_ignoring_poison(&self.session);
         let started_at = std::time::Instant::now();
@@ -236,8 +228,28 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(not(any(feature = "cuda", feature = "directml", feature = "coreml")))]
-    fn execution_providers_is_empty_when_no_gpu_feature_is_enabled() {
-        assert!(execution_providers().is_empty());
+    fn build_vits_inputs_adds_a_speaker_tensor_only_when_a_speaker_is_given() {
+        let scales = [0.667, 1.0, 0.8];
+        let single = build_vits_inputs(vec![1, 2, 3], scales, None).unwrap();
+        let multi = build_vits_inputs(vec![1, 2, 3], scales, Some(2)).unwrap();
+        assert_eq!(single.len(), 3);
+        assert_eq!(multi.len(), 4);
+    }
+
+    #[test]
+    fn unset_speaker_resolves_to_the_voice_default_speaker_for_multi_speaker_voices() {
+        let synth_config = RwLock::new(PiperSynthesisConfig::default());
+        let (_, speaker) = snapshot_scales_and_speaker(&synth_config, 4, 3);
+        assert_eq!(speaker, Some(3));
+    }
+
+    #[test]
+    fn explicit_speaker_overrides_the_default_and_single_speaker_voices_send_none() {
+        let synth_config = RwLock::new(PiperSynthesisConfig {
+            speaker: Some(1),
+            ..Default::default()
+        });
+        assert_eq!(snapshot_scales_and_speaker(&synth_config, 4, 3).1, Some(1));
+        assert_eq!(snapshot_scales_and_speaker(&synth_config, 1, 3).1, None);
     }
 }

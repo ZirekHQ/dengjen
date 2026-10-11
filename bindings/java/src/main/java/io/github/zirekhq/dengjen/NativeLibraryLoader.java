@@ -11,6 +11,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 final class NativeLibraryLoader {
   private NativeLibraryLoader() {}
@@ -42,22 +45,71 @@ final class NativeLibraryLoader {
   }
 
   static Path extractResource(String resourcePath, ClassLoader loader) throws IOException {
+    return extractResource(resourcePath, loader, extractionDirectory());
+  }
+
+  static Path extractResource(String resourcePath, ClassLoader loader, Path directory)
+      throws IOException {
+    byte[] content;
     try (InputStream in = loader.getResourceAsStream(resourcePath)) {
       if (in == null) {
         throw new IllegalStateException(
             "no native library found on the classpath at '"
                 + resourcePath
                 + "' -- add a runtimeOnly dependency on the matching "
-                + "io.github.zirekhq.dengjen:dengjen-java-bindings:<version>:<classifier> "
+                + "io.github.zirekhq:dengjen-tts:<version>:<classifier> "
                 + "artifact, or set -Ddengjen.native.library.path to a library you built "
                 + "yourself");
       }
-      Path extracted =
-          Files.createTempFile(
-              "dengjen-native-", "-" + resourcePath.replace('/', '_'), OWNER_ONLY_PERMISSIONS);
-      extracted.toFile().deleteOnExit();
-      Files.copy(in, extracted, StandardCopyOption.REPLACE_EXISTING);
-      return extracted;
+      content = in.readAllBytes();
+    }
+    String hash = sha256Hex(content);
+    Path target = directory.resolve(hash + "-" + resourcePath.replace('/', '_'));
+    if (Files.isRegularFile(target) && sha256Hex(Files.readAllBytes(target)).equals(hash)) {
+      return target;
+    }
+    Path partial = Files.createTempFile(directory, "partial-", ".tmp", OWNER_ONLY_PERMISSIONS);
+    try {
+      Files.write(partial, content);
+      Files.move(
+          partial,
+          target,
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE);
+    } catch (IOException | RuntimeException e) {
+      Files.deleteIfExists(partial);
+      throw e;
+    }
+    return target;
+  }
+
+  private static Path extractionDirectory() throws IOException {
+    String user = System.getProperty("user.name", "unknown").replaceAll("[^A-Za-z0-9_.-]", "_");
+    Path directory = Path.of(System.getProperty("java.io.tmpdir"), "dengjen-native-" + user);
+    FileAttribute<?>[] dirAttrs =
+        OWNER_ONLY_PERMISSIONS.length == 0
+            ? new FileAttribute<?>[0]
+            : new FileAttribute<?>[] {
+              PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
+            };
+    Files.createDirectories(directory, dirAttrs);
+    if (OWNER_ONLY_PERMISSIONS.length > 0) {
+      var owner = Files.getOwner(directory).getName();
+      if (!owner.equals(System.getProperty("user.name"))
+          || !Files.getPosixFilePermissions(directory)
+              .equals(PosixFilePermissions.fromString("rwx------"))) {
+        throw new IOException(
+            "refusing to extract native library into " + directory + ": not private to " + user);
+      }
+    }
+    return directory;
+  }
+
+  private static String sha256Hex(byte[] content) {
+    try {
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 unavailable", e);
     }
   }
 }

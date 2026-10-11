@@ -9,7 +9,7 @@ from pathlib import Path
 
 INCLUDE = re.compile(r"^include::example\$([^\[]+)\[(.*)\]\s*$", re.MULTILINE)
 TAG_ATTR = re.compile(r"tags?=([^,\]]+)")
-JSON_BLOCK = re.compile(r"^\[source,json\]\n----\n(.*?)\n----$", re.MULTILINE | re.DOTALL)
+JSON_BLOCK = re.compile(r"^\[source,json(?:,[^\]]*)?\]\n----\n(.*?)\n----$", re.MULTILINE | re.DOTALL)
 PAGES = Path("docs/modules/ROOT/pages")
 EXAMPLES_LINKS = Path("docs/modules/ROOT/examples")
 

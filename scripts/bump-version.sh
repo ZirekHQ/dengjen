@@ -41,13 +41,16 @@ fi
 
 
 
-sed -i.bak "0,/^version = \"${old_version}\"\$/s//version = \"${new_version}\"/" Cargo.toml
-sed -i.bak "/path = \"crates\//s/version = \"${old_version}\"/version = \"${new_version}\"/" Cargo.toml
+escaped_old="${old_version//./\\.}"
+awk -v old="version = \"${old_version}\"" -v new="version = \"${new_version}\"" \
+  '!done && $0 == old {print new; done=1; next} {print}' Cargo.toml > Cargo.toml.tmp
+mv Cargo.toml.tmp Cargo.toml
+sed -i.bak "/path = \"crates\//s/version = \"${escaped_old}\"/version = \"${new_version}\"/" Cargo.toml
 rm -f Cargo.toml.bak
 
 
 
-sed -i.bak "s/version = \"${old_version}\", default-features = false }\$/version = \"${new_version}\", default-features = false }/" crates/frontends/python/Cargo.toml
+sed -i.bak "s/version = \"${escaped_old}\", default-features = false }\$/version = \"${new_version}\", default-features = false }/" crates/frontends/python/Cargo.toml
 rm -f crates/frontends/python/Cargo.toml.bak
 
 

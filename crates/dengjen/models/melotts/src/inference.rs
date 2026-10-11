@@ -8,19 +8,6 @@ use ort::value::Tensor;
 use std::path::Path;
 use std::sync::Mutex;
 
-#[allow(clippy::vec_init_then_push)]
-fn execution_providers() -> Vec<ort::ep::ExecutionProviderDispatch> {
-    #[allow(unused_mut)]
-    let mut providers = Vec::new();
-    #[cfg(feature = "cuda")]
-    providers.push(ort::ep::CUDA::default().build());
-    #[cfg(feature = "directml")]
-    providers.push(ort::ep::DirectML::default().build());
-    #[cfg(feature = "coreml")]
-    providers.push(ort::ep::CoreML::default().build());
-    providers
-}
-
 pub(crate) struct MeloTTSModel {
     session: Mutex<Session>,
     config: MeloVoiceConfig,
@@ -38,7 +25,7 @@ impl MeloTTSModel {
     ) -> DengjenResult<Self> {
         let session = Session::builder()
             .map_err(|e| DengjenError::FailedToLoadResource(e.to_string()))?
-            .with_execution_providers(execution_providers())
+            .with_execution_providers(dengjen_tts_core::execution_providers())
             .map_err(|e| DengjenError::FailedToLoadResource(e.to_string()))?
             .commit_from_file(model_path)
             .map_err(|e| {

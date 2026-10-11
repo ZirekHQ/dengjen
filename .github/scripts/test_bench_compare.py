@@ -1,7 +1,10 @@
 import importlib.util
 import io
+import os
 import pathlib
+import tempfile
 import unittest
+from unittest import mock
 
 HERE = pathlib.Path(__file__).parent
 spec = importlib.util.spec_from_file_location("bench_compare", HERE / "bench-compare.py")
@@ -71,11 +74,13 @@ class CompareTest(unittest.TestCase):
 class MainTest(unittest.TestCase):
     def run_main(self, base, head, *extra):
         out = io.StringIO()
-        code = bc.main(
-            ["base", "head", *extra],
-            read=lambda p: {"base": base, "head": head}[p],
-            out=out,
-        )
+        env = {k: v for k, v in os.environ.items() if k != "GITHUB_STEP_SUMMARY"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            code = bc.main(
+                ["base", "head", *extra],
+                read=lambda p: {"base": base, "head": head}[p],
+                out=out,
+            )
         return code, out.getvalue()
 
     def test_regression_warns_and_exits_zero(self):
@@ -99,6 +104,27 @@ class MainTest(unittest.TestCase):
     def test_zero_rows_in_base_fails(self):
         code, _ = self.run_main("", data("divan_audio_ops.txt"))
         self.assertEqual(code, 2)
+
+    def test_table_marks_missing_rows_na_and_improvement_below_one(self):
+        rows = bc.compare({"gone": 5.0, "fast": 100.0}, {"new": 5.0, "fast": 50.0}, 2.0)
+        table = bc.render(rows, 2.0, "t")
+        self.assertIn("| `gone` | 0.000 ms | n/a | n/a |", table)
+        self.assertIn("| `new` | n/a | 0.000 ms | n/a |", table)
+        self.assertIn("| `fast` | 0.000 ms | 0.000 ms | 0.50x |", table)
+        self.assertIn("Warning threshold: 2.0x", table)
+
+    def test_summary_file_receives_table_when_env_is_set(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = pathlib.Path(tmp) / "summary.md"
+            env = {"GITHUB_STEP_SUMMARY": str(summary)}
+            with mock.patch.dict(os.environ, env):
+                code = bc.main(
+                    ["base", "head", "--title", "sum"],
+                    read=lambda p: data("divan_audio_ops.txt"),
+                    out=io.StringIO(),
+                )
+            self.assertEqual(code, 0)
+            self.assertIn("### sum", summary.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

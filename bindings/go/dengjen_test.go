@@ -3,9 +3,27 @@ package dengjen
 import (
 	"errors"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
+
+func TestRegisterCallbackIssuesDistinctTokens(t *testing.T) {
+	a := registerCallback(func(SynthesisEvent) bool { return true })
+	b := registerCallback(func(SynthesisEvent) bool { return true })
+	defer releaseCallback(a)
+	defer releaseCallback(b)
+	if a == b {
+		t.Fatal("concurrent registrations share one token")
+	}
+}
+
+func TestInvokeCallbackRecoversPanicAsStop(t *testing.T) {
+	got := invokeCallback(func(SynthesisEvent) bool { panic("boom") }, SynthesisEvent{})
+	if got {
+		t.Fatal("panicking callback must request stop")
+	}
+}
 
 func TestLoadVoiceReportsAnErrorForAMissingConfigPath(t *testing.T) {
 	v, err := LoadVoice("/nonexistent-dengjen-go-binding-test.json")
@@ -294,5 +312,114 @@ func TestSpeakRealtimeModeThenCancelDoesNotPanicOrDeadlock(t *testing.T) {
 		case <-deadline:
 			t.Fatal("no terminal event delivered within 5s after Cancel")
 		}
+	}
+}
+
+func TestFFIErrorCodeMapsEveryHeaderCode(t *testing.T) {
+	cases := map[int32]ErrorCode{
+		-1:    ErrorCodePanic,
+		-1000: ErrorCodeInvalidHandle,
+		16:    ErrorCodeInvalidSynthesisMode,
+		17:    ErrorCodeFailedToLoadResource,
+		18:    ErrorCodePhonemizationError,
+		19:    ErrorCodeOperationError,
+		20:    ErrorCodeInvalidUTF8Sequence,
+		21:    ErrorCodeUnknownError,
+		22:    ErrorCodeNullPointer,
+		23:    ErrorCodeInferenceError,
+		24:    ErrorCodeInvalidConfiguration,
+		25:    ErrorCodeUnsupportedOperation,
+	}
+	for raw, want := range cases {
+		if got := (&FFIError{Code: raw}).ErrorCode(); got != want || int32(got) != raw {
+			t.Errorf("code %d mapped to %d, want %d", raw, got, want)
+		}
+	}
+}
+
+func TestFFIErrorCodeFallsBackToUnknown(t *testing.T) {
+	if got := (&FFIError{Code: 999}).ErrorCode(); got != ErrorCodeUnknownError {
+		t.Fatalf("got %d, want ErrorCodeUnknownError", got)
+	}
+	if got := ErrVoiceClosed.ErrorCode(); got != ErrorCodeUnknownError {
+		t.Fatalf("ErrVoiceClosed mapped to %d, want ErrorCodeUnknownError", got)
+	}
+}
+
+func TestConcurrentSpeakDeliversEachCallbackItsOwnEvents(t *testing.T) {
+	v, err := LoadVoice(syntheticPiperConfigPath(t))
+	if err != nil {
+		t.Fatalf("LoadVoice failed: %v", err)
+	}
+	defer v.Close()
+
+	const workers = 8
+	params := SynthesisParams{Mode: SynthModeLazy, Rate: 10, Volume: 100, Pitch: 50}
+	var wg sync.WaitGroup
+	totals := make([]int, workers)
+	finished := make([]int, workers)
+	errs := make([]error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = v.Speak("Test.", params, func(e SynthesisEvent) bool {
+				totals[i] += len(e.Data)
+				if e.Type == EventFinished {
+					finished[i]++
+				}
+				return true
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	for i := 0; i < workers; i++ {
+		if errs[i] != nil {
+			t.Fatalf("worker %d Speak failed: %v", i, errs[i])
+		}
+		if totals[i] != 8000*2 || finished[i] != 1 {
+			t.Errorf("worker %d got %d bytes and %d finished events, want 16000 and 1",
+				i, totals[i], finished[i])
+		}
+	}
+}
+
+func TestSpeakWithInvalidModeSurfacesTheErrorAndReleasesCallback(t *testing.T) {
+	v, err := LoadVoice(syntheticPiperConfigPath(t))
+	if err != nil {
+		t.Fatalf("LoadVoice failed: %v", err)
+	}
+	defer v.Close()
+
+	var mu sync.Mutex
+	released := 0
+	prevHook := testCallbackDataReleased
+	testCallbackDataReleased = func() { mu.Lock(); released++; mu.Unlock() }
+	defer func() { testCallbackDataReleased = prevHook }()
+
+	var eventErr error
+	params := SynthesisParams{Mode: 99, Rate: 10, Volume: 100, Pitch: 50}
+	err = v.Speak("Test.", params, func(e SynthesisEvent) bool {
+		if e.Type == EventError {
+			eventErr = e.Err
+		}
+		return true
+	})
+	surfaced := err
+	if surfaced == nil {
+		surfaced = eventErr
+	}
+	var ffi *FFIError
+	if !errors.As(surfaced, &ffi) {
+		t.Fatalf("expected an *FFIError from Speak or an error event, got %v", surfaced)
+	}
+	if ffi.ErrorCode() != ErrorCodeInvalidSynthesisMode {
+		t.Errorf("expected ErrorCodeInvalidSynthesisMode, got %d", ffi.Code)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if released != 1 {
+		t.Errorf("expected the callback to be released exactly once, got %d", released)
 	}
 }

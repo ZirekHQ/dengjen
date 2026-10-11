@@ -7,9 +7,8 @@ use dengjen_tashkeel::{
     DynamicInferenceEngine as TashkeelInferenceEngine,
 };
 use dengjen_tts::{
-    default_batch_size, detect_model_type, AudioOutputConfig, DengjenSpeechStreamBatched,
-    DengjenSpeechStreamLazy, DengjenSpeechStreamParallel, DengjenSpeechSynthesizer,
-    RealtimeSpeechStream,
+    default_batch_size, AudioOutputConfig, DengjenSpeechStreamBatched, DengjenSpeechStreamLazy,
+    DengjenSpeechStreamParallel, DengjenSpeechSynthesizer, RealtimeSpeechStream,
 };
 use dengjen_tts_core::{
     Audio, AudioInfo, CancellationToken, DengjenError, DengjenModel, DengjenResult, SynthesisConfig,
@@ -37,6 +36,7 @@ fn should_diacritize(language: &str, use_tashkeel: Option<bool>) -> bool {
 }
 
 #[cfg(not(feature = "tashkeel"))]
+#[cfg_attr(not(feature = "espeak"), allow(dead_code))]
 fn should_diacritize(_language: &str, _use_tashkeel: Option<bool>) -> bool {
     false
 }
@@ -50,6 +50,37 @@ create_exception!(
     "Base Exception for all exceptions raised by pydengjen."
 );
 
+create_exception!(
+    pydengjen,
+    ResourceLoadError,
+    DengjenException,
+    "A model, config or other resource could not be loaded."
+);
+create_exception!(
+    pydengjen,
+    PhonemizationError,
+    DengjenException,
+    "Text could not be converted to phonemes."
+);
+create_exception!(
+    pydengjen,
+    InferenceError,
+    DengjenException,
+    "Model inference failed."
+);
+create_exception!(
+    pydengjen,
+    InvalidConfigurationError,
+    DengjenException,
+    "A voice config or an argument was invalid."
+);
+create_exception!(
+    pydengjen,
+    UnsupportedOperationError,
+    DengjenException,
+    "The loaded model does not support the requested operation."
+);
+
 #[derive(Debug)]
 struct PyDengjenError(DengjenError);
 
@@ -61,7 +92,15 @@ impl From<DengjenError> for PyDengjenError {
 
 impl From<PyDengjenError> for PyErr {
     fn from(py_err: PyDengjenError) -> Self {
-        DengjenException::new_err(py_err.0.to_string())
+        let message = py_err.0.to_string();
+        match py_err.0 {
+            DengjenError::FailedToLoadResource(_) => ResourceLoadError::new_err(message),
+            DengjenError::PhonemizationError(_) => PhonemizationError::new_err(message),
+            DengjenError::InferenceError(_) => InferenceError::new_err(message),
+            DengjenError::InvalidConfiguration(_) => InvalidConfigurationError::new_err(message),
+            DengjenError::UnsupportedOperation(_) => UnsupportedOperationError::new_err(message),
+            DengjenError::OperationError(_) => DengjenException::new_err(message),
+        }
     }
 }
 
@@ -171,6 +210,17 @@ impl WaveSamples {
     }
 }
 
+/// Advances `stream` with the GIL released; `Ok(None)` ends the Python iteration.
+fn next_detached<I, T>(py: Python<'_>, stream: &mut I) -> PyResult<Option<T>>
+where
+    I: Iterator<Item = DengjenResult<T>> + Send,
+    T: Send,
+{
+    py.detach(|| stream.next())
+        .transpose()
+        .map_err(|err| PyDengjenError::from(err).into())
+}
+
 #[pyclass(weakref, module = "pydengjen")]
 struct LazySpeechStream(DengjenSpeechStreamLazy);
 
@@ -186,15 +236,8 @@ impl LazySpeechStream {
         slf
     }
 
-    fn __next__(&mut self, py: Python) -> Option<WaveSamples> {
-        match py.detach(|| self.0.next()) {
-            None => None,
-            Some(Ok(audio)) => Some(WaveSamples(audio)),
-            Some(Err(err)) => {
-                PyErr::from(PyDengjenError::from(err)).restore(py);
-                None
-            }
-        }
+    fn __next__(&mut self, py: Python) -> PyResult<Option<WaveSamples>> {
+        Ok(next_detached(py, &mut self.0)?.map(WaveSamples))
     }
 }
 
@@ -213,15 +256,8 @@ impl ParallelSpeechStream {
         slf
     }
 
-    fn __next__(&mut self, py: Python) -> Option<WaveSamples> {
-        match py.detach(|| self.0.next()) {
-            None => None,
-            Some(Ok(audio)) => Some(WaveSamples(audio)),
-            Some(Err(err)) => {
-                PyErr::from(PyDengjenError::from(err)).restore(py);
-                None
-            }
-        }
+    fn __next__(&mut self, py: Python) -> PyResult<Option<WaveSamples>> {
+        Ok(next_detached(py, &mut self.0)?.map(WaveSamples))
     }
 }
 
@@ -240,15 +276,8 @@ impl BatchedSpeechStream {
         slf
     }
 
-    fn __next__(&mut self, py: Python) -> Option<WaveSamples> {
-        match py.detach(|| self.0.next()) {
-            None => None,
-            Some(Ok(audio)) => Some(WaveSamples(audio)),
-            Some(Err(err)) => {
-                PyErr::from(PyDengjenError::from(err)).restore(py);
-                None
-            }
-        }
+    fn __next__(&mut self, py: Python) -> PyResult<Option<WaveSamples>> {
+        Ok(next_detached(py, &mut self.0)?.map(WaveSamples))
     }
 }
 
@@ -261,15 +290,9 @@ impl PyRealtimeSpeechStream {
         slf
     }
 
-    fn __next__(&mut self, py: Python) -> Option<Py<PyAny>> {
-        match py.detach(|| self.0.next()) {
-            None => None,
-            Some(Ok(samples)) => Some(PyBytes::new(py, &samples.as_wave_bytes()).into()),
-            Some(Err(err)) => {
-                PyErr::from(PyDengjenError::from(err)).restore(py);
-                None
-            }
-        }
+    fn __next__(&mut self, py: Python) -> PyResult<Option<Py<PyAny>>> {
+        Ok(next_detached(py, &mut self.0)?
+            .map(|samples| PyBytes::new(py, &samples.as_wave_bytes()).into()))
     }
 }
 
@@ -286,12 +309,12 @@ struct PiperScales {
 #[pymethods]
 impl PiperScales {
     #[new]
-    fn new(length_scale: f32, noise_scale: f32, noise_w: f32) -> PyDengjenResult<Self> {
-        Ok(PiperScales {
+    fn new(length_scale: f32, noise_scale: f32, noise_w: f32) -> Self {
+        PiperScales {
             length_scale,
             noise_scale,
             noise_w,
-        })
+        }
     }
 }
 
@@ -378,7 +401,7 @@ mod value_type_tests {
 
     #[test]
     fn piper_scales_new_stores_every_field() {
-        let scales = PiperScales::new(0.9, 0.5, 0.7).unwrap();
+        let scales = PiperScales::new(0.9, 0.5, 0.7);
         assert_eq!(scales.length_scale, 0.9);
         assert_eq!(scales.noise_scale, 0.5);
         assert_eq!(scales.noise_w, 0.7);
@@ -386,14 +409,11 @@ mod value_type_tests {
 }
 
 fn load_voice(config_path: &std::path::Path) -> DengjenResult<Arc<dyn DengjenModel + Send + Sync>> {
-    let model_type = detect_model_type(config_path)?;
-    if model_type == "kokoro" {
-        return dengjen_tts_kokoro::from_config_path(config_path);
-    }
-    if model_type == "melotts" {
-        return dengjen_tts_melotts::from_config_path(config_path);
-    }
-    dengjen_tts_piper::from_config_path(config_path)
+    dengjen_tts::load_voice_with(config_path, |model_type, path| match model_type {
+        dengjen_tts::ModelType::Piper => dengjen_tts_piper::from_config_path(path),
+        dengjen_tts::ModelType::Kokoro => dengjen_tts_kokoro::from_config_path(path),
+        dengjen_tts::ModelType::MeloTts => dengjen_tts_melotts::from_config_path(path),
+    })
 }
 
 #[pyclass(weakref, module = "pydengjen")]
@@ -403,8 +423,9 @@ struct PiperModel(Arc<dyn DengjenModel + Send + Sync>);
 #[pymethods]
 impl PiperModel {
     #[new]
-    fn new(config_path: &str) -> PyDengjenResult<Self> {
-        let model = load_voice(&PathBuf::from(config_path))?;
+    fn new(py: Python<'_>, config_path: &str) -> PyDengjenResult<Self> {
+        let path = PathBuf::from(config_path);
+        let model = py.detach(|| load_voice(&path))?;
         Ok(Self(model))
     }
 
@@ -497,12 +518,96 @@ struct Dengjen(Arc<DengjenSpeechSynthesizer>);
 #[pymethods]
 impl Dengjen {
     #[staticmethod]
+    #[pyo3(name = "with_piper")]
+    fn py_with_piper(py: Python<'_>, vits_model: &PiperModel) -> PyDengjenResult<Self> {
+        py.detach(|| Self::with_piper(vits_model))
+    }
+
+    #[pyo3(name = "synthesize", signature = (text, audio_output_config=None))]
+    fn py_synthesize(
+        &self,
+        py: Python<'_>,
+        text: String,
+        audio_output_config: Option<PyAudioOutputConfig>,
+    ) -> PyDengjenResult<LazySpeechStream> {
+        py.detach(|| self.synthesize(text, audio_output_config))
+    }
+
+    #[pyo3(name = "synthesize_lazy", signature = (text, audio_output_config=None))]
+    fn py_synthesize_lazy(
+        &self,
+        py: Python<'_>,
+        text: String,
+        audio_output_config: Option<PyAudioOutputConfig>,
+    ) -> PyDengjenResult<LazySpeechStream> {
+        py.detach(|| self.synthesize_lazy(text, audio_output_config))
+    }
+
+    #[pyo3(name = "synthesize_parallel", signature = (text, audio_output_config=None))]
+    fn py_synthesize_parallel(
+        &self,
+        py: Python<'_>,
+        text: String,
+        audio_output_config: Option<PyAudioOutputConfig>,
+    ) -> PyDengjenResult<ParallelSpeechStream> {
+        py.detach(|| self.synthesize_parallel(text, audio_output_config))
+    }
+
+    #[pyo3(name = "synthesize_batched", signature = (text, audio_output_config=None, batch_size=None))]
+    fn py_synthesize_batched(
+        &self,
+        py: Python<'_>,
+        text: String,
+        audio_output_config: Option<PyAudioOutputConfig>,
+        batch_size: Option<usize>,
+    ) -> PyDengjenResult<BatchedSpeechStream> {
+        py.detach(|| self.synthesize_batched(text, audio_output_config, batch_size))
+    }
+
+    #[pyo3(name = "synthesize_streamed", signature = (text, audio_output_config=None, chunk_size=None, chunk_padding=None))]
+    fn py_synthesize_streamed(
+        &self,
+        py: Python<'_>,
+        text: String,
+        audio_output_config: Option<PyAudioOutputConfig>,
+        chunk_size: Option<usize>,
+        chunk_padding: Option<usize>,
+    ) -> PyDengjenResult<PyRealtimeSpeechStream> {
+        py.detach(|| self.synthesize_streamed(text, audio_output_config, chunk_size, chunk_padding))
+    }
+
+    #[pyo3(name = "synthesize_to_file", signature = (filename, text, audio_output_config=None))]
+    fn py_synthesize_to_file(
+        &self,
+        py: Python<'_>,
+        filename: &str,
+        text: String,
+        audio_output_config: Option<PyAudioOutputConfig>,
+    ) -> PyDengjenResult<()> {
+        py.detach(|| self.synthesize_to_file(filename, text, audio_output_config))
+    }
+
+    #[getter]
+    fn language(&self) -> PyDengjenResult<Option<String>> {
+        Ok(self.0.get_language()?)
+    }
+
+    #[getter]
+    fn speakers(&self) -> PyDengjenResult<Option<HashMap<i64, String>>> {
+        Ok(self.0.get_speakers()?.cloned())
+    }
+
+    fn get_audio_output_info(&self) -> PyDengjenResult<PyWaveInfo> {
+        Ok(self.0.audio_output_info()?.into())
+    }
+}
+
+impl Dengjen {
     fn with_piper(vits_model: &PiperModel) -> PyDengjenResult<Self> {
         let model = Arc::clone(&vits_model.0);
         Ok(Self(Arc::new(DengjenSpeechSynthesizer::new(model)?)))
     }
 
-    #[pyo3(signature = (text, audio_output_config=None))]
     fn synthesize(
         &self,
         text: String,
@@ -511,7 +616,6 @@ impl Dengjen {
         self.synthesize_lazy(text, audio_output_config)
     }
 
-    #[pyo3(signature = (text, audio_output_config=None))]
     fn synthesize_lazy(
         &self,
         text: String,
@@ -523,7 +627,6 @@ impl Dengjen {
         Ok(stream.into())
     }
 
-    #[pyo3(signature = (text, audio_output_config=None))]
     fn synthesize_parallel(
         &self,
         text: String,
@@ -535,7 +638,6 @@ impl Dengjen {
         Ok(stream.into())
     }
 
-    #[pyo3(signature = (text, audio_output_config=None, batch_size=None))]
     fn synthesize_batched(
         &self,
         text: String,
@@ -556,7 +658,6 @@ impl Dengjen {
         Ok(stream.into())
     }
 
-    #[pyo3(signature = (text, audio_output_config=None, chunk_size=None, chunk_padding=None))]
     fn synthesize_streamed(
         &self,
         text: String,
@@ -574,7 +675,6 @@ impl Dengjen {
         Ok(PyRealtimeSpeechStream(stream))
     }
 
-    #[pyo3(signature = (filename, text, audio_output_config=None))]
     fn synthesize_to_file(
         &self,
         filename: &str,
@@ -587,20 +687,6 @@ impl Dengjen {
             audio_output_config.map(|o| o.into()),
         )?;
         Ok(())
-    }
-
-    #[getter]
-    fn language(&self) -> PyDengjenResult<Option<String>> {
-        Ok(self.0.get_language()?)
-    }
-
-    #[getter]
-    fn speakers(&self) -> PyDengjenResult<Option<HashMap<i64, String>>> {
-        Ok(self.0.get_speakers()?.cloned())
-    }
-
-    fn get_audio_output_info(&self) -> PyDengjenResult<PyWaveInfo> {
-        Ok(self.0.audio_output_info()?.into())
     }
 }
 
@@ -615,6 +701,7 @@ fn diacritize_text(text: &str) -> PyResult<std::borrow::Cow<'_, str>> {
 }
 // should_diacritize() is always false without this feature, so this is unreachable.
 #[cfg(not(feature = "tashkeel"))]
+#[cfg_attr(not(feature = "espeak"), allow(dead_code))]
 fn diacritize_text(_text: &str) -> PyResult<std::borrow::Cow<'_, str>> {
     unreachable!("diacritize_text called with the `tashkeel` feature disabled")
 }
@@ -623,6 +710,7 @@ fn diacritize_text(_text: &str) -> PyResult<std::borrow::Cow<'_, str>> {
 #[pyfunction]
 #[pyo3(signature = (text, language, phoneme_separator=None, remove_lang_switch_flags=None, remove_stress=None, use_tashkeel=None))]
 pub fn phonemize_text(
+    py: Python<'_>,
     text: &str,
     language: &str,
     phoneme_separator: Option<char>,
@@ -630,19 +718,25 @@ pub fn phonemize_text(
     remove_stress: Option<bool>,
     use_tashkeel: Option<bool>,
 ) -> PyResult<Vec<String>> {
-    let text = if should_diacritize(language, use_tashkeel) {
-        diacritize_text(text)?
-    } else {
-        std::borrow::Cow::from(text)
-    };
-    dengjen_espeak_phonemizer::text_to_phonemes(
-        &text,
-        language,
-        phoneme_separator,
-        remove_lang_switch_flags.unwrap_or(true),
-        remove_stress.unwrap_or(false),
-    )
-    .map_err(|err| DengjenException::new_err(err.to_string()))
+    py.detach(|| {
+        let text = if should_diacritize(language, use_tashkeel) {
+            diacritize_text(text)?
+        } else {
+            std::borrow::Cow::from(text)
+        };
+        dengjen_espeak_phonemizer::text_to_phonemes(
+            &text,
+            language,
+            phoneme_separator,
+            remove_lang_switch_flags.unwrap_or(true),
+            remove_stress.unwrap_or(false),
+        )
+        .map_err(|err| {
+            PyErr::from(PyDengjenError::from(DengjenError::PhonemizationError(
+                err.to_string(),
+            )))
+        })
+    })
 }
 
 #[cfg(test)]
@@ -719,6 +813,20 @@ fn pydengjen(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRealtimeSpeechStream>()?;
 
     m.add("DengjenException", m.py().get_type::<DengjenException>())?;
+    m.add("ResourceLoadError", m.py().get_type::<ResourceLoadError>())?;
+    m.add(
+        "PhonemizationError",
+        m.py().get_type::<PhonemizationError>(),
+    )?;
+    m.add("InferenceError", m.py().get_type::<InferenceError>())?;
+    m.add(
+        "InvalidConfigurationError",
+        m.py().get_type::<InvalidConfigurationError>(),
+    )?;
+    m.add(
+        "UnsupportedOperationError",
+        m.py().get_type::<UnsupportedOperationError>(),
+    )?;
 
     #[cfg(feature = "espeak")]
     m.add_function(wrap_pyfunction!(phonemize_text, m)?)?;
@@ -863,6 +971,23 @@ mod model_and_synthesizer_tests {
             err.contains("model_path"),
             "expected a Kokoro-loader error naming the missing `model_path` field, got: {err}"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_voice_rejects_an_unknown_model_type_instead_of_loading_as_piper() {
+        let dir = std::env::temp_dir().join(format!(
+            "dengjen_python_load_voice_test_unknown_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = write_temp_config(&dir, "config.json", r#"{"model_type": "bark"}"#);
+        let err = match load_voice(&path) {
+            Err(e) => e,
+            Ok(_) => panic!("expected an error for an unknown model_type"),
+        };
+        assert!(matches!(err, DengjenError::InvalidConfiguration(_)));
+        assert!(err.to_string().contains("bark"));
         std::fs::remove_dir_all(&dir).ok();
     }
 

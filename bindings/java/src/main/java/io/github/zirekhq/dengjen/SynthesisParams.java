@@ -1,5 +1,7 @@
 package io.github.zirekhq.dengjen;
 
+import java.util.Objects;
+
 public record SynthesisParams(
     SynthesisMode mode,
     int rate,
@@ -9,6 +11,11 @@ public record SynthesisParams(
     boolean nonblocking) {
 
   public SynthesisParams {
+    Objects.requireNonNull(mode, "mode");
+    if (appendedSilenceMs < 0) {
+      throw new IllegalArgumentException(
+          "appendedSilenceMs must be >= 0, got " + appendedSilenceMs);
+    }
     requireRange(rate, "rate");
     requireRange(volume, "volume");
     requireRange(pitch, "pitch");

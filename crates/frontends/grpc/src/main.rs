@@ -8,6 +8,8 @@ use dengjen_tts_core::{
     read_ignoring_poison, write_ignoring_poison, CancellationToken, DengjenAudioResult,
     DengjenError, DengjenModel, DengjenResult, SynthesisConfig,
 };
+mod limits;
+
 use grpc::dengjen_grpc_server::{DengjenGrpc, DengjenGrpcServer};
 use std::collections::HashMap;
 use std::io::Write;
@@ -15,11 +17,13 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use xxhash_rust::xxh3::xxh3_64;
+
+use limits::Limits;
 
 const DEFAULT_DENGJEN_GRPC_SERVER_PORT: u16 = 49314;
 
@@ -34,6 +38,8 @@ pub mod grpc {
 enum DengjenGrpcError {
     DengjenError(DengjenError),
     VoiceNotFound(String),
+    InvalidArgument(String),
+    ResourceExhausted(String),
 }
 
 impl std::error::Error for DengjenGrpcError {}
@@ -42,7 +48,9 @@ impl std::fmt::Display for DengjenGrpcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DengjenError(e) => write!(f, "{}", e),
-            Self::VoiceNotFound(msg) => write!(f, "{}", msg),
+            Self::VoiceNotFound(msg)
+            | Self::InvalidArgument(msg)
+            | Self::ResourceExhausted(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -65,6 +73,8 @@ impl From<DengjenGrpcError> for Status {
                 DengjenError::OperationError(msg) => Status::unknown(msg),
             },
             DengjenGrpcError::VoiceNotFound(msg) => Status::not_found(msg),
+            DengjenGrpcError::InvalidArgument(msg) => Status::invalid_argument(msg),
+            DengjenGrpcError::ResourceExhausted(msg) => Status::resource_exhausted(msg),
         }
     }
 }
@@ -89,11 +99,45 @@ impl Voice {
 }
 
 /// Registry of loaded voices, keyed by voice key.
-struct DengjenGrpcService(RwLock<HashMap<String, Voice>>);
+struct DengjenGrpcService(RwLock<HashMap<String, Voice>>, Capacity);
+
+/// Server-wide caps plus the semaphore that enforces the concurrency cap.
+struct Capacity {
+    limits: Limits,
+    synthesis: Arc<Semaphore>,
+}
 
 impl DengjenGrpcService {
+    #[cfg(test)]
     fn new() -> Self {
-        Self(RwLock::new(HashMap::new()))
+        Self::with_limits(Limits::default())
+    }
+
+    fn with_limits(limits: Limits) -> Self {
+        let synthesis = Arc::new(Semaphore::new(limits.max_concurrent_synthesis));
+        Self(RwLock::new(HashMap::new()), Capacity { limits, synthesis })
+    }
+
+    fn check_text_size(&self, text: &str) -> DengjenGrpcResult<()> {
+        let max = self.1.limits.max_text_bytes;
+        if text.len() > max {
+            return Err(DengjenGrpcError::InvalidArgument(format!(
+                "Request text is {} bytes; the limit is {max} bytes",
+                text.len()
+            )));
+        }
+        Ok(())
+    }
+
+    fn acquire_synthesis_permit(&self) -> DengjenGrpcResult<OwnedSemaphorePermit> {
+        Arc::clone(&self.1.synthesis)
+            .try_acquire_owned()
+            .map_err(|_| {
+                DengjenGrpcError::ResourceExhausted(format!(
+                    "Too many concurrent synthesis tasks; the limit is {}",
+                    self.1.limits.max_concurrent_synthesis
+                ))
+            })
     }
 
     /// Derives a stable voice key from a canonicalized config path.
@@ -111,31 +155,59 @@ impl DengjenGrpcService {
         Ok(format!("{:016x}", xxh3_64(canonical_path.as_bytes())))
     }
 
-    fn load_voice_from_config(
-        &self,
-        config_path: PathBuf,
-    ) -> DengjenGrpcResult<grpc::VoiceDescriptor> {
+    fn resolve_voice_key(config_path: &std::path::Path) -> DengjenGrpcResult<String> {
         if !config_path.is_file() {
             return Err(DengjenGrpcError::VoiceNotFound(format!(
                 "Config file does not exists: `{}`",
                 config_path.display()
             )));
         }
-        let voice_key = Self::voice_key_for_path(&config_path)?;
-        if let Some(voice) = read_ignoring_poison(&self.0).get(&voice_key) {
-            return self.build_voice_info(voice_key, voice.model_ref());
-        }
+        Self::voice_key_for_path(config_path)
+    }
 
+    fn cached_voice_info(
+        &self,
+        voice_key: &str,
+    ) -> Option<DengjenGrpcResult<grpc::VoiceDescriptor>> {
+        let voices = read_ignoring_poison(&self.0);
+        let voice = voices.get(voice_key)?;
+        Some(self.build_voice_info(voice_key.to_string(), voice.model_ref()))
+    }
+
+    /// Registers `model` under `voice_key`; a voice a concurrent load registered first wins.
+    fn register_voice(
+        &self,
+        voice_key: String,
+        model: Arc<dyn DengjenModel + Send + Sync>,
+    ) -> DengjenGrpcResult<grpc::VoiceDescriptor> {
+        let candidate = Voice::new(model)?;
+        let mut voices = write_ignoring_poison(&self.0);
+        if !voices.contains_key(&voice_key) && voices.len() >= self.1.limits.max_voices {
+            return Err(DengjenGrpcError::ResourceExhausted(format!(
+                "Too many loaded voices; the limit is {}",
+                self.1.limits.max_voices
+            )));
+        }
+        let voice = voices.entry(voice_key.clone()).or_insert(candidate);
+        self.build_voice_info(voice_key, voice.model_ref())
+    }
+
+    #[cfg(test)]
+    fn load_voice_from_config(
+        &self,
+        config_path: PathBuf,
+    ) -> DengjenGrpcResult<grpc::VoiceDescriptor> {
+        let voice_key = Self::resolve_voice_key(&config_path)?;
+        if let Some(info) = self.cached_voice_info(&voice_key) {
+            return info;
+        }
         let model = load_voice(&config_path)?;
         log::info!(
             "Loaded Vits voice from: `{}`. Voice key: {}",
             config_path.display(),
             voice_key
         );
-        let voice = Voice::new(model)?;
-        let voice_info = self.build_voice_info(voice_key.clone(), voice.model_ref())?;
-        write_ignoring_poison(&self.0).insert(voice_key, voice);
-        Ok(voice_info)
+        self.register_voice(voice_key, model)
     }
 
     fn lookup_synth(&self, voice_key: &str) -> DengjenGrpcResult<Arc<DengjenSpeechSynthesizer>> {
@@ -304,15 +376,39 @@ impl DengjenGrpcService {
     }
 }
 
+async fn run_blocking<T, F>(work: F) -> DengjenGrpcResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> DengjenGrpcResult<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(work).await.map_err(|e| {
+        DengjenGrpcError::DengjenError(DengjenError::OperationError(format!(
+            "Blocking task failed: {e}"
+        )))
+    })?
+}
+
+/// Logs the detailed cause server-side and returns an error that exposes no filesystem or
+/// parser detail to the client.
+fn sanitize_load_error(config_path: &std::path::Path, err: DengjenGrpcError) -> DengjenGrpcError {
+    log::warn!("LoadVoice failed for `{}`: {}", config_path.display(), err);
+    match err {
+        DengjenGrpcError::VoiceNotFound(_) => DengjenGrpcError::VoiceNotFound(
+            "The voice config was not found or is not readable".to_string(),
+        ),
+        DengjenGrpcError::DengjenError(_) => DengjenGrpcError::DengjenError(
+            DengjenError::FailedToLoadResource("The voice could not be loaded".to_string()),
+        ),
+        other => other,
+    }
+}
+
 fn load_voice(config_path: &std::path::Path) -> DengjenResult<Arc<dyn DengjenModel + Send + Sync>> {
-    let model_type = dengjen_tts::detect_model_type(config_path)?;
-    if model_type == "kokoro" {
-        return dengjen_tts_kokoro::from_config_path(config_path);
-    }
-    if model_type == "melotts" {
-        return dengjen_tts_melotts::from_config_path(config_path);
-    }
-    dengjen_tts_piper::from_config_path(config_path)
+    dengjen_tts::load_voice_with(config_path, |model_type, path| match model_type {
+        dengjen_tts::ModelType::Piper => dengjen_tts_piper::from_config_path(path),
+        dengjen_tts::ModelType::Kokoro => dengjen_tts_kokoro::from_config_path(path),
+        dengjen_tts::ModelType::MeloTts => dengjen_tts_melotts::from_config_path(path),
+    })
 }
 
 fn narrow_prosody_value(name: &str, value: u32) -> Result<u8, String> {
@@ -482,8 +578,29 @@ impl DengjenGrpc for DengjenGrpcService {
         request: Request<grpc::VoiceConfigLocation>,
     ) -> Result<Response<grpc::VoiceDescriptor>, Status> {
         let config_path = PathBuf::from(request.into_inner().path);
-        let voice_info = self.load_voice_from_config(config_path)?;
-        Ok(Response::new(voice_info))
+        let voice_key = {
+            let key_path = config_path.clone();
+            run_blocking(move || DengjenGrpcService::resolve_voice_key(&key_path))
+                .await
+                .map_err(|e| sanitize_load_error(&config_path, e))?
+        };
+        if let Some(info) = self.cached_voice_info(&voice_key) {
+            return Ok(Response::new(info?));
+        }
+        let permit = self.acquire_synthesis_permit()?;
+        let load_path = config_path.clone();
+        let model = run_blocking(move || {
+            let _permit = permit;
+            load_voice(&load_path).map_err(DengjenGrpcError::from)
+        })
+        .await
+        .map_err(|e| sanitize_load_error(&config_path, e))?;
+        log::info!(
+            "Loaded Vits voice from: `{}`. Voice key: {}",
+            config_path.display(),
+            voice_key
+        );
+        Ok(Response::new(self.register_voice(voice_key, model)?))
     }
 
     async fn get_voice_info(
@@ -544,10 +661,13 @@ impl DengjenGrpc for DengjenGrpcService {
         if mode == grpc::SynthesisMode::ModeBatched {
             resolve_batch_size(batch_size)?;
         }
+        self.check_text_size(&req.text)?;
         let synth = self.lookup_synth(&req.voice_key)?;
+        let permit = self.acquire_synthesis_permit()?;
 
         let (tx, rx) = mpsc::channel(512);
         tokio::task::spawn_blocking(move || {
+            let _permit = permit;
             let dengjen_stream =
                 match build_synthesis_stream(&synth, req.text, output_config, mode, batch_size) {
                     Ok(stream) => stream,
@@ -573,19 +693,13 @@ impl DengjenGrpc for DengjenGrpcService {
         let req = request.into_inner();
         let output_config =
             output_config_from_prosody(req.prosody).map_err(Status::invalid_argument)?;
-        let synth = {
-            let voices = read_ignoring_poison(&self.0);
-            let voice = voices.get(&req.voice_key).ok_or_else(|| {
-                DengjenGrpcError::VoiceNotFound(format!(
-                    "A voice with the key `{}` has not been loaded",
-                    req.voice_key
-                ))
-            })?;
-            Arc::clone(&voice.0)
-        };
+        self.check_text_size(&req.text)?;
+        let synth = self.lookup_synth(&req.voice_key)?;
+        let permit = self.acquire_synthesis_permit()?;
 
         let (tx, rx) = mpsc::channel(512);
         tokio::task::spawn_blocking(move || {
+            let _permit = permit;
             let realtime_speech_stream = match synth.synthesize_streamed(
                 req.text,
                 output_config,
@@ -671,7 +785,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::io::stdout().flush()?;
     log::info!("Dengjen GRPC server listening on 127.0.0.1:{bound_port}");
 
-    let server = DengjenGrpcServer::new(DengjenGrpcService::new());
+    let limits = Limits::from_env();
+    log::info!("Dengjen GRPC limits: {limits:?}");
+    let server = DengjenGrpcServer::new(DengjenGrpcService::with_limits(limits))
+        .max_decoding_message_size(limits.max_message_bytes)
+        .max_encoding_message_size(limits.max_message_bytes);
     Server::builder()
         .add_service(server)
         .serve_with_incoming(TcpListenerStream::new(listener))
@@ -903,6 +1021,47 @@ mod voice_loading_tests {
     }
 
     #[test]
+    fn register_voice_keeps_the_voice_a_concurrent_load_registered_first() {
+        let service = service_with_voice(
+            "v1",
+            FakeModel {
+                speakers: StdHashMap::new(),
+            },
+        );
+        let first = service.lookup_synth("v1").unwrap();
+        let second = FakeModel {
+            speakers: StdHashMap::new(),
+        };
+        service
+            .register_voice("v1".to_string(), Arc::new(second))
+            .unwrap();
+        assert!(Arc::ptr_eq(&first, &service.lookup_synth("v1").unwrap()));
+    }
+
+    #[tokio::test]
+    async fn run_blocking_reports_a_panicking_task_as_an_error() {
+        let result: DengjenGrpcResult<()> = run_blocking(|| panic!("boom")).await;
+        assert!(matches!(
+            result,
+            Err(DengjenGrpcError::DengjenError(
+                DengjenError::OperationError(_)
+            ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn load_voice_rpc_reports_not_found_for_a_missing_config_path() {
+        let service = DengjenGrpcService::new();
+        let request = Request::new(grpc::VoiceConfigLocation {
+            path: "/does/not/exist-dengjen-test.json".to_string(),
+        });
+        let status = DengjenGrpc::load_voice(&service, request)
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+    }
+
+    #[test]
     fn build_synthesis_stream_dispatches_lazy_by_default_and_when_unspecified() {
         let model = FakeModel {
             speakers: StdHashMap::new(),
@@ -1035,55 +1194,257 @@ mod voice_loading_tests {
         );
     }
 
+    #[test]
+    fn drain_stream_into_channel_returns_when_the_receiver_is_already_dropped() {
+        let service = service_with_voice(
+            "v1",
+            FakeModel {
+                speakers: StdHashMap::new(),
+            },
+        );
+        let synth = service.lookup_synth("v1").unwrap();
+        let stream = build_synthesis_stream(
+            &synth,
+            "hi".to_string(),
+            None,
+            grpc::SynthesisMode::ModeBatched,
+            Some(1),
+        )
+        .unwrap();
+        let (tx, rx) = mpsc::channel(1);
+        drop(rx);
+
+        drain_stream_into_channel(stream, tx, |wav| grpc::SynthesisChunk {
+            audio_bytes: wav.as_wave_bytes(),
+            real_time_factor: wav.real_time_factor().unwrap_or_default(),
+        });
+    }
+
+    fn fake_service(limits: Limits) -> DengjenGrpcService {
+        let service = DengjenGrpcService::with_limits(limits);
+        let voice = Voice::new(Arc::new(FakeModel {
+            speakers: StdHashMap::new(),
+        }))
+        .unwrap();
+        service.0.write().unwrap().insert("v1".to_string(), voice);
+        service
+    }
+
+    fn request_with_text(text: &str) -> Request<grpc::SynthesisRequest> {
+        Request::new(grpc::SynthesisRequest {
+            voice_key: "v1".to_string(),
+            text: text.to_string(),
+            prosody: None,
+            synthesis_mode: grpc::SynthesisMode::ModeLazy as i32,
+            batch_size: None,
+        })
+    }
+
     #[tokio::test]
-    async fn synthesize_utterance_does_not_panic_when_the_receiver_is_dropped_mid_stream() {
-        // `spawn_blocking`'s `JoinHandle` is never exposed, so a panic there is otherwise
-        // undetectable; this hooks the global panic handler instead. Risk: a concurrent test's
-        // own panic during the ~50ms window below could misattribute here.
-        use std::panic::{set_hook, take_hook};
-        use std::sync::atomic::{AtomicBool, Ordering};
+    async fn synthesize_utterance_rejects_text_above_the_byte_limit() {
+        let service = fake_service(Limits {
+            max_text_bytes: 4,
+            ..Limits::default()
+        });
+        let status = service
+            .synthesize_utterance(request_with_text("hello"))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
 
-        let panicked = std::sync::Arc::new(AtomicBool::new(false));
-        let panicked_flag = panicked.clone();
-        let previous_hook = take_hook();
-        set_hook(Box::new(move |info| {
-            panicked_flag.store(true, Ordering::SeqCst);
-            previous_hook(info);
-        }));
+    #[tokio::test]
+    async fn synthesize_utterance_realtime_rejects_text_above_the_byte_limit() {
+        let service = fake_service(Limits {
+            max_text_bytes: 4,
+            ..Limits::default()
+        });
+        let status = service
+            .synthesize_utterance_realtime(request_with_text("hello"))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
 
+    #[tokio::test]
+    async fn synthesize_utterance_realtime_reports_not_found_for_an_unloaded_voice() {
+        let service = fake_service(Limits::default());
+        let mut request = request_with_text("hi");
+        request.get_mut().voice_key = "missing".to_string();
+        let status = service
+            .synthesize_utterance_realtime(request)
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn synthesize_utterance_realtime_opens_a_stream_for_a_loaded_voice() {
+        let service = fake_service(Limits::default());
+        let response = service
+            .synthesize_utterance_realtime(request_with_text("hi"))
+            .await;
+        assert!(response.is_ok());
+    }
+
+    #[tokio::test]
+    async fn synthesize_utterance_is_rejected_when_no_synthesis_slot_is_free() {
+        let service = fake_service(Limits {
+            max_concurrent_synthesis: 1,
+            ..Limits::default()
+        });
+        let _held = service.acquire_synthesis_permit().unwrap();
+        let status = service
+            .synthesize_utterance(request_with_text("hi"))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[test]
+    fn acquire_synthesis_permit_frees_the_slot_when_the_permit_drops() {
+        let service = fake_service(Limits {
+            max_concurrent_synthesis: 1,
+            ..Limits::default()
+        });
+        let permit = service.acquire_synthesis_permit().unwrap();
+        assert!(service.acquire_synthesis_permit().is_err());
+        drop(permit);
+        assert!(service.acquire_synthesis_permit().is_ok());
+    }
+
+    #[test]
+    fn register_voice_rejects_a_new_key_once_the_voice_cap_is_reached() {
+        let service = fake_service(Limits {
+            max_voices: 1,
+            ..Limits::default()
+        });
         let model = FakeModel {
             speakers: StdHashMap::new(),
         };
-        let service = service_with_voice("v1", model);
-        let request = Request::new(grpc::SynthesisRequest {
-            voice_key: "v1".to_string(),
-            text: "hi".to_string(),
-            prosody: None,
-            synthesis_mode: grpc::SynthesisMode::ModeBatched as i32,
-            batch_size: Some(1),
+        let result = service.register_voice("v2".to_string(), Arc::new(model));
+        assert!(matches!(
+            result,
+            Err(DengjenGrpcError::ResourceExhausted(_))
+        ));
+    }
+
+    #[test]
+    fn register_voice_accepts_an_already_loaded_key_at_the_voice_cap() {
+        let service = fake_service(Limits {
+            max_voices: 1,
+            ..Limits::default()
         });
+        let model = FakeModel {
+            speakers: StdHashMap::new(),
+        };
+        assert!(service
+            .register_voice("v1".to_string(), Arc::new(model))
+            .is_ok());
+    }
 
-        let response = service
-            .synthesize_utterance(request)
+    #[tokio::test]
+    async fn load_voice_rpc_does_not_reflect_the_requested_path_or_os_error() {
+        let service = DengjenGrpcService::new();
+        let path = "/does/not/exist-dengjen-secret-name.json";
+        let status = DengjenGrpc::load_voice(
+            &service,
+            Request::new(grpc::VoiceConfigLocation {
+                path: path.to_string(),
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+        assert!(!status.message().contains("secret-name"));
+        assert!(!status.message().contains("os error"));
+    }
+
+    #[tokio::test]
+    async fn load_voice_rpc_reuses_a_voice_already_loaded_for_the_same_config_path() {
+        let dir =
+            std::env::temp_dir().join(format!("dengjen_grpc_reuse_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.json");
+        std::fs::write(&config, "{}").unwrap();
+        let key = DengjenGrpcService::voice_key_for_path(&config).unwrap();
+        let service = DengjenGrpcService::new();
+        let voice = Voice::new(Arc::new(FakeModel {
+            speakers: StdHashMap::new(),
+        }))
+        .unwrap();
+        service.0.write().unwrap().insert(key.clone(), voice);
+
+        let response = DengjenGrpc::load_voice(
+            &service,
+            Request::new(grpc::VoiceConfigLocation {
+                path: config.to_string_lossy().into_owned(),
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.into_inner().voice_key, key);
+        assert_eq!(service.0.read().unwrap().len(), 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn get_voice_info_returns_the_descriptor_of_a_loaded_voice() {
+        let service = fake_service(Limits::default());
+        let info = service
+            .get_voice_info(Request::new(grpc::VoiceRef {
+                voice_key: "v1".to_string(),
+            }))
             .await
-            .expect("dispatch must succeed");
-        // Drop before polling any items: races the mpsc receiver against the still-possibly-
-        // mid-synthesis blocking task, exercising `drain_stream_into_channel`'s "receiver went
-        // away" path.
-        drop(response);
+            .unwrap()
+            .into_inner();
+        assert_eq!(info.voice_key, "v1");
+        assert_eq!(info.audio.unwrap().sample_rate, 22050);
+    }
 
-        // Give the spawned blocking task a moment to observe the dropped
-        // receiver and return; if it panicked, the hook above recorded it.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    #[tokio::test]
+    async fn get_voice_info_reports_not_found_for_an_unloaded_voice() {
+        let service = fake_service(Limits::default());
+        let status = service
+            .get_voice_info(Request::new(grpc::VoiceRef {
+                voice_key: "missing".to_string(),
+            }))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+    }
 
-        // `take_hook()` alone uninstalls the current hook and reinstalls the default,
-        // returning what it removed; calling `set_hook` on that return value would
-        // just reinstall the very hook we're trying to discard.
-        let _ = take_hook();
-        assert!(
-            !panicked.load(Ordering::SeqCst),
-            "spawned blocking task panicked during mid-stream drop"
-        );
+    #[tokio::test]
+    async fn set_synthesis_options_requires_the_options_payload() {
+        let service = fake_service(Limits::default());
+        let status = service
+            .set_synthesis_options(Request::new(grpc::VoiceSynthesisSettings {
+                voice_key: "v1".to_string(),
+                synthesis_options: None,
+            }))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn set_synthesis_options_accepts_options_for_a_loaded_voice() {
+        let service = fake_service(Limits::default());
+        let options = grpc::SynthesisSettings {
+            speaker: None,
+            length_scale: Some(1.2),
+            noise_scale: None,
+            noise_w: None,
+            parameters: StdHashMap::new(),
+        };
+        let result = service
+            .set_synthesis_options(Request::new(grpc::VoiceSynthesisSettings {
+                voice_key: "v1".to_string(),
+                synthesis_options: Some(options),
+            }))
+            .await;
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -1162,6 +1523,23 @@ mod load_voice_dispatch_tests {
             err.contains("model_path"),
             "expected a Kokoro-loader error naming the missing `model_path` field, got: {err}"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_voice_rejects_an_unknown_model_type_instead_of_loading_as_piper() {
+        let dir = std::env::temp_dir().join(format!(
+            "dengjen_grpc_load_voice_test_unknown_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = write_temp_config(&dir, "config.json", r#"{"model_type": "bark"}"#);
+        let err = match load_voice(&path) {
+            Err(e) => e,
+            Ok(_) => panic!("expected an error for an unknown model_type"),
+        };
+        assert!(matches!(err, DengjenError::InvalidConfiguration(_)));
+        assert!(err.to_string().contains("bark"));
         std::fs::remove_dir_all(&dir).ok();
     }
 

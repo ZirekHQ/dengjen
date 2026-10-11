@@ -13,9 +13,13 @@ class RealVoiceE2ETest {
   @Test
   void synthesizesRealAudioFromARealVoice(@TempDir Path tempDir) throws IOException {
     String configPath = System.getenv("DENGJEN_KOKORO_TEST_VOICE_CONFIG");
-    assumeTrue(
-        configPath != null,
-        "set DENGJEN_KOKORO_TEST_VOICE_CONFIG to a real Kokoro voice config to run this test");
+    String reason =
+        "SKIPPED, no real voice exercised: set DENGJEN_KOKORO_TEST_VOICE_CONFIG to a real Kokoro"
+            + " voice config (set DENGJEN_REQUIRE_REAL_VOICE=1 to make this a failure)";
+    if ("1".equals(System.getenv("DENGJEN_REQUIRE_REAL_VOICE"))) {
+      assertThat(configPath).as("DENGJEN_REQUIRE_REAL_VOICE=1 but %s", reason).isNotNull();
+    }
+    assumeTrue(configPath != null, reason);
 
     try (Voice voice = Voice.load(configPath)) {
       Path outPath = tempDir.resolve("output.wav");

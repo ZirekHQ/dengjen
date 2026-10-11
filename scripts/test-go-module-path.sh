@@ -41,10 +41,12 @@ assert_path v2.0.1 "${base}/v2"
 assert_path v10.0.0 "${base}/v10"
 assert_path v18446744073709551616.0.0 "${base}/v18446744073709551616"
 
-if "$here/go-module-path.sh" 2.0.1 2>/dev/null; then
-  echo "unprefixed version must be rejected" >&2
-  exit 1
-fi
+for invalid in 2.0.1 v2.0.0-rc.1 v2.0; do
+  if "$here/go-module-path.sh" "$invalid" 2>/dev/null; then
+    echo "${invalid} must be rejected" >&2
+    exit 1
+  fi
+done
 
 for version in "$@"; do
   assert_resolves "$version"

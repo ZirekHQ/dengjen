@@ -1,6 +1,7 @@
 = Build from source
 
-Dengjen pulls its native dependencies (eSpeak-ng, Sonic, ...) in as git submodules, so clone
+Dengjen vendors Sonic as a git submodule (`deps/sonic`). eSpeak-ng comes from the
+`dengjen-espeak-rs-sys` crate, and its data ships in `deps/dev/espeak-ng-data`. Clone
 recursively:
 
 [source,sh]
