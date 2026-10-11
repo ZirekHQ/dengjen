@@ -3,8 +3,8 @@ use std::path::{Component, Path, PathBuf};
 
 /// Joins `relative` onto `base_dir`, rejecting values that would leave it.
 ///
-/// Absolute paths, drive prefixes and `..` components are refused, so a voice config can only
-/// name files inside its own directory.
+/// Absolute paths, drive prefixes and `..` components are refused, so a voice config cannot name
+/// a path outside its directory by lexical traversal. Symlinks are not resolved.
 pub fn resolve_within(base_dir: &Path, field: &str, relative: &str) -> DengjenResult<PathBuf> {
     let escapes = Path::new(relative).components().any(|c| {
         matches!(

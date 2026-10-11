@@ -346,7 +346,7 @@ jobs:
           language: Rust
 
   # Real voices come from the sha256-pinned release assets in .github/bench-fixtures.json, the
-  # same fixtures synth-bench.yml uses. Tests self-skip when a fixture is missing.
+  # same fixtures synth-bench.yml uses.
   kokoro-real-voice-e2e:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest

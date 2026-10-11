@@ -102,7 +102,8 @@ impl DengjenError {
         }
     }
 
-    /// The bare message of the category-bearing error, without the category prefix `Display` adds.
+    /// The bare message of the category-bearing error, without the `Failed to load resource: `
+    /// prefix `Display` adds to `FailedToLoadResource`.
     pub fn message(&self) -> &str {
         match self.kind() {
             Self::FailedToLoadResource(msg)
@@ -115,7 +116,8 @@ impl DengjenError {
         }
     }
 
-    /// The attached causes rendered as `": first: second"`, or empty when there are none.
+    /// The attached causes, newest first, rendered as `": newest: older"`, or empty when there are
+    /// none.
     pub fn cause_chain(&self) -> String {
         let mut chain = String::new();
         let mut next = self.source();

@@ -84,7 +84,8 @@ impl DengjenVoice {
 impl Drop for DengjenVoice {
     fn drop(&mut self) {
         // Realtime syntheses stop through the token; every mode stops at the next chunk once
-        // `closing` is set, so no callback fires after the unload call returns.
+        // `closing` is set, so no nonblocking worker callback fires after unload returns, except
+        // when unloading from that voice's own callback.
         let _ = _cancel(&self.active_cancel_token);
         self.in_flight.close_and_wait();
     }
@@ -446,7 +447,9 @@ pub extern "C" fn libdengjenLoadVoiceFromConfigPath(
 
 /// Cancels any running synthesis, waits for nonblocking workers to stop, then frees the voice.
 /// No callback fires after this returns, so `user_data` may be released immediately afterwards.
-/// Calling it from inside a callback of the same voice frees the voice without waiting.
+/// The exception is a call from inside a callback of the same voice: it frees the voice without
+/// waiting, and that worker still delivers a final FINISHED event, so keep `user_data` alive
+/// until it arrives.
 ///
 /// # Safety
 /// `voice_ptr` must be non-null and well-aligned, and no other call may use the voice
