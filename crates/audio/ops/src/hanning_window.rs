@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::f32::consts::PI;
 
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub enum AudioOpsError {
     InvalidWindowLength(usize),
 }

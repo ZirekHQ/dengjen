@@ -68,18 +68,20 @@ final class DengjenLayouts {
 
   static final GroupLayout SYNTHESIS_PARAMS =
       MemoryLayout.structLayout(
+              JAVA_INT.withName("struct_size"),
               JAVA_INT.withName("mode"),
               JAVA_BYTE.withName("rate"),
               JAVA_BYTE.withName("volume"),
               JAVA_BYTE.withName("pitch"),
               MemoryLayout.paddingLayout(1),
               JAVA_INT.withName("appended_silence_ms"),
-              MemoryLayout.paddingLayout(4),
               ADDRESS.withName("callback"),
               JAVA_BYTE.withName("nonblocking"),
               MemoryLayout.paddingLayout(7),
               ADDRESS.withName("user_data"))
           .withName("SynthesisParams");
+  static final long SYNTHESIS_PARAMS_STRUCT_SIZE_OFFSET =
+      SYNTHESIS_PARAMS.byteOffset(PathElement.groupElement("struct_size"));
   static final long SYNTHESIS_PARAMS_MODE_OFFSET =
       SYNTHESIS_PARAMS.byteOffset(PathElement.groupElement("mode"));
   static final long SYNTHESIS_PARAMS_RATE_OFFSET =

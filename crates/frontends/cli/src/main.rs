@@ -636,6 +636,9 @@ fn load_voice(
             dengjen_tts::ModelType::Piper => dengjen_tts_piper::from_config_path(path),
             dengjen_tts::ModelType::Kokoro => dengjen_tts_kokoro::from_config_path(path),
             dengjen_tts::ModelType::MeloTts => dengjen_tts_melotts::from_config_path(path),
+            other => Err(dengjen_tts::DengjenError::InvalidConfiguration(format!(
+                "unsupported model type `{other}`"
+            ))),
         },
     )?)
 }

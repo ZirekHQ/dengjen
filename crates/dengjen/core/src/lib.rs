@@ -53,6 +53,7 @@ pub type AudioStreamIterator<'a> =
     Box<dyn Iterator<Item = DengjenResult<AudioSamples>> + Send + Sync + 'a>;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum DengjenError {
     FailedToLoadResource(String),
     PhonemizationError(String),

@@ -38,6 +38,7 @@ pub struct Language {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum PhonemeType {
     #[default]
     Espeak,

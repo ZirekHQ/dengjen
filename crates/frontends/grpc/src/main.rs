@@ -74,9 +74,7 @@ impl From<DengjenGrpcError> for Status {
                     DengjenError::InferenceError(_) => Status::internal(msg),
                     DengjenError::InvalidConfiguration(_) => Status::invalid_argument(msg),
                     DengjenError::UnsupportedOperation(_) => Status::unimplemented(msg),
-                    DengjenError::OperationError(_) | DengjenError::Caused { .. } => {
-                        Status::unknown(msg)
-                    }
+                    _ => Status::unknown(msg),
                 }
             }
             DengjenGrpcError::VoiceNotFound(msg) => Status::not_found(msg),
@@ -422,6 +420,9 @@ fn load_voice(config_path: &std::path::Path) -> DengjenResult<Arc<dyn DengjenMod
         dengjen_tts::ModelType::Piper => dengjen_tts_piper::from_config_path(path),
         dengjen_tts::ModelType::Kokoro => dengjen_tts_kokoro::from_config_path(path),
         dengjen_tts::ModelType::MeloTts => dengjen_tts_melotts::from_config_path(path),
+        other => Err(DengjenError::InvalidConfiguration(format!(
+            "unsupported model type `{other}`"
+        ))),
     })
 }
 

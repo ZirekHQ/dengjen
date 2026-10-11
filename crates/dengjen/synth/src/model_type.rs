@@ -11,6 +11,7 @@ use dengjen_tts_core::{DengjenError, DengjenModel, DengjenResult};
 /// Piper voice; an unrecognised value is an error, never a silent Piper
 /// fallback.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ModelType {
     /// `"piper"` or `"vits"`.
     Piper,

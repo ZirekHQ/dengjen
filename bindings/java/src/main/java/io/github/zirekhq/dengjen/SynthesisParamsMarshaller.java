@@ -11,6 +11,10 @@ final class SynthesisParamsMarshaller {
       Arena arena, SynthesisParams params, MemorySegment callback, MemorySegment userData) {
     MemorySegment cParams = arena.allocate(DengjenLayouts.SYNTHESIS_PARAMS);
     cParams.set(
+        ValueLayout.JAVA_INT,
+        DengjenLayouts.SYNTHESIS_PARAMS_STRUCT_SIZE_OFFSET,
+        (int) DengjenLayouts.SYNTHESIS_PARAMS.byteSize());
+    cParams.set(
         ValueLayout.JAVA_INT, DengjenLayouts.SYNTHESIS_PARAMS_MODE_OFFSET, params.mode().value());
     cParams.set(
         ValueLayout.JAVA_BYTE, DengjenLayouts.SYNTHESIS_PARAMS_RATE_OFFSET, (byte) params.rate());

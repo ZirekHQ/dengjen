@@ -201,9 +201,7 @@ impl From<DengjenError> for DengjenFFIError {
             DengjenError::InferenceError(_) => error_codes::INFERENCE_ERROR,
             DengjenError::InvalidConfiguration(_) => error_codes::INVALID_CONFIGURATION,
             DengjenError::UnsupportedOperation(_) => error_codes::UNSUPPORTED_OPERATION,
-            DengjenError::OperationError(_) | DengjenError::Caused { .. } => {
-                error_codes::OPERATION_ERROR
-            }
+            _ => error_codes::OPERATION_ERROR,
         };
         Self::with_code(code, format!("{}{}", error.message(), error.cause_chain()))
     }
@@ -271,9 +269,15 @@ pub struct AudioInfo {
     sample_width: u32,
 }
 
+/// Parameters for [`libdengjenSpeak`] and [`libdengjenSpeakToFile`].
+///
+/// Callers set `struct_size` to `sizeof(SynthesisParams)` as they compiled it. Later library
+/// versions only append fields and read them when `struct_size` covers them, so an older caller
+/// keeps working.
 #[derive(Clone)]
 #[repr(C)]
 pub struct SynthesisParams {
+    struct_size: u32,
     mode: i32,
     rate: u8,
     volume: u8,
@@ -291,6 +295,42 @@ pub struct SynthesisParams {
 // Rust never dereferences — its cross-thread-safety is the FFI caller's contract to uphold, the
 // same as every other raw-pointer FFI parameter this crate accepts.
 unsafe impl Send for SynthesisParams {}
+
+/// Bumped on any incompatible change to the exported functions or structs.
+pub const DENGJEN_ABI_VERSION: u32 = 1;
+
+/// The `struct_size` of the first `SynthesisParams` layout; callers must provide at least this.
+const SYNTHESIS_PARAMS_V1_SIZE: u32 = std::mem::size_of::<SynthesisParams>() as u32;
+
+/// # Safety
+/// `params_ptr` must be null or point to a `SynthesisParams` whose first field, `struct_size`,
+/// is readable and truthfully states how many bytes the caller's struct occupies.
+unsafe fn read_params(params_ptr: *const SynthesisParams) -> DengjenFFIResult<SynthesisParams> {
+    if params_ptr.is_null() {
+        return Err(DengjenFFIError::null_pointer("params"));
+    }
+    // SAFETY: `struct_size` is the first field and the caller guarantees it is readable.
+    let declared = unsafe { params_ptr.cast::<u32>().read_unaligned() };
+    if declared < SYNTHESIS_PARAMS_V1_SIZE {
+        return Err(DengjenFFIError::with_code(
+            error_codes::INVALID_CONFIGURATION,
+            format!(
+                "params.struct_size is {declared}, but at least {SYNTHESIS_PARAMS_V1_SIZE} bytes \
+                 are required; set it to sizeof(SynthesisParams)"
+            ),
+        ));
+    }
+    // SAFETY: `declared` covers every field this version reads, and the caller vouches for it.
+    Ok(unsafe { params_ptr.read_unaligned() })
+}
+
+/// The ABI version this library was built with; bindings compare it with the one they were
+/// generated against before making any other call.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub extern "C" fn libdengjenAbiVersion() -> u32 {
+    DENGJEN_ABI_VERSION
+}
 
 impl SynthesisParams {
     fn as_synth_output_config(&self) -> AudioOutputConfig {
@@ -644,18 +684,27 @@ pub unsafe extern "C" fn libdengjenGetSynthesisParameter(
 /// # Safety
 /// If non-null, `voice_ptr` must be well-aligned and point to a valid `DengjenVoice`. Passing
 /// null is handled gracefully: a NULL_POINTER error is written to `out_error`. A null
-/// `params.callback` is handled the same way — this call has no other way to report results.
+/// `params`, or a null `params->callback`, is handled the same way — this call has no other way
+/// to report results. `params->struct_size` must be the caller's `sizeof(SynthesisParams)`.
 #[no_mangle]
 #[allow(non_snake_case)]
 pub unsafe extern "C" fn libdengjenSpeak(
     voice_ptr: *mut DengjenVoice,
     text_ptr: FfiStr,
-    params: SynthesisParams,
+    params_ptr: *const SynthesisParams,
     out_error: &mut ExternError,
 ) {
     // SAFETY: `voice_ptr` carries this function's own non-null-or-valid contract.
     let Some(voice) = (unsafe { require_ref(voice_ptr, "voice_ptr", out_error) }) else {
         return;
+    };
+    // SAFETY: `params_ptr` carries this function's own null-or-valid `struct_size` contract.
+    let params = match unsafe { read_params(params_ptr) } {
+        Ok(params) => params,
+        Err(error) => {
+            *out_error = error.into();
+            return;
+        }
     };
     let owned_synth = AssertUnwindSafe(Arc::clone(&voice.synth));
     let owned_cancel_slot = Arc::clone(&voice.active_cancel_token);
@@ -699,19 +748,28 @@ pub unsafe extern "C" fn libdengjenCancel(
 /// # Safety
 /// If non-null, `voice_ptr` must be well-aligned and point to a valid `DengjenVoice`. Passing
 /// null is handled gracefully: a NULL_POINTER error is written to `out_error` and `0` is
-/// returned.
+/// returned. A null `params` is handled the same way, and `params->struct_size` must be the
+/// caller's `sizeof(SynthesisParams)`.
 #[no_mangle]
 #[allow(non_snake_case)]
 pub unsafe extern "C" fn libdengjenSpeakToFile(
     voice_ptr: *mut DengjenVoice,
     text_ptr: FfiStr,
-    params: SynthesisParams,
+    params_ptr: *const SynthesisParams,
     out_filename_ptr: FfiStr,
     out_error: &mut ExternError,
 ) -> u8 {
     // SAFETY: `voice_ptr` carries this function's own non-null-or-valid contract.
     let Some(voice) = (unsafe { require_ref(voice_ptr, "voice_ptr", out_error) }) else {
         return 0;
+    };
+    // SAFETY: `params_ptr` carries this function's own null-or-valid `struct_size` contract.
+    let params = match unsafe { read_params(params_ptr) } {
+        Ok(params) => params,
+        Err(error) => {
+            *out_error = error.into();
+            return 0;
+        }
     };
     let owned_synth = AssertUnwindSafe(Arc::clone(&voice.synth));
     call_with_result(out_error, move || {
@@ -762,6 +820,9 @@ fn load_voice(config_path: &std::path::Path) -> DengjenResult<Arc<dyn DengjenMod
         dengjen_tts::ModelType::Piper => dengjen_tts_piper::from_config_path(path),
         dengjen_tts::ModelType::Kokoro => dengjen_tts_kokoro::from_config_path(path),
         dengjen_tts::ModelType::MeloTts => dengjen_tts_melotts::from_config_path(path),
+        other => Err(DengjenError::InvalidConfiguration(format!(
+            "unsupported model type `{other}`"
+        ))),
     })
 }
 
@@ -961,6 +1022,7 @@ mod tests {
 
     fn synth_params() -> SynthesisParams {
         SynthesisParams {
+            struct_size: SYNTHESIS_PARAMS_V1_SIZE,
             mode: synth_mode::SYNTH_MODE_LAZY,
             rate: 50,
             volume: 100,
@@ -1066,7 +1128,7 @@ mod tests {
             libdengjenSpeak(
                 voice_ptr,
                 FfiStr::from_raw(text.as_ptr()),
-                params,
+                &params,
                 &mut out_error,
             );
             libdengjenUnloadDengjenVoice(voice_ptr);
@@ -1125,7 +1187,7 @@ mod tests {
             libdengjenSpeak(
                 voice_ptr,
                 FfiStr::from_raw(text.as_ptr()),
-                params,
+                &params,
                 &mut out_error,
             )
         };
@@ -1440,7 +1502,7 @@ mod tests {
             libdengjenSpeak(
                 std::ptr::null_mut(),
                 FfiStr::from_cstr(&text),
-                synth_params(),
+                &synth_params(),
                 &mut out_error,
             );
         }
@@ -1448,6 +1510,58 @@ mod tests {
 
         // SAFETY: see `get_audio_info_null_voice_returns_null_pointer_error_without_panicking`.
         unsafe { out_error.manually_release() };
+    }
+
+    #[test]
+    fn speak_null_params_returns_null_pointer_error_without_panicking() {
+        let mut voice = fake_voice();
+        let mut out_error = ExternError::default();
+        let text = std::ffi::CString::new("hello").unwrap();
+
+        // SAFETY: `voice` is a valid handle owned by this test; a null `params` is handled.
+        unsafe {
+            libdengjenSpeak(
+                &mut voice,
+                FfiStr::from_cstr(&text),
+                std::ptr::null(),
+                &mut out_error,
+            );
+        }
+        assert_eq!(out_error.get_code().code(), error_codes::NULL_POINTER);
+
+        // SAFETY: the message was allocated by `call_with_result` and is released once.
+        unsafe { out_error.manually_release() };
+    }
+
+    #[test]
+    fn speak_rejects_a_params_struct_smaller_than_the_first_layout() {
+        let mut voice = fake_voice();
+        let mut out_error = ExternError::default();
+        let text = std::ffi::CString::new("hello").unwrap();
+        let mut params = synth_params();
+        params.struct_size = SYNTHESIS_PARAMS_V1_SIZE - 1;
+
+        // SAFETY: `voice` is a valid handle owned by this test and `params` is a full struct.
+        unsafe {
+            libdengjenSpeak(
+                &mut voice,
+                FfiStr::from_cstr(&text),
+                &params,
+                &mut out_error,
+            );
+        }
+        assert_eq!(
+            out_error.get_code().code(),
+            error_codes::INVALID_CONFIGURATION
+        );
+
+        // SAFETY: the message was allocated by `call_with_result` and is released once.
+        unsafe { out_error.manually_release() };
+    }
+
+    #[test]
+    fn abi_version_matches_the_exported_constant() {
+        assert_eq!(libdengjenAbiVersion(), DENGJEN_ABI_VERSION);
     }
 
     #[test]
@@ -1462,7 +1576,12 @@ mod tests {
         // explicitly covered by `libdengjenSpeak`'s own `# Safety` doc -- handled the same way
         // as a null `voice_ptr` (a NULL_POINTER error written to `out_error`).
         unsafe {
-            libdengjenSpeak(&mut voice, FfiStr::from_cstr(&text), params, &mut out_error);
+            libdengjenSpeak(
+                &mut voice,
+                FfiStr::from_cstr(&text),
+                &params,
+                &mut out_error,
+            );
         }
         assert_eq!(out_error.get_code().code(), error_codes::NULL_POINTER);
 
@@ -1482,7 +1601,7 @@ mod tests {
             libdengjenSpeakToFile(
                 std::ptr::null_mut(),
                 FfiStr::from_cstr(&text),
-                synth_params(),
+                &synth_params(),
                 FfiStr::from_cstr(&filename),
                 &mut out_error,
             )
@@ -1507,7 +1626,7 @@ mod tests {
             libdengjenSpeakToFile(
                 &mut voice,
                 FfiStr::from_cstr(&text),
-                synth_params(),
+                &synth_params(),
                 FfiStr::from_cstr(&filename),
                 &mut out_error,
             )
@@ -1681,6 +1800,7 @@ mod abi_struct_tests {
     #[test]
     fn as_synth_output_config_carries_over_all_fields() {
         let params = SynthesisParams {
+            struct_size: SYNTHESIS_PARAMS_V1_SIZE,
             mode: synth_mode::SYNTH_MODE_LAZY,
             rate: 60,
             volume: 80,
@@ -1869,6 +1989,7 @@ mod ffi_flow_tests {
 
     fn params(mode: i32, nonblocking: u8, log: &'static EventLog) -> SynthesisParams {
         SynthesisParams {
+            struct_size: SYNTHESIS_PARAMS_V1_SIZE,
             mode,
             rate: 50,
             volume: 100,
@@ -1884,7 +2005,7 @@ mod ffi_flow_tests {
         let mut out_error = ExternError::default();
         // SAFETY: `voice` comes from `voice_with` and is live; the text is a valid C string.
         unsafe {
-            libdengjenSpeak(voice, FfiStr::from_cstr(c"hello"), params, &mut out_error);
+            libdengjenSpeak(voice, FfiStr::from_cstr(c"hello"), &params, &mut out_error);
         }
         out_error
     }

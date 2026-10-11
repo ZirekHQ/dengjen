@@ -41,11 +41,12 @@ class DengjenLayoutsTest {
   @Test
   void synthesisParamsMatchesTheCStructLayout() {
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS.byteSize()).isEqualTo(40);
-    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_MODE_OFFSET).isEqualTo(0);
-    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_RATE_OFFSET).isEqualTo(4);
-    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_VOLUME_OFFSET).isEqualTo(5);
-    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_PITCH_OFFSET).isEqualTo(6);
-    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_APPENDED_SILENCE_MS_OFFSET).isEqualTo(8);
+    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_STRUCT_SIZE_OFFSET).isEqualTo(0);
+    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_MODE_OFFSET).isEqualTo(4);
+    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_RATE_OFFSET).isEqualTo(8);
+    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_VOLUME_OFFSET).isEqualTo(9);
+    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_PITCH_OFFSET).isEqualTo(10);
+    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_APPENDED_SILENCE_MS_OFFSET).isEqualTo(12);
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS_CALLBACK_OFFSET).isEqualTo(16);
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS_NONBLOCKING_OFFSET).isEqualTo(24);
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS_USER_DATA_OFFSET).isEqualTo(32);

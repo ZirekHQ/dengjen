@@ -4,6 +4,7 @@ import static java.lang.foreign.ValueLayout.ADDRESS;
 import static java.lang.foreign.ValueLayout.JAVA_BOOLEAN;
 import static java.lang.foreign.ValueLayout.JAVA_BYTE;
 import static java.lang.foreign.ValueLayout.JAVA_FLOAT;
+import static java.lang.foreign.ValueLayout.JAVA_INT;
 
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -20,6 +21,25 @@ final class DengjenLib {
             .find(symbol)
             .orElseThrow(() -> new IllegalStateException("missing symbol: " + symbol)),
         descriptor);
+  }
+
+  /** Must equal {@code DENGJEN_ABI_VERSION} in {@code libdengjen.h}. */
+  static final int EXPECTED_ABI_VERSION = 1;
+
+  static {
+    int actual;
+    try {
+      actual =
+          (int)
+              handle("libdengjenAbiVersion", FunctionDescriptor.of(JAVA_INT)).invokeExact();
+    } catch (Throwable t) {
+      throw new ExceptionInInitializerError(t);
+    }
+    if (actual != EXPECTED_ABI_VERSION) {
+      throw new IllegalStateException(
+          "native library ABI version " + actual + " does not match the bindings' "
+              + EXPECTED_ABI_VERSION);
+    }
   }
 
   static final MethodHandle FREE_STRING =
@@ -64,7 +84,7 @@ final class DengjenLib {
   static final MethodHandle SPEAK =
       handle(
           "libdengjenSpeak",
-          FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, DengjenLayouts.SYNTHESIS_PARAMS, ADDRESS));
+          FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS, ADDRESS));
 
   static final MethodHandle CANCEL =
       handle("libdengjenCancel", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS));
@@ -73,7 +93,7 @@ final class DengjenLib {
       handle(
           "libdengjenSpeakToFile",
           FunctionDescriptor.of(
-              JAVA_BYTE, ADDRESS, ADDRESS, DengjenLayouts.SYNTHESIS_PARAMS, ADDRESS, ADDRESS));
+              JAVA_BYTE, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
 
   private DengjenLib() {}
 }

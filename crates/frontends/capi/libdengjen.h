@@ -8,6 +8,8 @@
 
 #define PIPER_SYNTH_CONFIG_NO_SPEAKER UINT32_MAX
 
+#define DENGJEN_ABI_VERSION 1
+
 #define INVALID_SYNTHESIS_MODE 16
 
 #define FAILED_TO_LOAD_RESOURCE 17
@@ -77,6 +79,7 @@ typedef struct AudioInfo {
 } AudioInfo;
 
 typedef struct SynthesisParams {
+  uint32_t struct_size;
   int32_t mode;
   uint8_t rate;
   uint8_t volume;
@@ -92,6 +95,8 @@ typedef uint8_t (*SpeechSynthesisCallback)(struct SynthesisEvent, void*);
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+uint32_t libdengjenAbiVersion(void);
 
 void libdengjenFreeString(char *string_ptr);
 
@@ -127,14 +132,14 @@ bool libdengjenGetSynthesisParameter(struct DengjenVoice *voice_ptr,
 
 void libdengjenSpeak(struct DengjenVoice *voice_ptr,
                      FfiStr text_ptr,
-                     struct SynthesisParams params,
+                     const struct SynthesisParams *params_ptr,
                      struct ExternError *out_error);
 
 void libdengjenCancel(struct DengjenVoice *voice_ptr, struct ExternError *out_error);
 
 uint8_t libdengjenSpeakToFile(struct DengjenVoice *voice_ptr,
                               FfiStr text_ptr,
-                              struct SynthesisParams params,
+                              const struct SynthesisParams *params_ptr,
                               FfiStr out_filename_ptr,
                               struct ExternError *out_error);
 
