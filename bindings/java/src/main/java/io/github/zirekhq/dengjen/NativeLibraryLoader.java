@@ -19,6 +19,9 @@ import java.util.HexFormat;
 final class NativeLibraryLoader {
   private NativeLibraryLoader() {}
 
+  /** Classpath resource names use `/` on every platform, unlike {@code File.separator}. */
+  private static final String RESOURCE_PATH_DELIMITER = "/";
+
   private static final FileAttribute<?>[] OWNER_ONLY_PERMISSIONS =
       FileSystems.getDefault().supportedFileAttributeViews().contains("posix")
           ? new FileAttribute<?>[] {
@@ -35,7 +38,7 @@ final class NativeLibraryLoader {
         NativePlatform.classifier(System.getProperty("os.name"), System.getProperty("os.arch"));
     String libraryName = System.mapLibraryName("libdengjen");
 
-    String resourcePath = "natives/" + classifier + "/" + libraryName;
+    String resourcePath = String.join(RESOURCE_PATH_DELIMITER, "natives", classifier, libraryName);
     Path extracted;
     try {
       extracted = extractResource(resourcePath, NativeLibraryLoader.class.getClassLoader());
