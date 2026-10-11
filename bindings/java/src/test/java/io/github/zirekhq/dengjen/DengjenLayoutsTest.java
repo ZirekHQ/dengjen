@@ -45,7 +45,7 @@ class DengjenLayoutsTest {
   @Test
   void synthesisParamsMatchesTheCStructLayout() {
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS.byteSize()).isEqualTo(40);
-    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_STRUCT_SIZE_OFFSET).isEqualTo(0);
+    assertThat(DengjenLayouts.SYNTHESIS_PARAMS_STRUCT_SIZE_OFFSET).isZero();
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS_MODE_OFFSET).isEqualTo(4);
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS_RATE_OFFSET).isEqualTo(8);
     assertThat(DengjenLayouts.SYNTHESIS_PARAMS_VOLUME_OFFSET).isEqualTo(9);
@@ -61,6 +61,6 @@ class DengjenLayoutsTest {
     String header = Files.readString(Path.of("../../crates/frontends/capi/libdengjen.h"));
     var matcher = Pattern.compile("#define DENGJEN_ABI_VERSION (\\d+)").matcher(header);
     assertThat(matcher.find()).isTrue();
-    assertThat(Integer.parseInt(matcher.group(1))).isEqualTo(DengjenLib.EXPECTED_ABI_VERSION);
+    assertThat(matcher.group(1)).isEqualTo(String.valueOf(DengjenLib.EXPECTED_ABI_VERSION));
   }
 }
