@@ -13,6 +13,12 @@ fn main() {
     let crate_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set"));
 
+    if crate_dir.ancestors().nth(2).and_then(Path::file_name) != Some("crates".as_ref()) {
+        // A packaged archive builds under target/package; staging there would modify the
+        // archive's source directory, which `cargo package` rejects.
+        return;
+    }
+
     let deps_dev_dir = workspace_root(&crate_dir).join("deps").join("dev");
     println!("cargo:rerun-if-changed={}", deps_dev_dir.display());
 
