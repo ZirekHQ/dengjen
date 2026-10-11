@@ -366,6 +366,14 @@ jobs:
         with:
           apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: locate espeak-ng-data directory
+        run: |
+          data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
+          if [ -z "$data_dir" ] || [ "$data_dir" = "." ]; then
+            echo "Could not locate an espeak-ng-data directory" >&2
+            exit 1
+          fi
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
       - name: read fixture manifest
         id: manifest
         run: |
@@ -419,6 +427,14 @@ jobs:
         with:
           apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: locate espeak-ng-data directory
+        run: |
+          data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
+          if [ -z "$data_dir" ] || [ "$data_dir" = "." ]; then
+            echo "Could not locate an espeak-ng-data directory" >&2
+            exit 1
+          fi
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
       - name: read fixture manifest
         id: manifest
         run: echo "piper_sha=$(jq -r '.fixtures[] | select(.name=="piper-std") | .sha256' .github/bench-fixtures.json)" >> "$GITHUB_OUTPUT"
