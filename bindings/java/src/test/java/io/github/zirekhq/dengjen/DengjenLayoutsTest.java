@@ -12,14 +12,14 @@ class DengjenLayoutsTest {
   @Test
   void externErrorMatchesTheCStructLayout() {
     assertThat(DengjenLayouts.EXTERN_ERROR.byteSize()).isEqualTo(16);
-    assertThat(DengjenLayouts.EXTERN_ERROR_CODE_OFFSET).isEqualTo(0);
+    assertThat(DengjenLayouts.EXTERN_ERROR_CODE_OFFSET).isZero();
     assertThat(DengjenLayouts.EXTERN_ERROR_MESSAGE_OFFSET).isEqualTo(8);
   }
 
   @Test
   void piperSynthConfigMatchesTheCStructLayout() {
     assertThat(DengjenLayouts.PIPER_SYNTH_CONFIG.byteSize()).isEqualTo(16);
-    assertThat(DengjenLayouts.PIPER_SYNTH_CONFIG_SPEAKER_OFFSET).isEqualTo(0);
+    assertThat(DengjenLayouts.PIPER_SYNTH_CONFIG_SPEAKER_OFFSET).isZero();
     assertThat(DengjenLayouts.PIPER_SYNTH_CONFIG_LENGTH_SCALE_OFFSET).isEqualTo(4);
     assertThat(DengjenLayouts.PIPER_SYNTH_CONFIG_NOISE_SCALE_OFFSET).isEqualTo(8);
     assertThat(DengjenLayouts.PIPER_SYNTH_CONFIG_NOISE_W_OFFSET).isEqualTo(12);
@@ -28,7 +28,7 @@ class DengjenLayoutsTest {
   @Test
   void audioInfoMatchesTheCStructLayout() {
     assertThat(DengjenLayouts.AUDIO_INFO.byteSize()).isEqualTo(12);
-    assertThat(DengjenLayouts.AUDIO_INFO_SAMPLE_RATE_OFFSET).isEqualTo(0);
+    assertThat(DengjenLayouts.AUDIO_INFO_SAMPLE_RATE_OFFSET).isZero();
     assertThat(DengjenLayouts.AUDIO_INFO_NUM_CHANNELS_OFFSET).isEqualTo(4);
     assertThat(DengjenLayouts.AUDIO_INFO_SAMPLE_WIDTH_OFFSET).isEqualTo(8);
   }
@@ -36,7 +36,7 @@ class DengjenLayoutsTest {
   @Test
   void synthesisEventMatchesTheCStructLayout() {
     assertThat(DengjenLayouts.SYNTHESIS_EVENT.byteSize()).isEqualTo(32);
-    assertThat(DengjenLayouts.SYNTHESIS_EVENT_TYPE_OFFSET).isEqualTo(0);
+    assertThat(DengjenLayouts.SYNTHESIS_EVENT_TYPE_OFFSET).isZero();
     assertThat(DengjenLayouts.SYNTHESIS_EVENT_ERROR_PTR_OFFSET).isEqualTo(8);
     assertThat(DengjenLayouts.SYNTHESIS_EVENT_LEN_OFFSET).isEqualTo(16);
     assertThat(DengjenLayouts.SYNTHESIS_EVENT_DATA_OFFSET).isEqualTo(24);

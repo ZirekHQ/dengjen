@@ -7,13 +7,10 @@ package dengjen
 */
 import "C"
 
-import "fmt"
-
 // init refuses to run against a native library built for a different ABI than the header these
 // bindings were compiled with, instead of corrupting memory on the first call.
 func init() {
-	got, want := uint32(C.libdengjenAbiVersion()), uint32(C.DENGJEN_ABI_VERSION)
-	if got != want {
-		panic(fmt.Sprintf("dengjen: native library ABI version %d does not match the bindings' %d", got, want))
+	if C.libdengjenAbiVersion() != C.DENGJEN_ABI_VERSION {
+		panic("dengjen: the native library's ABI version differs from the header these bindings were built with; build both from the same release")
 	}
 }
