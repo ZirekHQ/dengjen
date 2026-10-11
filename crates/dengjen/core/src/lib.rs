@@ -538,7 +538,7 @@ mod panic_message_tests {
     #[test]
     fn a_second_cause_keeps_the_first_reachable() {
         let first = std::io::Error::new(std::io::ErrorKind::NotFound, "first");
-        let second = std::io::Error::new(std::io::ErrorKind::Other, "second");
+        let second = std::io::Error::other("second");
         let error = DengjenError::OperationError("op".into())
             .with_source(first)
             .with_source(second);
