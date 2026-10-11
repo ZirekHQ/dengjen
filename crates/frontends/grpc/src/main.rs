@@ -396,6 +396,11 @@ fn sanitize_load_error(config_path: &std::path::Path, err: DengjenGrpcError) -> 
         DengjenGrpcError::VoiceNotFound(_) => DengjenGrpcError::VoiceNotFound(
             "The voice config was not found or is not readable".to_string(),
         ),
+        DengjenGrpcError::DengjenError(DengjenError::InvalidConfiguration(_)) => {
+            DengjenGrpcError::DengjenError(DengjenError::InvalidConfiguration(
+                "The voice config is invalid".to_string(),
+            ))
+        }
         DengjenGrpcError::DengjenError(_) => DengjenGrpcError::DengjenError(
             DengjenError::FailedToLoadResource("The voice could not be loaded".to_string()),
         ),
@@ -844,6 +849,14 @@ mod error_mapping_tests {
         let status: Status =
             DengjenGrpcError::from(DengjenError::InferenceError("x".into())).into();
         assert_eq!(status.code(), tonic::Code::Internal);
+    }
+
+    #[test]
+    fn sanitized_invalid_configuration_stays_invalid_argument() {
+        let err = DengjenGrpcError::from(DengjenError::InvalidConfiguration("/secret/path".into()));
+        let status: Status = sanitize_load_error(std::path::Path::new("/secret/path"), err).into();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(!status.message().contains("/secret"));
     }
 
     #[test]

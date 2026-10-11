@@ -26,7 +26,7 @@ PHONEME_ID_MAP = {"^": [1], "$": [2], "_": [3], "t": [4], "\u025b": [5], "s": [6
 
 
 def write_voice(directory, **overrides):
-    shutil.copy(BATCH_MODEL, directory / BATCH_MODEL.name)
+    shutil.copy(BATCH_MODEL, directory / "voice.onnx")
     config = {
         "key": None,
         "language": {"code": "en-US"},

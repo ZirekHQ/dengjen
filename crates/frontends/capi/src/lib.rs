@@ -1738,14 +1738,15 @@ mod ffi_flow_tests {
         }
     }
 
-    #[derive(Default)]
     struct EventLog {
         entries: Mutex<Vec<(i32, i32, ThreadId)>>,
     }
 
     impl EventLog {
-        fn leaked() -> &'static Self {
-            Box::leak(Box::default())
+        const fn new() -> Self {
+            Self {
+                entries: Mutex::new(Vec::new()),
+            }
         }
 
         fn count(&self, event_type: i32) -> usize {
@@ -1766,7 +1767,7 @@ mod ffi_flow_tests {
     }
 
     extern "C" fn record_event(event: SynthesisEvent, user_data: *mut c_void) -> u8 {
-        // SAFETY: every test here passes a leaked `&'static EventLog` as `user_data`.
+        // SAFETY: every test here passes a `&'static EventLog` as `user_data`.
         let log = unsafe { &*(user_data as *const EventLog) };
         let code = if event.error_ptr.is_null() {
             0
@@ -1814,7 +1815,8 @@ mod ffi_flow_tests {
 
     #[test]
     fn nonblocking_speak_reports_events_from_a_worker_thread() {
-        let log = EventLog::leaked();
+        static LOG: EventLog = EventLog::new();
+        let log = &LOG;
         let voice = voice_with(Script::Speak);
         let out_error = speak(voice, params(synth_mode::SYNTH_MODE_LAZY, 1, log));
         assert!(out_error.get_code().is_success());
@@ -1831,7 +1833,8 @@ mod ffi_flow_tests {
 
     #[test]
     fn nonblocking_worker_panic_becomes_an_inference_error_event() {
-        let log = EventLog::leaked();
+        static LOG: EventLog = EventLog::new();
+        let log = &LOG;
         let voice = voice_with(Script::PanicOnSpeak);
         let out_error = speak(voice, params(synth_mode::SYNTH_MODE_LAZY, 1, log));
         assert!(out_error.get_code().is_success());
@@ -1849,7 +1852,8 @@ mod ffi_flow_tests {
 
     #[test]
     fn invalid_synthesis_mode_returns_the_mode_error_without_events() {
-        let log = EventLog::leaked();
+        static LOG: EventLog = EventLog::new();
+        let log = &LOG;
         let voice = voice_with(Script::Speak);
         let out_error = speak(voice, params(99, 0, log));
         assert_eq!(
@@ -1866,7 +1870,8 @@ mod ffi_flow_tests {
 
     #[test]
     fn cancelling_a_realtime_synthesis_stops_the_stream_and_still_finishes() {
-        let log = EventLog::leaked();
+        static LOG: EventLog = EventLog::new();
+        let log = &LOG;
         let voice = voice_with(Script::SlowStream);
         let out_error = speak(voice, params(synth_mode::SYNTH_MODE_REALTIME, 1, log));
         assert!(out_error.get_code().is_success());

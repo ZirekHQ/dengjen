@@ -72,10 +72,7 @@ final class NativeLibraryLoader {
     try {
       Files.write(partial, content);
       Files.move(
-          partial,
-          target,
-          StandardCopyOption.REPLACE_EXISTING,
-          StandardCopyOption.ATOMIC_MOVE);
+          partial, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     } catch (IOException | RuntimeException e) {
       Files.deleteIfExists(partial);
       throw e;
@@ -94,8 +91,7 @@ final class NativeLibraryLoader {
             };
     Files.createDirectories(directory, dirAttrs);
     if (OWNER_ONLY_PERMISSIONS.length > 0) {
-      var owner = Files.getOwner(directory).getName();
-      if (!owner.equals(System.getProperty("user.name"))
+      if (!ownedByCurrentUser(directory)
           || !Files.getPosixFilePermissions(directory)
               .equals(PosixFilePermissions.fromString("rwx------"))) {
         throw new IOException(
@@ -103,6 +99,15 @@ final class NativeLibraryLoader {
       }
     }
     return directory;
+  }
+
+  private static boolean ownedByCurrentUser(Path directory) throws IOException {
+    Path probe = Files.createTempFile(directory, "owner-", ".probe", OWNER_ONLY_PERMISSIONS);
+    try {
+      return Files.getOwner(directory).equals(Files.getOwner(probe));
+    } finally {
+      Files.deleteIfExists(probe);
+    }
   }
 
   private static String sha256Hex(byte[] content) {

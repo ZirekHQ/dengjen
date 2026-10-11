@@ -208,7 +208,12 @@ fn normalize_plain_digits(text: &str) -> String {
             .map_or(chars.len(), |offset| i + offset);
         let run: String = chars[i..end].iter().collect();
         let is_year = run.len() == YEAR_DIGITS && chars.get(end) == Some(&'年');
-        if is_year {
+        let is_fraction = i >= 2 && chars[i - 1] == '.' && chars[i - 2].is_ascii_digit();
+        if is_fraction {
+            out.pop();
+            out.push('点');
+            out.push_str(&read_digit_by_digit(&run));
+        } else if is_year {
             out.push_str(&read_digit_by_digit(&run));
         } else {
             out.push_str(&format_integer(&run));
@@ -284,6 +289,11 @@ mod tests {
     #[test]
     fn normalize_temperatures_keeps_a_decimal_without_a_unit_intact() {
         assert_eq!(super::normalize_temperatures("3.14 and -2"), "3.14 and -2");
+    }
+
+    #[test]
+    fn normalize_numbers_reads_a_bare_decimal_fraction_digit_by_digit() {
+        assert_eq!(super::normalize_numbers("3.14"), "三点一四");
     }
 
     #[test]
