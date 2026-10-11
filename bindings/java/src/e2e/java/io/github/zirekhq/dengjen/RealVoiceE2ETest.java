@@ -28,9 +28,9 @@ class RealVoiceE2ETest {
       assertThat(wrote).isTrue();
 
       byte[] data = Files.readAllBytes(outPath);
-      assertThat(data.length)
+      assertThat(data)
           .as("expected a WAV file with audio samples beyond the header")
-          .isGreaterThan(44);
+          .hasSizeGreaterThan(44);
     }
   }
 }

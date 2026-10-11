@@ -36,19 +36,19 @@ class SynthesisParamsTest {
 
   @Test
   void acceptsBoundaryRateValues() {
-    assertThat(new SynthesisParams(SynthesisMode.LAZY, 0, 0, 0, 0).rate()).isEqualTo(0);
+    assertThat(new SynthesisParams(SynthesisMode.LAZY, 0, 0, 0, 0).rate()).isZero();
     assertThat(new SynthesisParams(SynthesisMode.LAZY, 100, 0, 0, 0).rate()).isEqualTo(100);
   }
 
   @Test
   void acceptsBoundaryVolumeValues() {
-    assertThat(new SynthesisParams(SynthesisMode.LAZY, 0, 0, 0, 0).volume()).isEqualTo(0);
+    assertThat(new SynthesisParams(SynthesisMode.LAZY, 0, 0, 0, 0).volume()).isZero();
     assertThat(new SynthesisParams(SynthesisMode.LAZY, 0, 100, 0, 0).volume()).isEqualTo(100);
   }
 
   @Test
   void acceptsBoundaryPitchValues() {
-    assertThat(new SynthesisParams(SynthesisMode.LAZY, 0, 0, 0, 0).pitch()).isEqualTo(0);
+    assertThat(new SynthesisParams(SynthesisMode.LAZY, 0, 0, 0, 0).pitch()).isZero();
     assertThat(new SynthesisParams(SynthesisMode.LAZY, 0, 0, 100, 0).pitch()).isEqualTo(100);
   }
 
