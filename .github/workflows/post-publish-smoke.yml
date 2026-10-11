@@ -1,0 +1,96 @@
+name: Post-publish smoke
+
+# The publish dry run builds packaged crates, but only a real install proves that what reached
+# crates.io and PyPI works. Runs after a release publishes and on demand for any version.
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published version to check, without the leading v"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  cli-from-crates-io:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        timeout-minutes: 15
+        with:
+          apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng cmake protobuf-compiler
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - name: locate espeak-ng-data directory
+        run: |
+          data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
+      # crates.io's index can lag the publish by a few minutes.
+      - name: cargo install dengjen-tts-cli from crates.io
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            cargo install dengjen-tts-cli --version "$VERSION" --locked --root "$RUNNER_TEMP/cli" && exit 0
+            echo "install attempt ${attempt} failed; waiting for the index" >&2
+            sleep 120
+          done
+          exit 1
+      - name: fetch the pinned Piper voice
+        run: bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json "$RUNNER_TEMP/voices" piper-std
+      - name: synthesize with the installed CLI
+        run: |
+          voice="$RUNNER_TEMP/voices/crates/dengjen/synth/models/std"
+          printf 'Release smoke test.' > "$RUNNER_TEMP/in.txt"
+          "$RUNNER_TEMP/cli/bin/dengjen" "$voice/model.onnx.json" -f "$RUNNER_TEMP/in.txt" -o "$RUNNER_TEMP/out.wav"
+          size="$(stat -c %s "$RUNNER_TEMP/out.wav")"
+          echo "wrote ${size} bytes"
+          [ "$size" -gt 44 ]
+
+  wheel-from-pypi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: pip install pydengjen from PyPI
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          for attempt in 1 2 3 4 5 6; do
+            "$RUNNER_TEMP/venv/bin/pip" install --no-cache-dir "pydengjen==${VERSION}" && exit 0
+            echo "install attempt ${attempt} failed; waiting for the index" >&2
+            sleep 60
+          done
+          exit 1
+      - name: fetch the pinned Piper voice
+        run: bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json "$RUNNER_TEMP/voices" piper-std
+      - name: synthesize with the installed wheel
+        run: |
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/venv/bin/python" - <<'PY'
+          import os, pydengjen
+          voice = os.path.join(os.environ["RUNNER_TEMP"], "voices/crates/dengjen/synth/models/std/model.onnx.json")
+          engine = pydengjen.Dengjen.with_piper(pydengjen.PiperModel(voice))
+          chunks = list(engine.synthesize_lazy("Release smoke test."))
+          assert chunks, "no audio chunks"
+          assert len(chunks[0].get_wave_bytes()) > 44
+          print(f"{len(chunks)} chunks")
+          PY

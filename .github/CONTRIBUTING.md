@@ -22,11 +22,12 @@ ask you to sign before merging.
 
 ## Fuzzing
 
-Each phonemizer/model crate with a `fuzz/` directory has one or more `cargo-fuzz` targets. CI
-only builds them (`fuzz-build` job) so they don't bit-rot — it doesn't run them, since actual
-fuzzing is too slow for every PR. This is deliberate, not a gap: run one yourself with
-`cargo +nightly fuzz run <target>` from the crate that owns it whenever you touch the logic that
-target exercises.
+Each phonemizer/model crate with a `fuzz/` directory has one or more `cargo-fuzz` targets. The
+`fuzz-build` job in `rust-lint.yml` builds them on every PR so they don't bit-rot.
+[`fuzz.yml`](workflows/fuzz.yml) runs each target for two minutes every Tuesday (or on dispatch,
+with a `seconds` input), carries the corpus between runs, and uploads a crash artifact when one
+is found. To run a target yourself, use `cargo +nightly fuzz run <target>` from the crate that owns
+it.
 
 ## Benchmarks
 
@@ -66,9 +67,11 @@ Changing a fixture: run `.github/scripts/build-bench-fixtures.sh OUT_DIR` with `
 `tag` and `sha256` in `bench-fixtures.json`. Never overwrite an existing release asset. Fixture
 tags must not start with `v`, which is what keeps `notify-docs.yml` from pinging the docs site.
 
-CI's `piper-real-voice-e2e` and `kokoro-real-voice-e2e` jobs still run the real-voice *tests* on
-the weekly schedule and on manual dispatch, using the same sha256-pinned fixtures from
-`bench-fixtures.json`.
+CI's `piper-real-voice-e2e` and `kokoro-real-voice-e2e` jobs run the real-voice *tests* on the
+weekly schedule, on manual dispatch, and on pull requests that touch `crates/dengjen`,
+`crates/text`, `crates/audio`, `crates/frontends/cli`, `Cargo.lock`, `rust-toolchain.toml` or the
+fixture manifest and scripts. They use the same sha256-pinned fixtures from `bench-fixtures.json`
+and share the bench job's fixture cache.
 
 Some tests return early (and pass) unless their fixture environment variable is set. CI sets only
 the ones whose fixture a job already downloads:
