@@ -91,7 +91,7 @@ impl Drop for DengjenVoice {
 }
 
 thread_local! {
-    static ON_SYNTHESIS_WORKER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ACTIVE_WORKER_VOICE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Tracks nonblocking synthesis workers so unloading a voice can stop and drain them.
@@ -114,8 +114,9 @@ impl InFlight {
 
     fn close_and_wait(&self) {
         self.closing.store(true, Ordering::Release);
-        // A callback that unloads its own voice runs on a worker; waiting there would never end.
-        if ON_SYNTHESIS_WORKER.with(std::cell::Cell::get) {
+        // A callback that unloads its own voice runs on one of its workers; waiting there would
+        // never end. Unloading a different voice from a callback still drains that voice.
+        if ACTIVE_WORKER_VOICE.with(std::cell::Cell::get) == self as *const Self as usize {
             return;
         }
         let mut running = self.running.lock().unwrap_or_else(|p| p.into_inner());
@@ -824,7 +825,8 @@ fn _synthesize(
     // An unwinding job would abort the host process; report it as an error event.
     synthesis_thread_pool()?.spawn(move || {
         let _worker_guard = worker_guard;
-        ON_SYNTHESIS_WORKER.with(|flag| flag.set(true));
+        let voice_id = Arc::as_ptr(&_worker_guard.0) as usize;
+        let previous_voice = ACTIVE_WORKER_VOICE.with(|id| id.replace(voice_id));
         let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
             _do_synthesize(synth, cancel_slot, &_worker_guard.0, text, callback, params)
         }))
@@ -842,6 +844,7 @@ fn _synthesize(
                 report_user_data,
             );
         }
+        ACTIVE_WORKER_VOICE.with(|id| id.set(previous_voice));
     });
     Ok(())
 }
@@ -1975,6 +1978,43 @@ mod ffi_flow_tests {
         assert_eq!(log.entries.lock().unwrap().len(), settled);
         assert_eq!(log.count(synth_event::SYNTH_EVENT_FINISHED), 1);
         assert!(log.count(synth_event::SYNTH_EVENT_SPEECH) < SLOW_STREAM_CHUNKS);
+    }
+
+    static OTHER_VOICE: std::sync::atomic::AtomicPtr<DengjenVoice> =
+        std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+    extern "C" fn unload_the_other_voice(event: SynthesisEvent, user_data: *mut c_void) -> u8 {
+        let other = OTHER_VOICE.swap(std::ptr::null_mut(), Ordering::SeqCst);
+        if !other.is_null() {
+            // SAFETY: the test stores a live voice that nothing else uses afterwards.
+            unsafe { libdengjenUnloadDengjenVoice(other) };
+        }
+        record_event(event, user_data)
+    }
+
+    #[test]
+    fn unloading_another_voice_from_a_callback_still_drains_it() {
+        static OWNER_LOG: EventLog = EventLog::new();
+        static OTHER_LOG: EventLog = EventLog::new();
+        let other = voice_with(Script::SlowStream);
+        let out_error = speak(other, params(synth_mode::SYNTH_MODE_LAZY, 1, &OTHER_LOG));
+        assert!(out_error.get_code().is_success());
+        assert!(OTHER_LOG.wait_for(synth_event::SYNTH_EVENT_SPEECH, 1));
+        OTHER_VOICE.store(other, Ordering::SeqCst);
+
+        let owner = voice_with(Script::Speak);
+        let mut owner_params = params(synth_mode::SYNTH_MODE_LAZY, 1, &OWNER_LOG);
+        owner_params.callback = Some(unload_the_other_voice);
+        let out_error = speak(owner, owner_params);
+        assert!(out_error.get_code().is_success());
+        assert!(OWNER_LOG.wait_for(synth_event::SYNTH_EVENT_FINISHED, 1));
+
+        let settled = OTHER_LOG.entries.lock().unwrap().len();
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(OTHER_LOG.entries.lock().unwrap().len(), settled);
+        assert_eq!(OTHER_LOG.count(synth_event::SYNTH_EVENT_FINISHED), 1);
+        // SAFETY: `owner` is live and not used again.
+        unsafe { libdengjenUnloadDengjenVoice(owner) };
     }
 
     #[test]

@@ -70,12 +70,25 @@ impl DengjenError {
         Self::OperationError(message.into())
     }
 
-    /// Attaches the underlying cause, keeping this error's category.
+    /// Attaches the underlying cause, keeping this error's category. A cause attached earlier
+    /// stays reachable behind the new one through [`StdError::source`].
     #[must_use]
     pub fn with_source(self, cause: impl StdError + Send + Sync + 'static) -> Self {
-        Self::Caused {
-            error: Box::new(self),
-            cause: Box::new(cause),
+        match self {
+            Self::Caused {
+                error,
+                cause: earlier,
+            } => Self::Caused {
+                error,
+                cause: Box::new(StackedCause {
+                    cause: Box::new(cause),
+                    earlier,
+                }),
+            },
+            other => Self::Caused {
+                error: Box::new(other),
+                cause: Box::new(cause),
+            },
         }
     }
 
@@ -109,6 +122,24 @@ impl DengjenError {
             next = cause.source();
         }
         chain
+    }
+}
+
+#[derive(Debug)]
+struct StackedCause {
+    cause: Box<dyn StdError + Send + Sync + 'static>,
+    earlier: Box<dyn StdError + Send + Sync + 'static>,
+}
+
+impl fmt::Display for StackedCause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.cause.fmt(f)
+    }
+}
+
+impl StdError for StackedCause {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        Some(self.earlier.as_ref())
     }
 }
 
@@ -500,5 +531,16 @@ mod panic_message_tests {
         assert!(error.source().is_none());
         assert_eq!(error.cause_chain(), "");
         assert_eq!(error.message(), "boom");
+    }
+
+    #[test]
+    fn a_second_cause_keeps_the_first_reachable() {
+        let first = std::io::Error::new(std::io::ErrorKind::NotFound, "first");
+        let second = std::io::Error::new(std::io::ErrorKind::Other, "second");
+        let error = DengjenError::OperationError("op".into())
+            .with_source(first)
+            .with_source(second);
+        assert_eq!(error.cause_chain(), ": second: first");
+        assert_eq!(error.message(), "op");
     }
 }
