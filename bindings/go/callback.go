@@ -70,7 +70,7 @@ var testCallbackDataReleased func()
 // panic never unwinds across the Rust frames above.
 func invokeCallback(fn func(SynthesisEvent) bool, ev SynthesisEvent) (wantsMore bool) {
 	defer func() {
-		if r := recover(); r != nil {
+		if recover() != nil {
 			wantsMore = false
 		}
 	}()

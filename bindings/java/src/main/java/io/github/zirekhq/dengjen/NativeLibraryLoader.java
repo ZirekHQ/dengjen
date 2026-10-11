@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.SymbolLookup;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -71,8 +72,7 @@ final class NativeLibraryLoader {
     Path partial = Files.createTempFile(directory, "partial-", ".tmp", OWNER_ONLY_PERMISSIONS);
     try {
       Files.write(partial, content);
-      Files.move(
-          partial, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      moveIntoPlace(partial, target);
     } catch (IOException | RuntimeException e) {
       Files.deleteIfExists(partial);
       throw e;
@@ -90,15 +90,23 @@ final class NativeLibraryLoader {
               PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
             };
     Files.createDirectories(directory, dirAttrs);
-    if (OWNER_ONLY_PERMISSIONS.length > 0) {
-      if (!ownedByCurrentUser(directory)
-          || !Files.getPosixFilePermissions(directory)
-              .equals(PosixFilePermissions.fromString("rwx------"))) {
-        throw new IOException(
-            "refusing to extract native library into " + directory + ": not private to " + user);
-      }
+    if (OWNER_ONLY_PERMISSIONS.length > 0
+        && (!ownedByCurrentUser(directory)
+            || !Files.getPosixFilePermissions(directory)
+                .equals(PosixFilePermissions.fromString("rwx------")))) {
+      throw new IOException(
+          "refusing to extract native library into " + directory + ": not private to " + user);
     }
     return directory;
+  }
+
+  private static void moveIntoPlace(Path partial, Path target) throws IOException {
+    try {
+      Files.move(
+          partial, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    } catch (AtomicMoveNotSupportedException e) {
+      Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING);
+    }
   }
 
   private static boolean ownedByCurrentUser(Path directory) throws IOException {
