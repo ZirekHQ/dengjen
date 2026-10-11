@@ -66,16 +66,11 @@ jobs:
 
       # `cargo publish --dry-run` per crate cannot resolve same-version workspace deps that are not
       # on crates.io yet (tier 2+ on a version bump). Packaging the whole workspace resolves them
-      # from the local packages instead; publish-crate-if-needed.sh then skips its per-crate dry run.
-      - name: package the workspace (dry run only)
+      # from the local packages instead and builds each archive; publish-crate-if-needed.sh then
+      # skips its per-crate dry run.
+      - name: package and verify the workspace (dry run only)
         if: env.DRY_RUN == 'true'
-        run: cargo package --workspace --locked --no-verify
-
-      # libdengjen's cbindgen build script and the Python crate's espeak-data staging cannot build
-      # from a packaged archive before their deps are on crates.io, so only they stay unverified.
-      - name: verify the packaged crates build (dry run only)
-        if: env.DRY_RUN == 'true'
-        run: cargo package --workspace --locked --exclude dengjen-tts-python --exclude libdengjen
+        run: cargo package --workspace --locked
 
       # publish-crate-if-needed.sh skips a crate crates.io already has (a curl lookup, no token
       # needed) before CARGO_REGISTRY_TOKEN is read -- see the script's own comment for why.
