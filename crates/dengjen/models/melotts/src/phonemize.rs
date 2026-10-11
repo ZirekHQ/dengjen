@@ -46,6 +46,9 @@ pub(crate) fn pinyin_phone_tone_pairs(
                     dengjen_pinyin_phonemizer::PinyinToken::Passthrough(s) => {
                         vec![(s, "_".to_string())]
                     }
+                    // `PinyinToken` is #[non_exhaustive]; a token kind this crate predates has no
+                    // phone mapping.
+                    _ => Vec::new(),
                 })
                 .collect()
         })
