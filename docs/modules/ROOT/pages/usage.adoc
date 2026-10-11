@@ -24,7 +24,7 @@ French, Japanese, Korean) or `{"type": "pinyin", "model_dir": "<g2pW model direc
 
 == CLI
 
-Synthesize text from a file to a WAV file, using the `dengjen-cli` frontend:
+Synthesize text from a file to a WAV file, using the `dengjen` CLI (crate `dengjen-tts-cli`):
 
 [source,sh]
 ----

@@ -128,7 +128,7 @@ fn fallback_synthesis_config_is_none_until_explicitly_set() {
     let mut parameters = HashMap::new();
     parameters.insert("noise_scale".to_string(), 1.5f32);
     let config = dengjen_tts_core::SynthesisConfig {
-        speaker: Some(3),
+        speaker: None,
         parameters,
     };
     model.set_fallback_synthesis_config(&config).unwrap();

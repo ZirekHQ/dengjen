@@ -5,7 +5,7 @@ through one class, `PiperModel`, and synthesizes in every mode the engine offers
 
 == What is published
 
-* PyPI package https://pypi.org/project/pydengjen/[`pydengjen`] (2.0.3 at the time of writing).
+* PyPI package https://pypi.org/project/pydengjen/[`pydengjen`] (2.1.1 at the time of writing).
 * Wheels for CPython 3.9 and newer, one `abi3` wheel per platform: Linux x86_64 and aarch64
   (manylinux 2.28), Windows x64 and macOS arm64.
 * ONNX Runtime is linked into the wheel, so you install nothing else.

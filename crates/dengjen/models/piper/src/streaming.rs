@@ -1,4 +1,4 @@
-use crate::config::ModelConfig;
+use crate::config::{resolve_default_speaker_id, ModelConfig};
 use crate::inference::{
     build_vits_inputs, create_inference_session, inference_error, reversed_mapping,
     session_init_error, snapshot_scales_and_speaker,
@@ -79,9 +79,12 @@ impl VitsStreamingModel {
     }
 
     fn infer_encoder(&self, input_phonemes: Vec<i64>) -> DengjenResult<EncoderOutputs> {
-        let (scales, speaker) =
-            snapshot_scales_and_speaker(&self.synth_config, self.config.num_speakers);
-        let inputs = build_vits_inputs(input_phonemes, scales, speaker);
+        let (scales, speaker) = snapshot_scales_and_speaker(
+            &self.synth_config,
+            self.config.num_speakers,
+            resolve_default_speaker_id(&self.config),
+        );
+        let inputs = build_vits_inputs(input_phonemes, scales, speaker)?;
 
         let mut session = lock_ignoring_poison(&self.encoder_model);
         let outputs = session.run(inputs.as_slice()).map_err(inference_error)?;
@@ -209,10 +212,11 @@ fn extract_named_array(
     values: &SessionOutputs,
     name: &str,
 ) -> DengjenResult<Array<f32, Dim<IxDynImpl>>> {
-    let (shape, data) = values[name]
-        .try_extract_tensor::<f32>()
-        .map_err(inference_error)?;
-    Ok(Array::from_shape_vec(shape.to_ixdyn(), data.to_vec()).unwrap())
+    let value = values.get(name).ok_or_else(|| {
+        DengjenError::InferenceError(format!("Encoder output `{name}` is missing"))
+    })?;
+    let (shape, data) = value.try_extract_tensor::<f32>().map_err(inference_error)?;
+    Array::from_shape_vec(shape.to_ixdyn(), data.to_vec()).map_err(inference_error)
 }
 
 impl EncoderOutputs {

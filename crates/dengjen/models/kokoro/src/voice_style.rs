@@ -1,11 +1,19 @@
 use dengjen_tts_core::{DengjenError, DengjenResult};
 use ndarray::{Array2, Axis, Slice};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Component, Path};
 
 const STYLE_DIM: usize = 256;
-const MAX_TOKEN_LEN: usize = 510;
+pub const MAX_TOKEN_LEN: usize = 510;
 const EXPECTED_FILE_BYTES: usize = MAX_TOKEN_LEN * STYLE_DIM * 4;
+
+fn is_plain_file_stem(voice_name: &str) -> bool {
+    let mut components = Path::new(voice_name).components();
+    matches!(
+        (components.next(), components.next()),
+        (Some(Component::Normal(name)), None) if name == voice_name
+    )
+}
 
 pub struct VoiceStyles {
     per_voice: HashMap<String, Array2<f32>>,
@@ -15,6 +23,11 @@ impl VoiceStyles {
     pub fn load(voices_dir: &Path, voices: &[String]) -> DengjenResult<Self> {
         let mut per_voice = HashMap::with_capacity(voices.len());
         for voice_name in voices {
+            if !is_plain_file_stem(voice_name) {
+                return Err(DengjenError::FailedToLoadResource(format!(
+                    "Kokoro voice name `{voice_name}` must be a plain file name without path separators"
+                )));
+            }
             let path = voices_dir.join(format!("{voice_name}.bin"));
             let bytes = std::fs::read(&path).map_err(|e| {
                 DengjenError::FailedToLoadResource(format!(
@@ -79,6 +92,20 @@ mod tests {
         let row0 = styles.style_for("test_voice", 1).unwrap();
         assert_eq!(row0.shape(), &[1, 256]);
         assert_eq!(row0[[0, 0]], 0.0);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_rejects_voice_names_that_escape_the_voices_dir() {
+        let dir = std::env::temp_dir().join("dengjen_kokoro_voice_style_test_escape");
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["../outside", "/etc/passwd", "sub/voice", "..", ""] {
+            let result = VoiceStyles::load(&dir, &[name.to_string()]);
+            assert!(
+                matches!(&result, Err(DengjenError::FailedToLoadResource(msg)) if msg.contains("plain file name")),
+                "voice name `{name}` must be rejected"
+            );
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 

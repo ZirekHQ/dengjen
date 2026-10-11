@@ -104,9 +104,11 @@ pub(crate) fn apply_geresh_digraphs(glyphs: Vec<Glyph>) -> Vec<Glyph> {
         if i + 1 < glyphs.len() && glyphs[i + 1].base == GERESH.to_string() {
             let key = format!("{}{}", g.base, glyphs[i + 1].base);
             if let Some(&ipa) = digraphs.get(&key) {
+                let mut marks = g.marks.clone();
+                marks.extend(&glyphs[i + 1].marks);
                 out.push(Glyph {
                     base: format!("<IPA:{ipa}>"),
-                    marks: Vec::new(),
+                    marks,
                 });
                 i += 2;
                 continue;
@@ -116,6 +118,17 @@ pub(crate) fn apply_geresh_digraphs(glyphs: Vec<Glyph>) -> Vec<Glyph> {
         i += 1;
     }
     out
+}
+
+fn digraph_ipa(base: &str) -> Option<&str> {
+    base.strip_prefix("<IPA:")?.strip_suffix('>')
+}
+
+fn glyph_consonant(g: &Glyph, is_final: bool) -> String {
+    match digraph_ipa(&g.base) {
+        Some(ipa) => ipa.to_string(),
+        None => map_consonant(g.base.chars().next().unwrap_or('\0'), &g.marks, is_final),
+    }
 }
 
 pub(crate) fn map_consonant(base: char, marks: &[char], is_final: bool) -> String {
@@ -306,8 +319,6 @@ pub(crate) fn word_to_segments(word: &str) -> Vec<Segment> {
         let next = glyphs.get(i + 1);
         let is_final = i == glyphs.len() - 1;
 
-        let base_char = g.base.chars().next().unwrap_or('\0');
-
         if is_shuruk(g) {
             segs.push(Segment {
                 onset: std::mem::take(&mut onset),
@@ -318,7 +329,7 @@ pub(crate) fn word_to_segments(word: &str) -> Vec<Segment> {
             continue;
         }
         if is_hiriq_yod(g, next) {
-            let cons = map_consonant(base_char, &g.marks, false);
+            let cons = glyph_consonant(g, false);
             if !cons.is_empty() && cons != "<GLT>" {
                 onset.push(cons);
             }
@@ -340,7 +351,7 @@ pub(crate) fn word_to_segments(word: &str) -> Vec<Segment> {
             continue;
         }
 
-        let cons = map_consonant(base_char, &g.marks, is_final);
+        let cons = glyph_consonant(g, is_final);
         let (vowel, is_vocalic) = map_basic_vowel(g);
 
         if is_vocalic {
@@ -676,17 +687,38 @@ mod tests {
     }
 
     #[test]
-    fn word_to_segments_geresh_digraph_is_silently_dropped_matching_upstream() {
+    fn word_to_segments_geresh_digraph_contributes_its_affricate_to_the_onset() {
         let segs = word_to_segments("\u{05D2}\u{05F3}\u{05D1}\u{05B7}");
-        let digraph_ipa = "d\u{0361}\u{0292}";
-        for seg in &segs {
-            assert!(!seg.onset.iter().any(|s| s == digraph_ipa));
-            assert!(!seg.coda.iter().any(|s| s == digraph_ipa));
-        }
-
         assert_eq!(segs.len(), 1);
         assert_eq!(segs[0].nucleus, "a");
-        assert_eq!(segs[0].onset, vec!["v".to_string()]);
+        assert_eq!(
+            segs[0].onset,
+            vec!["d\u{0361}\u{0292}".to_string(), "v".to_string()]
+        );
+    }
+
+    #[test]
+    fn hebrew_word_to_ipa_reads_each_geresh_digraph() {
+        assert_eq!(
+            hebrew_word_to_ipa("\u{05D2}\u{05F3}\u{05B7}"),
+            "d\u{0292}\u{02C8}a"
+        );
+        assert_eq!(
+            hebrew_word_to_ipa("\u{05E6}\u{05F3}\u{05B7}"),
+            "t\u{0283}\u{02C8}a"
+        );
+        assert_eq!(
+            hebrew_word_to_ipa("\u{05D6}\u{05F3}\u{05B7}"),
+            "\u{0292}\u{02C8}a"
+        );
+    }
+
+    #[test]
+    fn hebrew_word_to_ipa_keeps_a_vowel_written_before_the_geresh() {
+        assert_eq!(
+            hebrew_word_to_ipa("\u{05D2}\u{05B7}\u{05F3}"),
+            "d\u{0292}\u{02C8}a"
+        );
     }
 
     #[test]

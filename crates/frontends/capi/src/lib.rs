@@ -1,6 +1,6 @@
 use dengjen_tts::{
-    default_batch_size, AudioOutputConfig, DengjenSpeechSynthesizer, StreamMode,
-    SYNTHESIS_THREAD_POOL,
+    default_batch_size, synthesis_thread_pool, AudioOutputConfig, DengjenSpeechSynthesizer,
+    StreamMode,
 };
 use dengjen_tts_core::{
     panic_message, AudioSamples, CancellationToken, DengjenError, DengjenModel, DengjenResult,
@@ -10,7 +10,7 @@ use std::ops::Deref;
 use std::os::raw::c_void;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[repr(transparent)]
 struct UserDataPtr(*mut c_void);
@@ -32,7 +32,7 @@ ffi_support::define_box_destructor!(DengjenVoice, _internal_libdengjenUnloadDeng
 ffi_support::implement_into_ffi_by_pointer!(PiperSynthConfig);
 ffi_support::define_box_destructor!(PiperSynthConfig, _internal_libdengjenFreePiperSynthConfig);
 
-static INIT_ORT_ENVIRONMENT: Once = Once::new();
+static INIT_ORT_ENVIRONMENT: OnceLock<Result<(), String>> = OnceLock::new();
 
 pub mod error_codes {
     pub const INVALID_SYNTHESIS_MODE: i32 = 16;
@@ -655,43 +655,53 @@ pub unsafe extern "C" fn libdengjenSpeakToFile(
     })
 }
 
-fn init_ort_environment() {
-    INIT_ORT_ENVIRONMENT.call_once(|| {
-        #[cfg(target_os = "android")]
-        let execution_providers = vec![
-            ort::execution_providers::NNAPI::default().build(),
-            ort::execution_providers::CPU::default().build(),
-        ];
-        #[cfg(target_os = "ios")]
-        let execution_providers = vec![
-            ort::execution_providers::CoreML::default().build(),
-            ort::execution_providers::CPU::default().build(),
-        ];
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let execution_providers = vec![ort::execution_providers::CPU::default().build()];
+fn init_ort_environment() -> DengjenResult<()> {
+    INIT_ORT_ENVIRONMENT
+        .get_or_init(commit_ort_environment)
+        .clone()
+        .map_err(DengjenError::OperationError)
+}
 
-        let committed = ort::init()
-            .with_name("dengjen")
-            .with_execution_providers(execution_providers)
-            .commit();
+fn commit_ort_environment() -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    let execution_providers = vec![
+        ort::execution_providers::NNAPI::default().build(),
+        ort::execution_providers::CPU::default().build(),
+    ];
+    #[cfg(target_os = "ios")]
+    let execution_providers = vec![
+        ort::execution_providers::CoreML::default().build(),
+        ort::execution_providers::CPU::default().build(),
+    ];
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let execution_providers = vec![ort::execution_providers::CPU::default().build()];
 
-        assert!(committed, "Failed to initialize onnxruntime");
-    });
+    let committed = ort::init()
+        .with_name("dengjen")
+        .with_execution_providers(execution_providers)
+        .commit();
+
+    committed_or_error(committed)
+}
+
+fn committed_or_error(committed: bool) -> Result<(), String> {
+    if committed {
+        Ok(())
+    } else {
+        Err("Failed to initialize onnxruntime".to_string())
+    }
 }
 
 fn load_voice(config_path: &std::path::Path) -> DengjenResult<Arc<dyn DengjenModel + Send + Sync>> {
-    let model_type = dengjen_tts::detect_model_type(config_path)?;
-    if model_type == "kokoro" {
-        return dengjen_tts_kokoro::from_config_path(config_path);
-    }
-    if model_type == "melotts" {
-        return dengjen_tts_melotts::from_config_path(config_path);
-    }
-    dengjen_tts_piper::from_config_path(config_path)
+    dengjen_tts::load_voice_with(config_path, |model_type, path| match model_type {
+        dengjen_tts::ModelType::Piper => dengjen_tts_piper::from_config_path(path),
+        dengjen_tts::ModelType::Kokoro => dengjen_tts_kokoro::from_config_path(path),
+        dengjen_tts::ModelType::MeloTts => dengjen_tts_melotts::from_config_path(path),
+    })
 }
 
 fn _load_voice(config_path_ptr: FfiStr) -> DengjenFFIResult<DengjenVoice> {
-    init_ort_environment();
+    init_ort_environment()?;
     let Some(config_path) = config_path_ptr.into_opt_string() else {
         return Err(DengjenFFIError::invalid_utf8());
     };
@@ -749,7 +759,7 @@ fn _synthesize(
     let report_to_caller = callback;
     let report_user_data = UserDataPtr(params.user_data);
     // An unwinding job would abort the host process; report it as an error event.
-    SYNTHESIS_THREAD_POOL.spawn(move || {
+    synthesis_thread_pool()?.spawn(move || {
         let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
             _do_synthesize(synth, cancel_slot, text, callback, params)
         }))
@@ -1631,6 +1641,12 @@ mod abi_struct_tests {
     }
 
     #[test]
+    fn committed_or_error_reports_a_failed_commit_as_an_error() {
+        assert!(committed_or_error(true).is_ok());
+        assert!(committed_or_error(false).is_err());
+    }
+
+    #[test]
     fn as_piper_synth_config_treats_speaker_zero_as_a_real_speaker_not_unset() {
         let synth_config = PiperSynthConfig {
             speaker: 0,
@@ -1650,5 +1666,239 @@ mod abi_struct_tests {
             noise_w: 1.0,
         };
         assert_eq!(synth_config.as_piper_synth_config().speaker, None);
+    }
+}
+
+#[cfg(test)]
+mod ffi_flow_tests {
+    use super::*;
+    use dengjen_tts_core::{Audio, AudioInfo, AudioStreamIterator, Phonemes, SynthesisConfig};
+    use std::thread::ThreadId;
+    use std::time::{Duration, Instant};
+
+    #[derive(Clone, Copy)]
+    enum Script {
+        Speak,
+        PanicOnSpeak,
+        SlowStream,
+    }
+
+    struct ScriptedModel {
+        script: Script,
+    }
+
+    const SLOW_STREAM_CHUNKS: usize = 2000;
+
+    impl DengjenModel for ScriptedModel {
+        fn audio_output_info(&self) -> DengjenResult<AudioInfo> {
+            Ok(AudioInfo {
+                sample_rate: 16000,
+                num_channels: 1,
+                sample_width: 2,
+            })
+        }
+        fn phonemize_text(&self, _text: &str) -> DengjenResult<Phonemes> {
+            Ok(Phonemes::from(vec!["a".to_string()]))
+        }
+        fn speak_batch(&self, batches: Vec<String>) -> DengjenResult<Vec<Audio>> {
+            batches
+                .into_iter()
+                .map(|phonemes| self.speak_one_sentence(phonemes))
+                .collect()
+        }
+        fn speak_one_sentence(&self, _phonemes: String) -> dengjen_tts_core::DengjenAudioResult {
+            if matches!(self.script, Script::PanicOnSpeak) {
+                panic!("scripted model panic");
+            }
+            Ok(Audio::new(AudioSamples::from(vec![0.1; 160]), 16000, None))
+        }
+        fn get_default_synthesis_config(&self) -> DengjenResult<Option<SynthesisConfig>> {
+            Ok(None)
+        }
+        fn get_fallback_synthesis_config(&self) -> DengjenResult<Option<SynthesisConfig>> {
+            Ok(None)
+        }
+        fn set_fallback_synthesis_config(&self, _config: &SynthesisConfig) -> DengjenResult<()> {
+            Ok(())
+        }
+        fn supports_streaming_output(&self) -> bool {
+            matches!(self.script, Script::SlowStream)
+        }
+        fn stream_synthesis(
+            &self,
+            _phonemes: String,
+            _chunk_size: usize,
+            _chunk_padding: usize,
+            _cancel_token: CancellationToken,
+        ) -> DengjenResult<AudioStreamIterator<'_>> {
+            Ok(Box::new((0..SLOW_STREAM_CHUNKS).map(|_| {
+                std::thread::sleep(Duration::from_millis(5));
+                Ok(AudioSamples::from(vec![0.1; 160]))
+            })))
+        }
+    }
+
+    struct EventLog {
+        entries: Mutex<Vec<(i32, i32, ThreadId)>>,
+    }
+
+    impl EventLog {
+        const fn new() -> Self {
+            Self {
+                entries: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn count(&self, event_type: i32) -> usize {
+            let entries = self.entries.lock().unwrap();
+            entries.iter().filter(|e| e.0 == event_type).count()
+        }
+
+        fn wait_for(&self, event_type: i32, at_least: usize) -> bool {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                if self.count(event_type) >= at_least {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            false
+        }
+    }
+
+    extern "C" fn record_event(event: SynthesisEvent, user_data: *mut c_void) -> u8 {
+        // SAFETY: every test here passes a `&'static EventLog` as `user_data`.
+        let log = unsafe { &*(user_data as *const EventLog) };
+        let code = if event.error_ptr.is_null() {
+            0
+        } else {
+            // SAFETY: a non-null `error_ptr` was produced by `SynthesisEvent::with_error`
+            // and stays valid until `libdengjenFreeSynthesisEvent` below.
+            unsafe { &*event.error_ptr }.get_code().code()
+        };
+        log.entries
+            .lock()
+            .unwrap()
+            .push((event.event_type, code, std::thread::current().id()));
+        // SAFETY: `event` was handed to this callback by the code under test and is freed once.
+        unsafe { libdengjenFreeSynthesisEvent(event) };
+        0
+    }
+
+    fn voice_with(script: Script) -> *mut DengjenVoice {
+        let model: Arc<dyn DengjenModel + Send + Sync> = Arc::new(ScriptedModel { script });
+        let synth = DengjenSpeechSynthesizer::new(model).unwrap();
+        Box::into_raw(Box::new(DengjenVoice::from(synth)))
+    }
+
+    fn params(mode: i32, nonblocking: u8, log: &'static EventLog) -> SynthesisParams {
+        SynthesisParams {
+            mode,
+            rate: 50,
+            volume: 100,
+            pitch: 50,
+            appended_silence_ms: 0,
+            callback: Some(record_event),
+            nonblocking,
+            user_data: (log as *const EventLog).cast_mut().cast(),
+        }
+    }
+
+    fn speak(voice: *mut DengjenVoice, params: SynthesisParams) -> ExternError {
+        let mut out_error = ExternError::default();
+        // SAFETY: `voice` comes from `voice_with` and is live; the text is a valid C string.
+        unsafe {
+            libdengjenSpeak(voice, FfiStr::from_cstr(c"hello"), params, &mut out_error);
+        }
+        out_error
+    }
+
+    #[test]
+    fn nonblocking_speak_reports_events_from_a_worker_thread() {
+        static LOG: EventLog = EventLog::new();
+        let log = &LOG;
+        let voice = voice_with(Script::Speak);
+        let out_error = speak(voice, params(synth_mode::SYNTH_MODE_LAZY, 1, log));
+        assert!(out_error.get_code().is_success());
+        assert!(log.wait_for(synth_event::SYNTH_EVENT_FINISHED, 1));
+        assert!(log.count(synth_event::SYNTH_EVENT_SPEECH) >= 1);
+        assert_eq!(log.count(synth_event::SYNTH_EVENT_ERROR), 0);
+        let entries = log.entries.lock().unwrap();
+        assert!(entries
+            .iter()
+            .all(|(_, _, thread)| *thread != std::thread::current().id()));
+        // SAFETY: `voice` is live and not used again.
+        unsafe { libdengjenUnloadDengjenVoice(voice) };
+    }
+
+    #[test]
+    fn nonblocking_worker_panic_becomes_an_inference_error_event() {
+        static LOG: EventLog = EventLog::new();
+        let log = &LOG;
+        let voice = voice_with(Script::PanicOnSpeak);
+        let out_error = speak(voice, params(synth_mode::SYNTH_MODE_LAZY, 1, log));
+        assert!(out_error.get_code().is_success());
+        assert!(log.wait_for(synth_event::SYNTH_EVENT_ERROR, 1));
+        let entries = log.entries.lock().unwrap();
+        let codes: Vec<i32> = entries
+            .iter()
+            .filter(|e| e.0 == synth_event::SYNTH_EVENT_ERROR)
+            .map(|e| e.1)
+            .collect();
+        assert_eq!(codes, vec![error_codes::INFERENCE_ERROR]);
+        // SAFETY: `voice` is live and not used again.
+        unsafe { libdengjenUnloadDengjenVoice(voice) };
+    }
+
+    #[test]
+    fn invalid_synthesis_mode_returns_the_mode_error_without_events() {
+        static LOG: EventLog = EventLog::new();
+        let log = &LOG;
+        let voice = voice_with(Script::Speak);
+        let out_error = speak(voice, params(99, 0, log));
+        assert_eq!(
+            out_error.get_code().code(),
+            error_codes::INVALID_SYNTHESIS_MODE
+        );
+        assert!(log.entries.lock().unwrap().is_empty());
+        // SAFETY: the message was allocated by `call_with_result`; `voice` is live and unused after.
+        unsafe {
+            out_error.manually_release();
+            libdengjenUnloadDengjenVoice(voice);
+        }
+    }
+
+    #[test]
+    fn cancelling_a_realtime_synthesis_stops_the_stream_and_still_finishes() {
+        static LOG: EventLog = EventLog::new();
+        let log = &LOG;
+        let voice = voice_with(Script::SlowStream);
+        let out_error = speak(voice, params(synth_mode::SYNTH_MODE_REALTIME, 1, log));
+        assert!(out_error.get_code().is_success());
+        assert!(log.wait_for(synth_event::SYNTH_EVENT_SPEECH, 1));
+
+        let mut cancel_error = ExternError::default();
+        // SAFETY: `voice` is live; cancelling from the thread that started the synthesis is allowed.
+        unsafe { libdengjenCancel(voice, &mut cancel_error) };
+        assert!(cancel_error.get_code().is_success());
+
+        assert!(log.wait_for(synth_event::SYNTH_EVENT_FINISHED, 1));
+        assert!(log.count(synth_event::SYNTH_EVENT_SPEECH) < SLOW_STREAM_CHUNKS);
+        // SAFETY: `voice` is live and not used again.
+        unsafe { libdengjenUnloadDengjenVoice(voice) };
+    }
+
+    #[test]
+    fn load_voice_rejects_an_unknown_model_type_instead_of_falling_back_to_piper() {
+        let dir = std::env::temp_dir().join("dengjen_capi_load_voice_unknown_model_type");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        std::fs::write(&path, r#"{"model_type": "bark"}"#).unwrap();
+        let result = load_voice(&path);
+        assert!(
+            matches!(&result, Err(DengjenError::InvalidConfiguration(msg)) if msg.contains("bark")),
+            "unknown model_type must be an explicit configuration error"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

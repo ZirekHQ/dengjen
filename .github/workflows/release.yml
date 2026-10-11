@@ -43,6 +43,10 @@ on:
         required: false
       BLUESKY_APP_PASSWORD:
         required: false
+      DOCS_APP_CLIENT_ID:
+        required: false
+      DOCS_APP_PRIVATE_KEY:
+        required: false
 
 permissions: {}
 
@@ -117,7 +121,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/publish-crates.yml # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+    uses: ./.github/workflows/publish-crates.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       dry_run: ${{ inputs.dry_run == true }}
 
@@ -127,7 +131,7 @@ jobs:
     if: "!cancelled() && needs.tag-and-release.result == 'success'"
     permissions:
       contents: write
-    uses: ./.github/workflows/publish-java.yml # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+    uses: ./.github/workflows/publish-java.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       tag: java-v${{ needs.tag-and-release.outputs.version }}
       previous_tag: ${{ inputs.previous_tag }}
@@ -145,7 +149,7 @@ jobs:
     if: "!cancelled() && needs.tag-and-release.result == 'success'"
     permissions:
       contents: read
-    uses: ./.github/workflows/publish-go.yml # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+    uses: ./.github/workflows/publish-go.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       tag: go-release-v${{ needs.tag-and-release.outputs.version }}
       dry_run: ${{ inputs.dry_run == true }}
@@ -159,7 +163,7 @@ jobs:
     if: "!cancelled() && needs.tag-and-release.result == 'success'"
     permissions:
       contents: write
-    uses: ./.github/workflows/publish-grpc.yml # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+    uses: ./.github/workflows/publish-grpc.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       tag: grpc-release-v${{ needs.tag-and-release.outputs.version }}
       dry_run: ${{ inputs.dry_run == true }}
@@ -170,7 +174,7 @@ jobs:
     if: "!cancelled() && needs.tag-and-release.result == 'success'"
     permissions:
       contents: read
-    uses: ./.github/workflows/publish-python.yml # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+    uses: ./.github/workflows/publish-python.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
 
   # PyPI Trusted Publishing matches the workflow file holding this job and is unsupported from a
   # reusable one, so it can't live in publish-python.yml. Runs only on the push path, where
@@ -256,6 +260,21 @@ jobs:
             --title "$tag" \
             --verify-tag \
             "${notes_args[@]}"
+
+  # A release created with GITHUB_TOKEN does not fire notify-docs.yml's `release: published`
+  # trigger, so the docs site is pinged by calling that workflow directly.
+  docs:
+    name: Notify the docs site
+    needs: [tag-and-release, github-release]
+    if: ${{ !cancelled() && inputs.dry_run != true && needs.github-release.result == 'success' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/notify-docs.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    with:
+      tag: v${{ needs.tag-and-release.outputs.version }}
+    secrets:
+      DOCS_APP_CLIENT_ID: ${{ secrets.DOCS_APP_CLIENT_ID }}
+      DOCS_APP_PRIVATE_KEY: ${{ secrets.DOCS_APP_PRIVATE_KEY }}
 
   announce:
     name: Announce the release

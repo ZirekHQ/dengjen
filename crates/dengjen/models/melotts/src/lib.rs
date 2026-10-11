@@ -9,8 +9,8 @@ pub use config::{AudioConfig, InferenceConfig, MeloVoiceConfig, PhonemizerConfig
 pub use synth_config::MeloSynthesisConfig;
 
 use dengjen_tts_core::{
-    lock_ignoring_poison, Audio, AudioInfo, DengjenAudioResult, DengjenModel, DengjenResult,
-    Phonemes, SynthesisConfig,
+    lock_ignoring_poison, Audio, AudioInfo, DengjenAudioResult, DengjenError, DengjenModel,
+    DengjenResult, Phonemes, SynthesisConfig,
 };
 use inference::MeloTTSModel as InnerModel;
 use phonemize::{create_backend, phone_tone_pairs, PhonemizerBackend};
@@ -23,6 +23,20 @@ fn reversed_speaker_map(speaker_id_map: &HashMap<String, i64>) -> HashMap<i64, S
         .iter()
         .map(|(name, id)| (*id, name.clone()))
         .collect()
+}
+
+fn ensure_known_speaker(
+    speaker_map: &HashMap<i64, String>,
+    config: &SynthesisConfig,
+) -> DengjenResult<()> {
+    match config.speaker {
+        Some(speaker) if !speaker_map.contains_key(&speaker) => {
+            Err(DengjenError::InvalidConfiguration(format!(
+                "No speaker was found with the given id `{speaker}`"
+            )))
+        }
+        _ => Ok(()),
+    }
 }
 
 struct MeloTTSModel {
@@ -125,6 +139,7 @@ impl DengjenModel for MeloTTSModel {
         &self,
         synthesis_config: &SynthesisConfig,
     ) -> DengjenResult<()> {
+        ensure_known_speaker(&self.speaker_map, synthesis_config)?;
         *lock_ignoring_poison(&self.fallback_config) = Some(synthesis_config.clone());
         Ok(())
     }
@@ -156,4 +171,30 @@ pub fn from_config_path(config_path: &Path) -> DengjenResult<Arc<dyn DengjenMode
         speaker_map,
         fallback_config: Mutex::new(None),
     }))
+}
+
+#[cfg(test)]
+mod speaker_validation_tests {
+    use super::*;
+
+    fn config_with_speaker(speaker: Option<i64>) -> SynthesisConfig {
+        SynthesisConfig {
+            speaker,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn ensure_known_speaker_accepts_a_known_or_unset_speaker() {
+        let map = HashMap::from([(1, "EN".to_string())]);
+        assert!(ensure_known_speaker(&map, &config_with_speaker(Some(1))).is_ok());
+        assert!(ensure_known_speaker(&map, &config_with_speaker(None)).is_ok());
+    }
+
+    #[test]
+    fn ensure_known_speaker_rejects_an_unknown_speaker() {
+        let map = HashMap::from([(1, "EN".to_string())]);
+        let result = ensure_known_speaker(&map, &config_with_speaker(Some(9)));
+        assert!(matches!(result, Err(DengjenError::InvalidConfiguration(_))));
+    }
 }

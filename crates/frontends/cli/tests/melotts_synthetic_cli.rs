@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const WAV_HEADER_LEN: usize = 44;
+
 fn melotts_fixture_model() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../dengjen/models/melotts/tests/fixtures/synthetic_melotts.onnx")
@@ -26,7 +28,10 @@ fn write_config(dir: &Path, model_path: &Path) {
 
 #[test]
 fn cli_loads_a_melotts_voice_without_panicking() {
-    let dir = std::env::temp_dir().join("dengjen_cli_melotts_synthetic_test");
+    let dir = std::env::temp_dir().join(format!(
+        "dengjen_cli_melotts_synthetic_test_{}",
+        std::process::id()
+    ));
     std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir).unwrap();
     let model_path = melotts_fixture_model();
@@ -68,7 +73,13 @@ fn cli_loads_a_melotts_voice_without_panicking() {
     }
 
     let wav_bytes = std::fs::read(&output_path).expect("expected the CLI to write an output WAV");
-    assert!(!wav_bytes.is_empty(), "expected non-empty WAV bytes");
+    assert!(
+        wav_bytes.len() > WAV_HEADER_LEN,
+        "expected WAV bytes beyond the header, got {}",
+        wav_bytes.len()
+    );
+    assert_eq!(&wav_bytes[..4], b"RIFF");
+    assert_eq!(&wav_bytes[8..12], b"WAVE");
 
     std::fs::remove_dir_all(&dir).ok();
 }

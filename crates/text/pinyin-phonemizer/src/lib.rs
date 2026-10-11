@@ -16,7 +16,6 @@ use std::path::Path;
 
 pub struct PinyinEngine {
     g2pw: G2pwEngine,
-    char2phonemes: HashMap<char, Vec<usize>>,
     dictionaries: Dictionaries,
     bopomofo_to_pinyin: HashMap<String, String>,
 }
@@ -42,7 +41,7 @@ pub fn create_pinyin_engine(model_dir: &Path) -> DengjenResult<PinyinEngine> {
         &model_dir.join("tokenizer.json"),
         G2pwConfig {
             labels,
-            char2phonemes: char2phonemes.clone(),
+            char2phonemes,
             window_size: 32,
             max_len: 512,
             chars,
@@ -56,7 +55,6 @@ pub fn create_pinyin_engine(model_dir: &Path) -> DengjenResult<PinyinEngine> {
 
     Ok(PinyinEngine {
         g2pw,
-        char2phonemes,
         dictionaries,
         bopomofo_to_pinyin,
     })
@@ -140,13 +138,7 @@ fn phonemize_sentence_tokens(
     let chars: Vec<char> = sentence.chars().collect();
     let mut tokens = Vec::new();
     for (i, &c) in chars.iter().enumerate() {
-        let bopomofo = resolve_char(
-            &engine.dictionaries,
-            &engine.g2pw,
-            &engine.char2phonemes,
-            sentence,
-            i,
-        )?;
+        let bopomofo = resolve_char(&engine.dictionaries, &engine.g2pw, &chars, i)?;
         let Some(bopomofo) = bopomofo else {
             if is_passthrough_punctuation(c) {
                 tokens.push(PinyinToken::Passthrough(c.to_string()));

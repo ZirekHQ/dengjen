@@ -8,9 +8,13 @@ use std::sync::{Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockW
 pub use dengjen_audio_ops::{Audio, AudioInfo, AudioSamples, WaveWriterError};
 
 mod cancellation;
+#[cfg(feature = "ort-providers")]
+mod ort_providers;
 mod synthesis_config;
 
 pub use cancellation::CancellationToken;
+#[cfg(feature = "ort-providers")]
+pub use ort_providers::execution_providers;
 pub use synthesis_config::SynthesisConfig;
 
 /// Returns the guard even when a previous holder panicked; callers must

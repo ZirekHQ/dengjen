@@ -1,5 +1,5 @@
 # Manual prereqs this workflow can't create itself: ZirekHQ/dengjen-tts-go must already exist with a
-# `main` branch (every release force-pushes an orphan commit onto it), and the
+# `main` branch (every release pushes a tag pointing at an orphan commit), and the
 # zirekhq-deploy GitHub App must be installed on it with Contents: Read and write.
 name: Publish Go bindings release
 
@@ -108,20 +108,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
         timeout-minutes: 15
         with:
           apt-packages: clang libclang-dev llvm-dev cmake protobuf-compiler
       # channel comes from rust-toolchain.toml
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       # dtolnay/rust-toolchain's own `targets:` input installs for its *own* default ("stable")
-      # toolchain -- cargo below actually runs under rust-toolchain.toml's 1.97.1 via rustup's
+      # toolchain -- cargo below actually runs under rust-toolchain.toml's pinned version via rustup's
       # directory override, so the target has to be added there instead.
       - run: rustup target add ${{ matrix.platform.rust-target }}
       - if: matrix.platform.target != 'x86_64'
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - if: matrix.platform.target != 'x86_64'
-        uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+        uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
         timeout-minutes: 15
         with:
           apt-packages: gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
@@ -179,7 +179,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
           arch: x64
@@ -232,7 +232,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
       # channel comes from rust-toolchain.toml
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
@@ -287,7 +287,7 @@ jobs:
           persist-credentials: false
       # Local-action paths resolve off $GITHUB_WORKSPACE, not this step's own `path:` -- since the
       # repo landed under dengjen-tts/, both the action reference and its own steps' cwd need it.
-      - uses: ./dengjen-tts/.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+      - uses: ./dengjen-tts/.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
         with:
           working-directory: dengjen-tts
       - name: Create deploy App token

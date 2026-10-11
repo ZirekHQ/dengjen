@@ -14,10 +14,9 @@ case "$status" in
   200) echo "${crate} ${version} is already published -- skipping" ;;
   404)
     if [ "${DRY_RUN:-}" = "true" ]; then
-      # No --no-verify here (unlike the real publish below) -- a dry run's
-      # whole point is validating the pipeline, and --no-verify would let it
-      # pass without ever building the packaged crate.
-      cargo publish -p "$crate" --locked --dry-run
+      # A per-crate dry run cannot resolve workspace deps that are not published yet;
+      # publish-crates.yml's `cargo package --workspace` step already validated packaging.
+      echo "::notice::DRY_RUN: ${crate} ${version} not published -- skipping per-crate publish"
     else
       cargo publish -p "$crate" --locked --no-verify
     fi

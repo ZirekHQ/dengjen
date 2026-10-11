@@ -97,19 +97,18 @@ pub(crate) fn resolve_char_dictionary_only(dictionaries: &Dictionaries, c: char)
 pub(crate) fn resolve_char(
     dictionaries: &Dictionaries,
     g2pw: &G2pwEngine,
-    char2phonemes: &HashMap<char, Vec<usize>>,
-    text: &str,
+    chars: &[char],
     char_index: usize,
 ) -> DengjenResult<Option<String>> {
-    let chars: Vec<char> = text.chars().collect();
     let c = *chars.get(char_index).ok_or_else(|| {
         DengjenError::PhonemizationError(format!(
-            "char_index {char_index} is out of bounds for text {text:?}"
+            "char_index {char_index} is out of bounds for a sentence of {} characters",
+            chars.len()
         ))
     })?;
 
-    if char2phonemes.contains_key(&c) {
-        return g2pw.resolve_polyphonic(text, char_index).map(Some);
+    if g2pw.is_polyphonic(c) {
+        return g2pw.resolve_polyphonic(chars, char_index).map(Some);
     }
 
     Ok(resolve_char_dictionary_only(dictionaries, c))

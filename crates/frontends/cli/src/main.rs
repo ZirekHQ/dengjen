@@ -12,8 +12,6 @@ use std::fs::File;
 use std::io::{self, prelude::*};
 use std::path::PathBuf;
 
-static INIT_ORT_ENVIRONMENT: std::sync::Once = std::sync::Once::new();
-
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 enum SynthesisMode {
     #[default]
@@ -608,11 +606,7 @@ mod synthesis_processing_tests {
     }
 }
 
-fn init_ort_environment() {
-    INIT_ORT_ENVIRONMENT.call_once(commit_onnxruntime);
-}
-
-fn commit_onnxruntime() {
+fn init_ort_environment() -> anyhow::Result<()> {
     let providers = [
         #[cfg(feature = "cuda")]
         ort::execution_providers::CUDA::default().build(),
@@ -622,25 +616,33 @@ fn commit_onnxruntime() {
         .with_name("dengjen")
         .with_execution_providers(providers)
         .commit();
-    assert!(ok, "Failed to initialize onnxruntime");
+    ort_commit_result(ok)
+}
+
+fn ort_commit_result(committed: bool) -> anyhow::Result<()> {
+    if committed {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Failed to initialize onnxruntime"))
+    }
 }
 
 fn load_voice(
     config_path: &std::path::Path,
 ) -> anyhow::Result<std::sync::Arc<dyn dengjen_tts::DengjenModel + Send + Sync>> {
-    let model_type = dengjen_tts::detect_model_type(config_path)?;
-    if model_type == "kokoro" {
-        return Ok(dengjen_tts_kokoro::from_config_path(config_path)?);
-    }
-    if model_type == "melotts" {
-        return Ok(dengjen_tts_melotts::from_config_path(config_path)?);
-    }
-    Ok(dengjen_tts_piper::from_config_path(config_path)?)
+    Ok(dengjen_tts::load_voice_with(
+        config_path,
+        |model_type, path| match model_type {
+            dengjen_tts::ModelType::Piper => dengjen_tts_piper::from_config_path(path),
+            dengjen_tts::ModelType::Kokoro => dengjen_tts_kokoro::from_config_path(path),
+            dengjen_tts::ModelType::MeloTts => dengjen_tts_melotts::from_config_path(path),
+        },
+    )?)
 }
 
 fn main() -> anyhow::Result<()> {
     enable_logging()?;
-    init_ort_environment();
+    init_ort_environment()?;
 
     let mut cli = Cli::parse();
     let synthesizer = build_synthesizer(&cli.config)?;
@@ -710,12 +712,12 @@ fn synthesize_from_stdin_forever(
     synthesizer: &DengjenSpeechSynthesizer,
     default_synth_config: &SynthesisConfig,
 ) -> anyhow::Result<()> {
+    let base_output_file = cli.output_file.take();
     let mut request_count: u64 = 0;
     loop {
         request_count += 1;
-        cli.output_file = cli
-            .output_file
-            .take()
+        cli.output_file = base_output_file
+            .clone()
             .map(|path| enumerate_output_path(path, request_count));
 
         match get_synthesis_request_from_stdin() {
@@ -741,16 +743,16 @@ fn synthesize_from_stdin_forever(
 }
 
 fn enumerate_output_path(path: PathBuf, suffix: u64) -> PathBuf {
-    let stem = path
-        .file_stem()
-        .expect("Invalid output file name")
-        .to_string_lossy();
-    let extension = path
-        .extension()
-        .expect("Invalid output file name")
-        .to_string_lossy();
-    let enumerated_name = format!("{}-{}.{}", stem, suffix, extension);
-    path.with_file_name(enumerated_name)
+    let Some(stem) = path.file_stem() else {
+        return path;
+    };
+    let mut name = stem.to_os_string();
+    name.push(format!("-{suffix}"));
+    if let Some(extension) = path.extension() {
+        name.push(".");
+        name.push(extension);
+    }
+    path.with_file_name(name)
 }
 
 #[cfg(test)]
@@ -906,15 +908,34 @@ mod tests {
     }
 
     #[test]
-    fn enumerate_output_path_is_cumulative_across_repeated_calls() {
-        let first = enumerate_output_path(PathBuf::from("out.wav"), 1);
-        let second = enumerate_output_path(first, 2);
-        assert_eq!(second, PathBuf::from("out-1-2.wav"));
+    fn enumerate_output_path_derives_each_name_from_the_base_path() {
+        let base = PathBuf::from("out.wav");
+        assert_eq!(
+            enumerate_output_path(base.clone(), 1),
+            PathBuf::from("out-1.wav")
+        );
+        assert_eq!(enumerate_output_path(base, 2), PathBuf::from("out-2.wav"));
     }
 
     #[test]
-    #[should_panic(expected = "Invalid output file name")]
-    fn enumerate_output_path_panics_on_a_path_with_no_extension() {
-        enumerate_output_path(PathBuf::from("noext"), 1);
+    fn enumerate_output_path_handles_a_path_with_no_extension() {
+        assert_eq!(
+            enumerate_output_path(PathBuf::from("dir/noext"), 3),
+            PathBuf::from("dir/noext-3")
+        );
+    }
+
+    #[test]
+    fn enumerate_output_path_leaves_a_path_without_a_file_name_unchanged() {
+        assert_eq!(
+            enumerate_output_path(PathBuf::from("/"), 1),
+            PathBuf::from("/")
+        );
+    }
+
+    #[test]
+    fn ort_commit_result_reports_failure_as_an_error() {
+        assert!(ort_commit_result(true).is_ok());
+        assert!(ort_commit_result(false).is_err());
     }
 }

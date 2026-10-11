@@ -1,4 +1,6 @@
-use crate::chars::{char_to_id_map, dagesh_classes, niqqud_classes, normalize, sin_classes, RAFE};
+use crate::chars::{
+    char_to_id_map, dagesh_classes, is_niqqud, niqqud_classes, normalize, sin_classes, RAFE,
+};
 use dengjen_tts_core::{DengjenError, DengjenResult};
 use ndarray::Array2;
 use ort::session::Session;
@@ -115,9 +117,7 @@ fn argmax_per_position(data: &[f32], seq_len: usize, num_classes: usize) -> Vec<
 }
 
 fn remove_niqqud(text: &str) -> String {
-    text.chars()
-        .filter(|&c| !(0x05B0..=0x05C7).contains(&(c as u32)))
-        .collect()
+    text.chars().filter(|&c| !is_niqqud(c)).collect()
 }
 
 impl NakdimonEngine {
@@ -239,6 +239,15 @@ mod tests {
     fn remove_niqqud_strips_points_and_leaves_base_letters_untouched() {
         let pointed = "\u{05E9}\u{05C1}\u{05B7}\u{05DC}\u{05B9}\u{05D5}\u{05DD}\u{05B8}";
         assert_eq!(remove_niqqud(pointed), "\u{05E9}\u{05DC}\u{05D5}\u{05DD}");
+    }
+
+    #[test]
+    fn remove_niqqud_keeps_maqaf_and_sof_pasuq() {
+        let text = "\u{05E2}\u{05B7}\u{05DC}\u{05BE}\u{05D9}\u{05D3}\u{05D9}\u{05C3}";
+        assert_eq!(
+            remove_niqqud(text),
+            "\u{05E2}\u{05DC}\u{05BE}\u{05D9}\u{05D3}\u{05D9}\u{05C3}"
+        );
     }
 
     #[test]

@@ -19,6 +19,7 @@ const (
 	SynthModeLazy     int32 = C.SYNTH_MODE_LAZY
 	SynthModeParallel int32 = C.SYNTH_MODE_PARALLEL
 	SynthModeRealtime int32 = C.SYNTH_MODE_REALTIME
+	SynthModeBatched  int32 = C.SYNTH_MODE_BATCHED
 )
 
 type SynthesisParams struct {

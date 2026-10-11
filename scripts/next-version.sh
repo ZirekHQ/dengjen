@@ -66,7 +66,7 @@ while IFS= read -r subject; do
     [ "$bump" != "major" ] && bump="minor"
     continue
   fi
-  if echo "$subject" | grep -qE '^(docs|chore|style|refactor|test)(\([^)]*\))?:'; then
+  if echo "$subject" | grep -qE '^(docs|chore|style|refactor|test|ci|build|perf)(\([^)]*\))?:'; then
     continue
   fi
   [ -z "$bump" ] && bump="patch"
@@ -77,7 +77,7 @@ if echo "$bodies" | grep -qE '^BREAKING[ -]CHANGE:'; then
 fi
 
 if [ -z "$bump" ]; then
-  echo "::notice::Only docs/chore/style/refactor/test commits since ${last_tag} -- nothing to release" >&2
+  echo "::notice::Only docs/chore/style/refactor/test/ci/build/perf commits since ${last_tag} -- nothing to release" >&2
   exit 1
 fi
 

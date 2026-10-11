@@ -595,7 +595,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-audio-ops"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "divan",
  "once_cell",
@@ -606,7 +606,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-espeak-phonemizer"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "dengjen-espeak-rs-sys",
  "ffi-support",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-hebrew-phonemizer"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "dengjen-tts-core",
  "ndarray",
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-pinyin-phonemizer"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "dengjen-tts-core",
  "ndarray",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-sonic-sys"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "bindgen 0.73.2",
  "cc",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "dengjen-audio-ops",
  "dengjen-espeak-phonemizer",
@@ -705,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-cli"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -724,16 +724,17 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-core"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "dengjen-audio-ops",
  "once_cell",
+ "ort",
  "workspace-hack",
 ]
 
 [[package]]
 name = "dengjen-tts-grpc"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "async-stream",
  "dengjen-tts",
@@ -756,7 +757,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-kokoro"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "dengjen-espeak-phonemizer",
  "dengjen-tts-core",
@@ -772,7 +773,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-melotts"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "dengjen-espeak-phonemizer",
  "dengjen-pinyin-phonemizer",
@@ -788,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-piper"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "dengjen-espeak-phonemizer",
  "dengjen-hebrew-phonemizer",
@@ -806,7 +807,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-python"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "dengjen-espeak-phonemizer",
  "dengjen-tashkeel",
@@ -1535,7 +1536,7 @@ checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
 
 [[package]]
 name = "libdengjen"
-version = "2.1.1"
+version = "3.0.0"
 dependencies = [
  "cbindgen",
  "dengjen-tts",

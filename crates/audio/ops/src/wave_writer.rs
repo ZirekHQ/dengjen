@@ -23,6 +23,8 @@ impl fmt::Display for WaveWriterError {
     }
 }
 
+const PCM_I16_SAMPLE_WIDTH: u32 = 2;
+
 pub fn write_wave_samples_to_buffer<'a, I, B>(
     buffer: B,
     samples: I,
@@ -34,8 +36,22 @@ where
     I: Iterator<Item = &'a i16>,
     B: Seek + Write,
 {
-    let bits_per_sample = (sample_width * 8) as u16;
-    let mut writer = WaveWriter::new(num_channels as u16, sample_rate, bits_per_sample, buffer)
+    if sample_width != PCM_I16_SAMPLE_WIDTH {
+        return Err(WaveWriterError::new(format!(
+            "unsupported sample width {sample_width}: samples are written as 16-bit PCM"
+        )));
+    }
+    let channels = u16::try_from(num_channels)
+        .ok()
+        .filter(|&channels| channels > 0)
+        .ok_or_else(|| {
+            WaveWriterError::new(format!(
+                "unsupported channel count {num_channels}: expected 1..={}",
+                u16::MAX
+            ))
+        })?;
+    let bits_per_sample = (PCM_I16_SAMPLE_WIDTH * 8) as u16;
+    let mut writer = WaveWriter::new(channels, sample_rate, bits_per_sample, buffer)
         .map_err(|_| WaveWriterError::new("could not open the RIFF/WAVE stream for writing"))?;
 
     for sample in samples {
@@ -267,6 +283,30 @@ mod tests {
         assert_ne!(open_failure, sample_failure);
         assert_ne!(open_failure, sync_failure);
         assert_ne!(sample_failure, sync_failure);
+    }
+
+    #[test]
+    fn to_buffer_rejects_sample_widths_other_than_two_bytes() {
+        let mut bytes = Vec::new();
+        let result =
+            write_wave_samples_to_buffer(Cursor::new(&mut bytes), [0i16].iter(), 22050, 1, 4);
+        assert!(result.unwrap_err().to_string().contains("sample width"));
+        assert!(bytes.is_empty());
+    }
+
+    #[test]
+    fn to_buffer_rejects_zero_and_oversized_channel_counts() {
+        for channels in [0, u32::from(u16::MAX) + 1] {
+            let mut bytes = Vec::new();
+            let result = write_wave_samples_to_buffer(
+                Cursor::new(&mut bytes),
+                [0i16].iter(),
+                22050,
+                channels,
+                2,
+            );
+            assert!(result.unwrap_err().to_string().contains("channel count"));
+        }
     }
 
     #[test]

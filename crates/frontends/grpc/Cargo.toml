@@ -14,6 +14,8 @@ workspace = true
 default = ["espeak"]
 espeak = ["dengjen-tts-piper/espeak", "dengjen-tts-kokoro/espeak", "dengjen-tts-melotts/espeak"]
 japanese = ["dengjen-tts-kokoro/japanese"]
+hebrew = ["dengjen-tts-piper/hebrew"]
+pinyin = ["dengjen-tts-piper/pinyin", "dengjen-tts-melotts/pinyin"]
 
 
 cuda = ["dengjen-tts-piper/cuda", "dengjen-tts-kokoro/cuda", "dengjen-tts-melotts/cuda"]
@@ -30,7 +32,7 @@ dengjen-tts-piper.workspace = true
 dengjen-tts-kokoro.workspace = true
 dengjen-tts-melotts.workspace = true
 prost = "0.14.0"
-tokio = { version = "1.41.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.41.1", features = ["macros", "rt-multi-thread", "sync"] }
 tokio-stream = "0.1.16"
 tonic = "0.14.0"
 tonic-prost = "0.14.0"

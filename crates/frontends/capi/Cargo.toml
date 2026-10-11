@@ -16,9 +16,11 @@ crate-type = ["staticlib", "cdylib"]
 
 [features]
 default = ["piper", "espeak"]
-piper = ["dep:dengjen-tts-piper", "dep:ort"]
+piper = []
 espeak = ["dengjen-tts-piper/espeak", "dengjen-tts-kokoro/espeak", "dengjen-tts-melotts/espeak"]
 japanese = ["dengjen-tts-kokoro/japanese"]
+hebrew = ["dengjen-tts-piper/hebrew"]
+pinyin = ["dengjen-tts-piper/pinyin", "dengjen-tts-melotts/pinyin"]
 
 
 
@@ -32,7 +34,7 @@ dengjen-tts-core.workspace = true
 dengjen-tts.workspace = true
 ffi-support = "0.4.4"
 libc = "0.2.150"
-dengjen-tts-piper = { workspace = true, optional = true }
+dengjen-tts-piper.workspace = true
 dengjen-tts-kokoro.workspace = true
 dengjen-tts-melotts.workspace = true
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
@@ -41,19 +43,16 @@ workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 version = "2.0.0-rc.13"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]
-optional = true
 
 [target.'cfg(target_os="android")'.dependencies.ort]
 version = "2.0.0-rc.13"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27", "nnapi"]
-optional = true
 
 [target.'cfg(target_os="ios")'.dependencies.ort]
 version = "2.0.0-rc.13"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27", "coreml"]
-optional = true
 
 [build-dependencies]
 cbindgen = "0.29.4"

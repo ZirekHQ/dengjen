@@ -41,7 +41,7 @@ pub(crate) fn split_initial_final_tone(syllable: &str) -> Option<(String, String
 #[cfg(test)]
 mod tests {
     #[test]
-    fn convert_bopomofo_to_pinyin_appends_the_original_tone_digit() {
+    fn convert_bopomofo_to_pinyin_returns_none_for_a_non_digit_tone_mark() {
         let dict: std::collections::HashMap<String, String> =
             [("ㄏㄤ".to_string(), "hang".to_string())]
                 .into_iter()
@@ -50,7 +50,7 @@ mod tests {
     }
 
     #[test]
-    fn convert_bopomofo_to_pinyin_uses_the_trailing_digit_as_the_tone() {
+    fn convert_bopomofo_to_pinyin_appends_the_original_tone_digit() {
         let dict: std::collections::HashMap<String, String> =
             [("ㄏㄤ".to_string(), "hang".to_string())]
                 .into_iter()

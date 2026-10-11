@@ -68,6 +68,19 @@ tags must not start with `v`, which is what keeps `notify-docs.yml` from pinging
 CI's `piper-real-voice-e2e` and `kokoro-real-voice-e2e` jobs still run the real-voice *tests* on
 the weekly schedule, provisioned from the `*_TEST_VOICE_ARCHIVE_URL` repo variables.
 
+Some tests return early (and pass) unless their fixture environment variable is set. CI sets only
+the ones whose fixture a job already downloads:
+
+| Variable | Test | In CI |
+| --- | --- | --- |
+| `DENGJEN_KOKORO_VOCAB` | `every_table_symbol_exists_in_the_kokoro_vocab` (Kokoro, `japanese` feature) | Set by `kokoro-real-voice-e2e` from the fixture's `config.json`. |
+| `DENGJEN_JA_DICT_DIR` | Japanese G2P tests in `synthetic_inference.rs` | Not set. Needs the jpreprocess `naist-jdic-jpreprocess.tar.gz` (see the phonemizers docs page), which no job downloads. |
+| `DENGJEN_MELOTTS_TEST_VOICE_CONFIG` | `e2e_real_voice.rs` in `dengjen-tts-melotts` | Not set. No MeloTTS fixture archive exists. Point it at a downloaded voice's `config.json` locally. |
+
+The Python wheel tests (`crates/frontends/python/tests`) run on every PR in the `linux` and
+`macos` jobs of `CI.yml`; the Go and Java binding suites run in the `bindings-go` and
+`bindings-java` jobs of `rust-lint.yml`.
+
 ## Workspace dependencies
 
 `crates/workspace-hack` unifies feature flags for shared dependencies across the workspace's 14
@@ -78,6 +91,12 @@ every switch. After adding, removing, or changing the features of a dependency, 
 
 ## Releasing
 
+`prepare-release.yml` opens the release PR with the optional `RELEASE_PR_TOKEN` repository secret
+(a fine-grained PAT or GitHub App token with Contents and Pull requests write access) and falls
+back to `GITHUB_TOKEN` when it is unset. A PR created with `GITHUB_TOKEN` triggers no
+`pull_request` workflows, so without `RELEASE_PR_TOKEN` the release PR gets no CI and required
+checks never report; a maintainer must then close and reopen it, or push to it, to start them.
+
 Maintainers only. `Cargo.toml`'s `[workspace.package].version` is the single source of truth every
 published artifact tracks in lockstep — the Rust crates, Java bindings, the `dengjen-tts-go`
 mirror, the gRPC server release, and the Python wheels all track it.
@@ -85,7 +104,7 @@ mirror, the gRPC server release, and the Python wheels all track it.
 1. Run the **Prepare release** workflow (`workflow_dispatch`, from the Actions tab), leaving
    `new_tag` blank. It computes the next semver version from Conventional Commit subjects merged
    since the last `vX.Y.Z` tag (`fix:`/etc → patch, `feat:` → minor, `!`/`BREAKING CHANGE:` →
-   major, only docs/chore/style/refactor/test since the last tag means no release) and opens a PR
+   major, only docs/chore/style/refactor/test/ci/build/perf since the last tag means no release) and opens a PR
    bumping every hand-synced copy of it.
 2. Review and merge that PR. **This is the release gate** — merging it releases the version in the
    diff, with nothing further to confirm: [`release.yml`](workflows/release.yml) tags that merge

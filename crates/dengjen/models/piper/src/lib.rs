@@ -19,8 +19,11 @@ mod phonemize;
 mod streaming;
 pub mod synth_config;
 
-pub use config::*;
 use config::{load_model_config, resolve_default_speaker_id};
+pub use config::{
+    map_phonemes_to_ids, AudioConfig, ESpeakConfig, InferenceConfig, Language, ModelConfig,
+    PhonemeType,
+};
 pub use inference::VitsModel;
 #[cfg(feature = "espeak")]
 use phonemize::should_diacritize;
@@ -114,10 +117,6 @@ trait VitsModelCommons {
     }
 
     fn _do_set_default_synth_config(&self, new_config: &PiperSynthesisConfig) -> DengjenResult<()> {
-        let mut synth_config = write_ignoring_poison(self.get_synth_config());
-        synth_config.length_scale = new_config.length_scale;
-        synth_config.noise_scale = new_config.noise_scale;
-        synth_config.noise_w = new_config.noise_w;
         if let Some(sid) = new_config.speaker {
             if !self.get_speaker_map().contains_key(&sid) {
                 return Err(DengjenError::InvalidConfiguration(format!(
@@ -125,6 +124,12 @@ trait VitsModelCommons {
                     sid
                 )));
             }
+        }
+        let mut synth_config = write_ignoring_poison(self.get_synth_config());
+        synth_config.length_scale = new_config.length_scale;
+        synth_config.noise_scale = new_config.noise_scale;
+        synth_config.noise_w = new_config.noise_w;
+        if let Some(sid) = new_config.speaker {
             synth_config.speaker = Some(sid);
         }
         Ok(())
@@ -360,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn do_set_default_synth_config_applies_scales_even_when_the_speaker_id_is_unknown() {
+    fn do_set_default_synth_config_leaves_the_config_untouched_when_the_speaker_id_is_unknown() {
         let commons = TestVitsCommons {
             synth_config: RwLock::new(PiperSynthesisConfig::default()),
             config: ModelConfig::default(),
@@ -375,9 +380,10 @@ mod tests {
         let result = commons._do_set_default_synth_config(&new_config);
         assert!(matches!(result, Err(DengjenError::InvalidConfiguration(_))));
         let synth_config = commons.synth_config.read().unwrap();
-        assert_eq!(synth_config.length_scale, 1.2);
-        assert_eq!(synth_config.noise_scale, 0.5);
-        assert_eq!(synth_config.noise_w, 0.9);
+        let untouched = PiperSynthesisConfig::default();
+        assert_eq!(synth_config.length_scale, untouched.length_scale);
+        assert_eq!(synth_config.noise_scale, untouched.noise_scale);
+        assert_eq!(synth_config.noise_w, untouched.noise_w);
         assert_eq!(synth_config.speaker, None);
     }
 

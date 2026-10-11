@@ -116,8 +116,7 @@ this assumption.
 `phonemize_text` lives on `DengjenModel` itself rather than behind a
 standalone `Phonemizer` trait. The crate layout under `crates/text/`
 (`dengjen-espeak-phonemizer`, `dengjen-hebrew-phonemizer`,
-`dengjen-pinyin-phonemizer`) already provides the reuse this issue asks
-about: Piper, Kokoro, and MeloTTS each pull in the phonemizer crates they
+`dengjen-pinyin-phonemizer`) already provides the reuse: Piper, Kokoro, and MeloTTS each pull in the phonemizer crates they
 need as optional Cargo dependencies and call them directly, without
 re-implementing espeak/Hebrew/pinyin phonemization per backend.
 
@@ -139,5 +138,4 @@ None of the three share an output shape beyond the sentence-list `Phonemes`
 wrapper `DengjenModel` already returns. A `Phonemizer` trait sitting between
 `DengjenModel` and the phonemizer crates would either flatten to a type none
 of the backends actually want, or grow per-model associated types that just
-rename today's per-model dispatch functions. The coupling is deliberate:
-resolved as issue #210.
+rename today's per-model dispatch functions. The coupling is deliberate.

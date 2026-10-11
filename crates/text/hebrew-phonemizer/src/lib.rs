@@ -10,12 +10,8 @@ pub use nakdimon::num_classes;
 
 use dengjen_tts_core::{DengjenResult, Phonemes};
 
-const NIQQUD_RANGE_START: u32 = 0x05B0;
-const NIQQUD_RANGE_END: u32 = 0x05C7;
-
 fn already_diacritized(text: &str) -> bool {
-    text.chars()
-        .any(|c| (NIQQUD_RANGE_START..=NIQQUD_RANGE_END).contains(&(c as u32)))
+    text.chars().any(chars::is_niqqud)
 }
 
 fn phonemes_from_diacritized(diacritized: &str) -> Phonemes {
@@ -50,6 +46,16 @@ mod tests {
     fn already_diacritized_is_false_for_undotted_consonants_only() {
         let undotted = "\u{05E9}\u{05DC}\u{05D5}\u{05DD}";
         assert!(!already_diacritized(undotted));
+    }
+
+    #[test]
+    fn already_diacritized_is_false_for_undotted_text_with_maqaf_or_sof_pasuq() {
+        assert!(!already_diacritized(
+            "\u{05E2}\u{05DC}\u{05BE}\u{05D9}\u{05D3}\u{05D9}"
+        ));
+        assert!(!already_diacritized(
+            "\u{05E9}\u{05DC}\u{05D5}\u{05DD}\u{05C3}"
+        ));
     }
 
     #[test]

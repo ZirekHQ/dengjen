@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use flume::{Receiver, SendError, Sender};
-use once_cell::sync::Lazy;
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 
+mod model_type;
 mod utils;
 pub use dengjen_tts_core::*;
+pub use model_type::{load_voice_with, read_model_type, ModelType};
 
 pub fn detect_model_type(config_path: &Path) -> DengjenResult<String> {
     let raw = std::fs::read_to_string(config_path).map_err(|why| {
@@ -46,16 +47,27 @@ const PITCH_PARAM_RANGE: ParamRange = ParamRange { min: 0.5, max: 1.5 };
 const TRAILING_SILENCE_THRESHOLD: f32 = 0.015;
 const TAIL_FADE_MS: usize = 5;
 
-pub static SYNTHESIS_THREAD_POOL: Lazy<ThreadPool> = Lazy::new(|| {
-    let core_count = std::thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(4);
-    ThreadPoolBuilder::new()
-        .num_threads(core_count * 4)
-        .thread_name(|index| format!("dengjen_synth_{index}"))
-        .build()
-        .expect("thread pool construction only fails on invalid config, never at runtime")
-});
+static SYNTHESIS_THREAD_POOL: OnceLock<Result<ThreadPool, String>> = OnceLock::new();
+
+/// Returns the shared synthesis thread pool, building it on first use.
+///
+/// A construction failure (for example an OS thread limit) is reported as an
+/// error on every call instead of panicking.
+pub fn synthesis_thread_pool() -> DengjenResult<&'static ThreadPool> {
+    SYNTHESIS_THREAD_POOL
+        .get_or_init(|| {
+            let core_count = std::thread::available_parallelism()
+                .map(usize::from)
+                .unwrap_or(4);
+            ThreadPoolBuilder::new()
+                .num_threads(core_count * 4)
+                .thread_name(|index| format!("dengjen_synth_{index}"))
+                .build()
+                .map_err(|why| format!("Failed to build the synthesis thread pool: {why}"))
+        })
+        .as_ref()
+        .map_err(|message| DengjenError::OperationError(message.clone()))
+}
 
 /// Resolves an unset `batch_size` to a sane default. Capped well below the
 /// core count because `Mutex<Session>` already serializes the actual
@@ -65,6 +77,92 @@ pub fn default_batch_size() -> NonZeroUsize {
     const MAX_DEFAULT_BATCH_SIZE: NonZeroUsize = NonZeroUsize::new(4).unwrap();
     let cores = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
     cores.min(MAX_DEFAULT_BATCH_SIZE)
+}
+
+/// Upper bound for `appended_silence_ms`, rejected with
+/// [`DengjenError::InvalidConfiguration`] above it.
+pub const MAX_APPENDED_SILENCE_MS: u32 = 60_000;
+const MAX_SILENCE_SAMPLES: usize = 64 * 1024 * 1024;
+
+/// Owning handle for a libsonic stream; destroys the stream on drop.
+struct SonicStream {
+    raw: dengjen_sonic_sys::sonicStream,
+    channels: usize,
+}
+
+impl SonicStream {
+    fn new(sample_rate: i32, channels: i32) -> DengjenResult<Self> {
+        // SAFETY: plain allocation call taking two integers; a null result is
+        // handled below and no other state is touched.
+        let raw = unsafe { dengjen_sonic_sys::sonicCreateStream(sample_rate, channels) };
+        if raw.is_null() {
+            return Err(DengjenError::OperationError(
+                "Sonic Error: failed to allocate the audio processing stream".to_string(),
+            ));
+        }
+        Ok(Self {
+            raw,
+            channels: channels as usize,
+        })
+    }
+
+    fn set_speed(&self, speed: f32) {
+        // SAFETY: `self.raw` is a live stream owned by `self`.
+        unsafe { dengjen_sonic_sys::sonicSetSpeed(self.raw, speed) }
+    }
+
+    fn set_volume(&self, volume: f32) {
+        // SAFETY: `self.raw` is a live stream owned by `self`.
+        unsafe { dengjen_sonic_sys::sonicSetVolume(self.raw, volume) }
+    }
+
+    fn set_pitch(&self, pitch: f32) {
+        // SAFETY: `self.raw` is a live stream owned by `self`.
+        unsafe { dengjen_sonic_sys::sonicSetPitch(self.raw, pitch) }
+    }
+
+    /// Buffers whole frames of `input`; returns `false` when libsonic cannot grow its buffer.
+    fn write(&self, input: &[f32]) -> bool {
+        let frames = i32::try_from(input.len() / self.channels).unwrap_or(0);
+        // SAFETY: `self.raw` is live and `frames * channels <= input.len()`, so
+        // libsonic reads only inside `input`.
+        let written =
+            unsafe { dengjen_sonic_sys::sonicWriteFloatToStream(self.raw, input.as_ptr(), frames) };
+        written != 0
+    }
+
+    fn flush(&self) {
+        // SAFETY: `self.raw` is a live stream owned by `self`.
+        unsafe { dengjen_sonic_sys::sonicFlushStream(self.raw) };
+    }
+
+    fn samples_available(&self) -> i32 {
+        // SAFETY: `self.raw` is a live stream owned by `self`.
+        unsafe { dengjen_sonic_sys::sonicSamplesAvailable(self.raw) }
+    }
+
+    fn read(&self, max_frames: i32) -> Vec<f32> {
+        let mut output = vec![0f32; max_frames.max(0) as usize * self.channels];
+        // SAFETY: `self.raw` is live and `output` holds `max_frames * channels`
+        // floats, the most libsonic writes for `max_frames` frames.
+        let frames_read = unsafe {
+            dengjen_sonic_sys::sonicReadFloatFromStream(
+                self.raw,
+                output.as_mut_ptr(),
+                max_frames.max(0),
+            )
+        };
+        output.truncate(frames_read.clamp(0, max_frames.max(0)) as usize * self.channels);
+        output
+    }
+}
+
+impl Drop for SonicStream {
+    fn drop(&mut self) {
+        // SAFETY: `self.raw` came from `sonicCreateStream` and is destroyed
+        // exactly once, here.
+        unsafe { dengjen_sonic_sys::sonicDestroyStream(self.raw) };
+    }
 }
 
 #[derive(Clone)]
@@ -105,61 +203,63 @@ impl AudioOutputConfig {
             return Ok(samples);
         }
         let input = samples.into_vec();
+        let (rate, channels, _) =
+            Self::sonic_stream_dimensions(input.len(), sample_rate, num_channels)?;
+        let stream = SonicStream::new(rate, channels)?;
 
-        // SAFETY: every libsonic call below targets the `stream` handle this
-        // block itself creates, and every exit from the block — the early
-        // error return on a zero-sample result included — destroys that
-        // same handle first, so no stream ever outlives this block.
-        unsafe {
-            let stream =
-                dengjen_sonic_sys::sonicCreateStream(sample_rate as i32, num_channels as i32);
-
-            if let Some(pct) = self.rate {
-                let speed =
-                    utils::percent_to_param(pct, SPEED_PARAM_RANGE.min, SPEED_PARAM_RANGE.max);
-                dengjen_sonic_sys::sonicSetSpeed(stream, speed);
-            }
-
-            if let Some(pct) = self.volume.filter(|&pct| pct != 0) {
-                let volume =
-                    utils::percent_to_param(pct, VOLUME_PARAM_RANGE.min, VOLUME_PARAM_RANGE.max);
-                dengjen_sonic_sys::sonicSetVolume(stream, volume);
-            }
-            if let Some(pct) = self.pitch {
-                let pitch =
-                    utils::percent_to_param(pct, PITCH_PARAM_RANGE.min, PITCH_PARAM_RANGE.max);
-                dengjen_sonic_sys::sonicSetPitch(stream, pitch);
-            }
-
-            let frame_count = input.len() / num_channels;
-            dengjen_sonic_sys::sonicWriteFloatToStream(stream, input.as_ptr(), frame_count as i32);
-            dengjen_sonic_sys::sonicFlushStream(stream);
-
-            let available_frames = dengjen_sonic_sys::sonicSamplesAvailable(stream);
-            if available_frames <= 0 {
-                dengjen_sonic_sys::sonicDestroyStream(stream);
-                return Err(DengjenError::OperationError(
-                    "Sonic Error: failed to apply audio config. Invalid parameter value for rate, volume, or pitch".to_string(),
-                ));
-            }
-
-            let mut output: Vec<f32> = Vec::with_capacity(available_frames as usize * num_channels);
-
-            let frames_read = dengjen_sonic_sys::sonicReadFloatFromStream(
-                stream,
-                output.spare_capacity_mut().as_mut_ptr().cast(),
-                available_frames,
-            );
-            output.set_len(frames_read.max(0) as usize * num_channels);
-
-            dengjen_sonic_sys::sonicDestroyStream(stream);
-
-            if self.volume == Some(0) {
-                output.fill(0.0);
-            }
-
-            Ok(output.into())
+        if let Some(pct) = self.rate {
+            let speed = utils::percent_to_param(pct, SPEED_PARAM_RANGE.min, SPEED_PARAM_RANGE.max);
+            stream.set_speed(speed);
         }
+        if let Some(pct) = self.volume.filter(|&pct| pct != 0) {
+            let volume =
+                utils::percent_to_param(pct, VOLUME_PARAM_RANGE.min, VOLUME_PARAM_RANGE.max);
+            stream.set_volume(volume);
+        }
+        if let Some(pct) = self.pitch {
+            let pitch = utils::percent_to_param(pct, PITCH_PARAM_RANGE.min, PITCH_PARAM_RANGE.max);
+            stream.set_pitch(pitch);
+        }
+
+        if !stream.write(&input) {
+            return Err(DengjenError::OperationError(
+                "Sonic Error: failed to buffer samples for audio processing".to_string(),
+            ));
+        }
+        stream.flush();
+
+        let available_frames = stream.samples_available();
+        if available_frames <= 0 {
+            return Err(DengjenError::OperationError(
+                "Sonic Error: failed to apply audio config. Invalid parameter value for rate, volume, or pitch".to_string(),
+            ));
+        }
+
+        let mut output = stream.read(available_frames);
+        if self.volume == Some(0) {
+            output.fill(0.0);
+        }
+        Ok(output.into())
+    }
+
+    fn sonic_stream_dimensions(
+        sample_len: usize,
+        sample_rate: usize,
+        num_channels: usize,
+    ) -> DengjenResult<(i32, i32, i32)> {
+        let invalid = |what: &str| {
+            DengjenError::OperationError(format!("Sonic Error: {what} is out of range"))
+        };
+        if num_channels == 0 {
+            return Err(DengjenError::OperationError(
+                "Sonic Error: audio has zero channels".to_string(),
+            ));
+        }
+        let rate = i32::try_from(sample_rate).map_err(|_| invalid("sample rate"))?;
+        let channels = i32::try_from(num_channels).map_err(|_| invalid("channel count"))?;
+        let frames =
+            i32::try_from(sample_len / num_channels).map_err(|_| invalid("frame count"))?;
+        Ok((rate, channels, frames))
     }
 
     fn generate_silence(
@@ -168,7 +268,21 @@ impl AudioOutputConfig {
         sample_rate: usize,
         num_channels: usize,
     ) -> DengjenResult<AudioSamples> {
-        let sample_count = (time_ms * sample_rate * num_channels) / 1000;
+        if time_ms > MAX_APPENDED_SILENCE_MS as usize {
+            return Err(DengjenError::InvalidConfiguration(format!(
+                "appended_silence_ms {time_ms} exceeds the maximum of {MAX_APPENDED_SILENCE_MS}"
+            )));
+        }
+        let sample_count = time_ms
+            .checked_mul(sample_rate)
+            .and_then(|n| n.checked_mul(num_channels))
+            .map(|n| n / 1000)
+            .filter(|&n| n <= MAX_SILENCE_SAMPLES)
+            .ok_or_else(|| {
+                DengjenError::InvalidConfiguration(
+                    "appended silence exceeds the maximum sample budget".to_string(),
+                )
+            })?;
         let silence = vec![0f32; sample_count];
         self.apply_to_raw_samples(silence.into(), sample_rate, num_channels)
     }
@@ -326,13 +440,18 @@ impl DengjenSpeechSynthesizer {
         }
 
         let info = self.backend.audio_output_info()?;
+        let to_u32 = |value: usize, what: &str| {
+            u32::try_from(value).map_err(|_| {
+                DengjenError::OperationError(format!("{what} {value} is out of range"))
+            })
+        };
         let samples = AudioSamples::from(collected);
         dengjen_audio_ops::write_wave_samples_to_file(
             filename,
             samples.to_i16_vec().iter(),
-            info.sample_rate as u32,
-            info.num_channels.try_into().unwrap(),
-            info.sample_width.try_into().unwrap(),
+            to_u32(info.sample_rate, "sample rate")?,
+            to_u32(info.num_channels, "channel count")?,
+            to_u32(info.sample_width, "sample width")?,
         )?;
         Ok(())
     }
@@ -486,7 +605,7 @@ impl DengjenSpeechStreamParallel {
         let span = tracing::info_span!("synthesis_request", mode = "parallel");
         let sentences = span.in_scope(|| provider.get_phonemes())?;
         let worker_span = span.clone();
-        let finished: Vec<DengjenAudioResult> = SYNTHESIS_THREAD_POOL.install(|| {
+        let finished: Vec<DengjenAudioResult> = synthesis_thread_pool()?.install(|| {
             sentences
                 .into_par_iter()
                 .enumerate()
@@ -562,7 +681,14 @@ impl DengjenSpeechStreamBatched {
         let start_index = self.next_chunk_index;
         self.next_chunk_index += group.len();
         let span = &self.span;
-        Some(SYNTHESIS_THREAD_POOL.install(|| {
+        let pool = match synthesis_thread_pool() {
+            Ok(pool) => pool,
+            Err(error) => {
+                self.pending = Vec::new().into_iter();
+                return Some(vec![Err(error)]);
+            }
+        };
+        Some(pool.install(|| {
             span.in_scope(|| {
                 group
                     .into_par_iter()
@@ -634,7 +760,7 @@ impl RealtimeSpeechStream {
 
         // An unwinding job would abort the whole process, and dropping `tx` on
         // unwind would end the stream as if synthesis had succeeded.
-        SYNTHESIS_THREAD_POOL.spawn(move || {
+        synthesis_thread_pool()?.spawn(move || {
             let _enter = producer_span.enter();
             let cancel_token = producer_cancel_token;
             let produced = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1448,6 +1574,63 @@ mod audio_output_config_tests {
         );
         let max_abs = silence.as_vec().iter().fold(0f32, |a, &b| a.max(b.abs()));
         assert_eq!(max_abs, 0.0, "generated silence must contain only zeros");
+    }
+
+    fn plain_config() -> AudioOutputConfig {
+        AudioOutputConfig {
+            rate: None,
+            volume: None,
+            pitch: None,
+            appended_silence_ms: None,
+        }
+    }
+
+    #[test]
+    fn synthesis_thread_pool_is_built_once_and_reused() {
+        let first = synthesis_thread_pool().unwrap() as *const ThreadPool;
+        let second = synthesis_thread_pool().unwrap() as *const ThreadPool;
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn generate_silence_rejects_durations_above_the_cap() {
+        let result = plain_config().generate_silence(u32::MAX as usize, 22050, 1);
+        assert!(matches!(result, Err(DengjenError::InvalidConfiguration(_))));
+        let at_cap = plain_config().generate_silence(MAX_APPENDED_SILENCE_MS as usize, 8000, 1);
+        assert_eq!(at_cap.unwrap().len(), 8000 * 60);
+    }
+
+    #[test]
+    fn generate_silence_rejects_overflowing_rate_and_channel_products() {
+        let result = plain_config().generate_silence(60_000, usize::MAX, 2);
+        assert!(matches!(result, Err(DengjenError::InvalidConfiguration(_))));
+    }
+
+    #[test]
+    fn apply_with_an_oversized_appended_silence_returns_an_error() {
+        let config = AudioOutputConfig {
+            appended_silence_ms: Some(u32::MAX),
+            ..plain_config()
+        };
+        let audio = Audio::new(AudioSamples::from(sine_samples(100)), 16000, None);
+        assert!(config.apply(audio).is_err());
+    }
+
+    #[test]
+    fn apply_to_raw_samples_rejects_zero_channels_without_panicking() {
+        let result =
+            plain_config().apply_to_raw_samples(AudioSamples::from(sine_samples(100)), 16000, 0);
+        assert!(matches!(result, Err(DengjenError::OperationError(_))));
+    }
+
+    #[test]
+    fn apply_to_raw_samples_rejects_sample_rates_beyond_i32() {
+        let result = plain_config().apply_to_raw_samples(
+            AudioSamples::from(sine_samples(100)),
+            usize::MAX,
+            1,
+        );
+        assert!(matches!(result, Err(DengjenError::OperationError(_))));
     }
 
     #[test]

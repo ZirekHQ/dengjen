@@ -3,7 +3,7 @@ use crate::config::KokoroVoiceConfig;
 use crate::ja::JapaneseDictionary;
 use crate::phonemize::{espeak_language_for_voice, text_to_kokoro_phonemes};
 use crate::vocab::Vocab;
-use crate::voice_style::VoiceStyles;
+use crate::voice_style::{VoiceStyles, MAX_TOKEN_LEN};
 use dengjen_tts_core::{
     lock_ignoring_poison, read_ignoring_poison, write_ignoring_poison, Audio, AudioInfo,
     AudioSamples, AudioStreamIterator, CancellationToken, DengjenAudioResult, DengjenError,
@@ -29,6 +29,22 @@ fn resolve_voice_name<'a>(
         .unwrap_or(default_voice)
 }
 
+fn split_tokens(tokens: Vec<i64>, max_len: usize, break_id: Option<i64>) -> Vec<Vec<i64>> {
+    let mut chunks = Vec::new();
+    let mut rest = tokens.as_slice();
+    while rest.len() > max_len {
+        let window = &rest[..max_len];
+        let cut = break_id
+            .and_then(|id| window.iter().rposition(|&token| token == id))
+            .map_or(max_len, |position| position + 1);
+        let (head, tail) = rest.split_at(cut);
+        chunks.push(head.to_vec());
+        rest = tail;
+    }
+    chunks.push(rest.to_vec());
+    chunks
+}
+
 pub struct KokoroModel {
     session: Mutex<Session>,
     vocab: Vocab,
@@ -41,24 +57,11 @@ pub struct KokoroModel {
     japanese: Option<JapaneseDictionary>,
 }
 
-#[allow(clippy::vec_init_then_push)]
-fn execution_providers() -> Vec<ort::ep::ExecutionProviderDispatch> {
-    #[allow(unused_mut)]
-    let mut providers = Vec::new();
-    #[cfg(feature = "cuda")]
-    providers.push(ort::ep::CUDA::default().build());
-    #[cfg(feature = "directml")]
-    providers.push(ort::ep::DirectML::default().build());
-    #[cfg(feature = "coreml")]
-    providers.push(ort::ep::CoreML::default().build());
-    providers
-}
-
 impl KokoroModel {
     pub fn from_config(config: KokoroVoiceConfig) -> DengjenResult<Self> {
         let session = Session::builder()
             .map_err(|e| DengjenError::FailedToLoadResource(e.to_string()))?
-            .with_execution_providers(execution_providers())
+            .with_execution_providers(dengjen_tts_core::execution_providers())
             .map_err(|e| DengjenError::FailedToLoadResource(e.to_string()))?
             .commit_from_file(&config.model_path)
             .map_err(|e| {
@@ -101,17 +104,29 @@ impl KokoroModel {
     }
 
     fn synthesize_phonemes(&self, phonemes: &str) -> DengjenAudioResult {
-        let mut token_ids = vec![self.vocab.bos_id()];
-        token_ids.extend(self.vocab.tokenize(phonemes));
+        let space_id = self.vocab.tokenize(" ").first().copied();
+        let chunks = split_tokens(self.vocab.tokenize(phonemes), MAX_TOKEN_LEN, space_id);
+        let mut samples: Vec<f32> = Vec::new();
+        for chunk in chunks {
+            samples.extend(self.synthesize_token_chunk(chunk)?.samples.into_vec());
+        }
+        Ok(Audio::new(samples.into(), self.sample_rate as usize, None))
+    }
+
+    fn synthesize_token_chunk(&self, tokens: Vec<i64>) -> DengjenAudioResult {
+        let mut token_ids = Vec::with_capacity(tokens.len() + 2);
+        token_ids.push(self.vocab.bos_id());
+        token_ids.extend(tokens);
         token_ids.push(self.vocab.eos_id());
 
-        let input_ids = Array2::from_shape_vec((1, token_ids.len()), token_ids.clone())
+        let token_len = token_ids.len();
+        let input_ids = Array2::from_shape_vec((1, token_len), token_ids)
             .map_err(|e| DengjenError::with_message(e.to_string()))?;
         let voice_name = {
             let synth_config = read_ignoring_poison(&self.synth_config);
             resolve_voice_name(&self.speaker_map, &self.default_voice, &synth_config).to_string()
         };
-        let style = self.voice_styles.style_for(&voice_name, token_ids.len())?;
+        let style = self.voice_styles.style_for(&voice_name, token_len)?;
         let speed = Array1::from_vec(vec![1.0f32]);
 
         let mut session = lock_ignoring_poison(&self.session);
@@ -277,9 +292,30 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(not(any(feature = "cuda", feature = "directml", feature = "coreml")))]
-    fn execution_providers_is_empty_when_no_gpu_feature_is_enabled() {
-        assert!(execution_providers().is_empty());
+    fn split_tokens_keeps_short_sequences_in_one_chunk() {
+        assert_eq!(split_tokens(vec![1, 2, 3], 5, None), vec![vec![1, 2, 3]]);
+        assert_eq!(split_tokens(vec![], 5, None), vec![Vec::<i64>::new()]);
+    }
+
+    #[test]
+    fn split_tokens_cuts_at_the_max_length_without_a_break_token() {
+        let chunks = split_tokens((1..=7).collect(), 3, None);
+        assert_eq!(chunks, vec![vec![1, 2, 3], vec![4, 5, 6], vec![7]]);
+    }
+
+    #[test]
+    fn split_tokens_prefers_the_last_break_token_inside_the_window() {
+        let chunks = split_tokens(vec![1, 2, 0, 3, 4, 5, 6], 5, Some(0));
+        assert_eq!(chunks, vec![vec![1, 2, 0], vec![3, 4, 5, 6]]);
+        assert!(chunks.iter().all(|chunk| chunk.len() <= 5));
+    }
+
+    #[test]
+    fn split_tokens_never_loses_or_reorders_tokens() {
+        let tokens: Vec<i64> = (0..1234).map(|n| n % 7).collect();
+        let chunks = split_tokens(tokens.clone(), MAX_TOKEN_LEN, Some(0));
+        assert!(chunks.iter().all(|chunk| chunk.len() <= MAX_TOKEN_LEN));
+        assert_eq!(chunks.concat(), tokens);
     }
 
     fn speaker_map() -> HashMap<i64, String> {

@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI is pinned to zizmor v1.28.0, which predates $/ syntax support
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
         timeout-minutes: 15
         with:
           apt-packages: clang libclang-dev llvm-dev cmake protobuf-compiler
@@ -63,6 +63,19 @@ jobs:
           set -euo pipefail
           version="$(awk '/^\[workspace\.package\]/{f=1;next} /^\[/{f=0} f && /^version = /{gsub(/version = "|"/,""); print; exit}' Cargo.toml)"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      # `cargo publish --dry-run` per crate cannot resolve same-version workspace deps that are not
+      # on crates.io yet (tier 2+ on a version bump). Packaging the whole workspace resolves them
+      # from the local packages instead; publish-crate-if-needed.sh then skips its per-crate dry run.
+      - name: package the workspace (dry run only)
+        if: env.DRY_RUN == 'true'
+        run: cargo package --workspace --locked --no-verify
+
+      # libdengjen's cbindgen build script and the Python crate's espeak-data staging cannot build
+      # from a packaged archive before their deps are on crates.io, so only they stay unverified.
+      - name: verify the packaged crates build (dry run only)
+        if: env.DRY_RUN == 'true'
+        run: cargo package --workspace --locked --exclude dengjen-tts-python --exclude libdengjen
 
       # publish-crate-if-needed.sh skips a crate crates.io already has (a curl lookup, no token
       # needed) before CARGO_REGISTRY_TOKEN is read -- see the script's own comment for why.

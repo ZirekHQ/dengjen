@@ -3,6 +3,7 @@ use std::process::Command;
 
 const STYLE_DIM: usize = 256;
 const MAX_TOKEN_LEN: usize = 510;
+const WAV_HEADER_BYTES: usize = 44;
 
 fn write_synthetic_voice_file(voices_dir: &Path, voice_name: &str) {
     let mut bytes = Vec::with_capacity(MAX_TOKEN_LEN * STYLE_DIM * 4);
@@ -20,8 +21,11 @@ fn kokoro_fixture_model() -> PathBuf {
 }
 
 #[test]
-fn cli_loads_a_kokoro_voice_without_panicking() {
-    let dir = std::env::temp_dir().join("dengjen_cli_kokoro_synthetic_test");
+fn cli_synthesizes_a_wav_from_a_synthetic_kokoro_voice_when_espeak_data_is_available() {
+    let dir = std::env::temp_dir().join(format!(
+        "dengjen_cli_kokoro_synthetic_test_{}",
+        std::process::id()
+    ));
     std::fs::remove_dir_all(&dir).ok();
     let voices_dir = dir.join("voices");
     std::fs::create_dir_all(&voices_dir).unwrap();
@@ -83,7 +87,13 @@ fn cli_loads_a_kokoro_voice_without_panicking() {
     }
 
     let wav_bytes = std::fs::read(&output_path).expect("expected the CLI to write an output WAV");
-    assert!(!wav_bytes.is_empty(), "expected non-empty WAV bytes");
+    assert!(
+        wav_bytes.len() > WAV_HEADER_BYTES,
+        "expected the WAV to carry samples beyond its {WAV_HEADER_BYTES}-byte header, got {} bytes",
+        wav_bytes.len()
+    );
+    assert_eq!(&wav_bytes[..4], b"RIFF");
+    assert_eq!(&wav_bytes[8..12], b"WAVE");
 
     std::fs::remove_dir_all(&dir).ok();
 }
