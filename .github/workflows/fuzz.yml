@@ -4,7 +4,8 @@ name: Fuzz
 # schedule, carrying the corpus between runs, so a crash is found without slowing every PR.
 on:
   schedule:
-    - cron: "0 4 * * 2"
+    # Twice a week so a delayed run still touches the corpus cache inside its 7-day eviction window.
+    - cron: "0 4 * * 2,5"
   workflow_dispatch:
     inputs:
       seconds:

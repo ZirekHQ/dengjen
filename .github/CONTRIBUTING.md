@@ -24,7 +24,7 @@ ask you to sign before merging.
 
 Each phonemizer/model crate with a `fuzz/` directory has one or more `cargo-fuzz` targets. The
 `fuzz-build` job in `rust-lint.yml` builds them on every PR so they don't bit-rot.
-[`fuzz.yml`](workflows/fuzz.yml) runs each target for two minutes every Tuesday (or on dispatch,
+[`fuzz.yml`](workflows/fuzz.yml) runs each target for two minutes every Tuesday and Friday (or on dispatch,
 with a `seconds` input), carries the corpus between runs, and uploads a crash artifact when one
 is found. To run a target yourself, use `cargo +nightly fuzz run <target>` from the crate that owns
 it.
