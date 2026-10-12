@@ -500,8 +500,11 @@ jobs:
               - 'crates/text/**'
               - 'crates/audio/**'
               - 'crates/frontends/cli/**'
+              - 'crates/workspace-hack/**'
+              - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
+              - '.github/workflows/rust-lint.yml'
               - '.github/bench-fixtures.json'
               - '.github/scripts/fetch-*.sh'
 
