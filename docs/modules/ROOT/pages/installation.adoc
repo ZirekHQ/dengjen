@@ -1,20 +1,13 @@
 = Build from source
 
-Dengjen vendors Sonic as a git submodule (`deps/sonic`). eSpeak-ng comes from the
-`dengjen-espeak-rs-sys` crate, and its data ships in `deps/dev/espeak-ng-data`. Clone
-recursively:
+Dengjen vendors Sonic under `crates/audio/sonic-sys/vendor` (see `vendor/UPSTREAM` for the
+source commit). eSpeak-ng comes from the `dengjen-espeak-rs-sys` crate, and its data ships in
+`deps/dev/espeak-ng-data`.
 
 [source,sh]
 ----
-git clone --recurse-submodules https://github.com/ZirekHQ/dengjen-tts.git
+git clone https://github.com/ZirekHQ/dengjen-tts.git
 cd dengjen-tts
-----
-
-If you already cloned without `--recurse-submodules`, fetch them with:
-
-[source,sh]
-----
-git submodule update --init --recursive
 ----
 
 Then build the workspace, or just the CLI frontend:

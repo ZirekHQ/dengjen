@@ -1,29 +1,15 @@
 name: Setup native build dependencies
-description: Initializes git submodules and installs native build deps (clang/llvm/protobuf/etc.) with apt-get retry.
+description: Installs native build deps (clang/llvm/protobuf/etc.) with apt-get retry.
 
 inputs:
   apt-packages:
     description: Space-separated apt package list to install (skipped if empty)
     required: false
     default: ""
-  working-directory:
-    description: Directory (relative to $GITHUB_WORKSPACE) the checked-out repo lives in, if checkout used a non-default `path:`
-    required: false
-    default: "."
 
 runs:
   using: composite
   steps:
-    # Must run after actions/checkout: local composite actions resolve from the checked-out
-    # repo, but the submodule fetch needs protocol.file.allow set before init -- so submodule
-    # checkout happens here instead of via actions/checkout's `submodules:` input.
-    - name: init submodules
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        git config --global protocol.file.allow always
-        git submodule update --init --recursive
-
     - name: install apt packages
       if: inputs.apt-packages != ''
       shell: bash

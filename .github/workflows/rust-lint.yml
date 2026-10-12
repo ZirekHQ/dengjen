@@ -115,7 +115,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: recursive
           persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
@@ -167,22 +166,6 @@ jobs:
         run: cargo check --workspace --locked
       - name: cargo check (MSRV, all features)
         run: cargo check --workspace --locked --all-features
-
-  # crates/audio/sonic-sys/build.rs compiles vendor/sonic.c/.h, not deps/sonic's copies -- nothing
-  # in the build touches that submodule anymore. Renovate still opens bump PRs for it though;
-  # without this check, merging one would pass CI green while silently leaving vendor/ stale.
-  vendor-drift-check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
-      - name: vendor drift check
-        run: |
-          diff -q deps/sonic/sonic.c crates/audio/sonic-sys/vendor/sonic.c
-          diff -q deps/sonic/sonic.h crates/audio/sonic-sys/vendor/sonic.h
 
   # Miri can't run this workspace's unsafe code -- every unsafe block calls into real linked C
   # libraries (onnxruntime, libsonic, espeak-ng), and Miri doesn't support arbitrary FFI.

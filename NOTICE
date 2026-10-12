@@ -14,8 +14,8 @@ repository in a form requiring MIT notice retention.
 ---
 
 crates/audio/sonic-sys/vendor/sonic.c and sonic.h are vendored from the sonic
-audio-processing library (https://github.com/waywardgeek/sonic — the upstream
-that this workspace's deps/sonic submodule tracks a fork of), originally
+audio-processing library (https://github.com/waywardgeek/sonic), via the
+ZirekHQ/waywardgeek-sonic fork pinned in vendor/UPSTREAM, originally
 distributed under the Apache License, Version 2.0 below. Per the Apache
 License's terms, its license text is retained here for this vendored source.
 Incorporating this Apache-2.0-licensed code into the GPL-3.0-or-later-licensed
