@@ -1,7 +1,23 @@
 const DIGITS: [char; 10] = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
 
 fn digit_to_word(d: u32) -> char {
-    DIGITS[d as usize]
+    DIGITS.get(d as usize).copied().unwrap_or('零')
+}
+
+fn span(chars: &[char], start: usize, end: usize) -> String {
+    chars
+        .iter()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .collect()
+}
+
+fn is_at(chars: &[char], index: usize, expected: char) -> bool {
+    chars.get(index) == Some(&expected)
+}
+
+fn is_digit_at(chars: &[char], index: usize) -> bool {
+    chars.get(index).is_some_and(char::is_ascii_digit)
 }
 
 const MAX_CARDINAL_DIGITS: usize = 8;
@@ -85,22 +101,22 @@ fn normalize_temperatures(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::new();
     let mut i = 0;
-    while i < chars.len() {
-        let negative = chars[i] == '-' || chars[i] == '\u{2212}';
+    while let Some(&current) = chars.get(i) {
+        let negative = current == '-' || current == '\u{2212}';
         let digit_start = if negative { i + 1 } else { i };
         let mut integer_end = digit_start;
-        while integer_end < chars.len() && chars[integer_end].is_ascii_digit() {
+        while is_digit_at(&chars, integer_end) {
             integer_end += 1;
         }
         if integer_end == digit_start {
-            out.push(chars[i]);
+            out.push(current);
             i += 1;
             continue;
         }
         let mut fraction_end = integer_end;
-        if chars.get(integer_end) == Some(&'.') {
+        if is_at(&chars, integer_end, '.') {
             fraction_end = integer_end + 1;
-            while fraction_end < chars.len() && chars[fraction_end].is_ascii_digit() {
+            while is_digit_at(&chars, fraction_end) {
                 fraction_end += 1;
             }
         }
@@ -110,7 +126,7 @@ fn normalize_temperatures(text: &str) -> String {
             integer_end
         };
         let mut k = value_end;
-        while k < chars.len() && chars[k] == ' ' {
+        while is_at(&chars, k, ' ') {
             k += 1;
         }
         let celsius_end = if chars.get(k) == Some(&'\u{2103}') {
@@ -121,14 +137,14 @@ fn normalize_temperatures(text: &str) -> String {
             None
         };
         let Some(end) = celsius_end else {
-            out.extend(&chars[i..value_end]);
+            out.push_str(&span(&chars, i, value_end));
             i = value_end;
             continue;
         };
-        let integer_digits: String = chars[digit_start..integer_end].iter().collect();
+        let integer_digits = span(&chars, digit_start, integer_end);
         let mut words = format_integer(&integer_digits);
         if value_end > integer_end {
-            let fractional_digits: String = chars[integer_end + 1..value_end].iter().collect();
+            let fractional_digits = span(&chars, integer_end + 1, value_end);
             words = format!("{words}点{}", format_fraction_digits(&fractional_digits));
         }
         let prefix = if negative { "零下" } else { "" };
@@ -142,21 +158,20 @@ fn normalize_percentages(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::new();
     let mut i = 0;
-    while i < chars.len() {
-        let sign_start = i;
-        let negative = chars[i] == '-' || chars[i] == '\u{2212}';
+    while let Some(&current) = chars.get(i) {
+        let negative = current == '-' || current == '\u{2212}';
         let digit_start = if negative { i + 1 } else { i };
 
         let mut integer_end = digit_start;
-        while integer_end < chars.len() && chars[integer_end].is_ascii_digit() {
+        while is_digit_at(&chars, integer_end) {
             integer_end += 1;
         }
         let has_integer_digits = integer_end > digit_start;
 
         let mut fraction_end = integer_end;
-        if has_integer_digits && integer_end < chars.len() && chars[integer_end] == '.' {
+        if has_integer_digits && is_at(&chars, integer_end, '.') {
             fraction_end = integer_end + 1;
-            while fraction_end < chars.len() && chars[fraction_end].is_ascii_digit() {
+            while is_digit_at(&chars, fraction_end) {
                 fraction_end += 1;
             }
         }
@@ -168,14 +183,12 @@ fn normalize_percentages(text: &str) -> String {
         };
 
         if has_integer_digits
-            && value_end < chars.len()
-            && (chars[value_end] == '%' || chars[value_end] == '\u{FF05}')
+            && (is_at(&chars, value_end, '%') || is_at(&chars, value_end, '\u{FF05}'))
         {
-            let integer_digits: String = chars[digit_start..integer_end].iter().collect();
+            let integer_digits = span(&chars, digit_start, integer_end);
             let mut words = format_integer(&integer_digits);
             if has_fraction_digits {
-                let fractional_digits: String =
-                    chars[integer_end + 1..fraction_end].iter().collect();
+                let fractional_digits = span(&chars, integer_end + 1, fraction_end);
                 words = format!("{words}点{}", format_fraction_digits(&fractional_digits));
             }
             if negative {
@@ -186,7 +199,7 @@ fn normalize_percentages(text: &str) -> String {
             i = value_end + 1;
             continue;
         }
-        out.push(chars[sign_start]);
+        out.push(current);
         i += 1;
     }
     out
@@ -196,19 +209,20 @@ fn normalize_plain_digits(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::new();
     let mut i = 0;
-    while i < chars.len() {
-        if !chars[i].is_ascii_digit() {
-            out.push(chars[i]);
+    while let Some(&current) = chars.get(i) {
+        if !current.is_ascii_digit() {
+            out.push(current);
             i += 1;
             continue;
         }
-        let end = chars[i..]
+        let end = chars
             .iter()
+            .skip(i)
             .position(|c| !c.is_ascii_digit())
             .map_or(chars.len(), |offset| i + offset);
-        let run: String = chars[i..end].iter().collect();
-        let is_year = run.len() == YEAR_DIGITS && chars.get(end) == Some(&'年');
-        let is_fraction = i >= 2 && chars[i - 1] == '.' && chars[i - 2].is_ascii_digit();
+        let run = span(&chars, i, end);
+        let is_year = run.len() == YEAR_DIGITS && is_at(&chars, end, '年');
+        let is_fraction = i >= 2 && is_at(&chars, i - 1, '.') && is_digit_at(&chars, i - 2);
         if is_fraction {
             out.pop();
             out.push('点');

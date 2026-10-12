@@ -123,15 +123,15 @@ pub fn map_phonemes_to_ids(
     let mut phoneme_ids = Vec::with_capacity((chars.len() + 1) * 2);
     phoneme_ids.push(bos_id);
     let mut cursor = 0;
-    while cursor < chars.len() {
+    while let Some(current) = chars.get(cursor) {
         let longest_entry = longest_entry_by_first_char
-            .get(&chars[cursor])
+            .get(current)
             .copied()
             .unwrap_or(0);
         let widest = longest_entry.min(chars.len() - cursor);
 
         let matched = (1..=widest).rev().find_map(|width| {
-            let candidate: String = chars[cursor..cursor + width].iter().collect();
+            let candidate: String = chars.iter().skip(cursor).take(width).collect();
             phoneme_id_map
                 .get(&candidate)
                 .and_then(|entry| entry.first().map(|&id| (width, id)))

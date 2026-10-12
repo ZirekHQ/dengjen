@@ -20,20 +20,20 @@ pub(crate) fn wordize(text: &str) -> (Vec<Word>, Vec<Option<usize>>) {
     let mut text_to_word: Vec<Option<usize>> = Vec::with_capacity(chars.len());
 
     let mut i = 0;
-    while i < chars.len() {
-        if chars[i] == ' ' {
+    while let Some(&current) = chars.get(i) {
+        if current == ' ' {
             text_to_word.push(None);
             i += 1;
             continue;
         }
-        if chars[i].is_ascii_alphanumeric() {
+        if current.is_ascii_alphanumeric() {
             let start = i;
-            while i < chars.len() && chars[i].is_ascii_alphanumeric() {
+            while chars.get(i).is_some_and(char::is_ascii_alphanumeric) {
                 i += 1;
             }
             let word_index = words.len();
             words.push(Word {
-                text: chars[start..i].iter().collect(),
+                text: chars.iter().skip(start).take(i - start).collect(),
                 start,
                 end: i,
             });
@@ -44,7 +44,7 @@ pub(crate) fn wordize(text: &str) -> (Vec<Word>, Vec<Option<usize>>) {
         }
         let word_index = words.len();
         words.push(Word {
-            text: chars[i].to_string(),
+            text: current.to_string(),
             start: i,
             end: i + 1,
         });
@@ -87,7 +87,11 @@ pub(crate) fn tokenize_and_map(
                 start: word.start,
                 end: word.end,
             });
-            text_to_token[word.start..word.end].fill(Some(token_index));
+            text_to_token
+                .iter_mut()
+                .skip(word.start)
+                .take(word.end.saturating_sub(word.start))
+                .for_each(|slot| *slot = Some(token_index));
             continue;
         }
 
@@ -102,8 +106,8 @@ pub(crate) fn tokenize_and_map(
                 end: cursor + token_len,
             });
             for pos in cursor..cursor + token_len {
-                if pos < text_to_token.len() {
-                    text_to_token[pos] = Some(token_index);
+                if let Some(slot) = text_to_token.get_mut(pos) {
+                    *slot = Some(token_index);
                 }
             }
             cursor += token_len;

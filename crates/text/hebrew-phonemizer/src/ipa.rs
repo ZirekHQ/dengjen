@@ -99,13 +99,15 @@ pub(crate) fn apply_geresh_digraphs(glyphs: Vec<Glyph>) -> Vec<Glyph> {
     let digraphs = geresh_digraphs();
     let mut out = Vec::new();
     let mut i = 0;
-    while i < glyphs.len() {
-        let g = &glyphs[i];
-        if i + 1 < glyphs.len() && glyphs[i + 1].base == GERESH.to_string() {
-            let key = format!("{}{}", g.base, glyphs[i + 1].base);
+    while let Some(g) = glyphs.get(i) {
+        if let Some(next) = glyphs
+            .get(i + 1)
+            .filter(|next| next.base == GERESH.to_string())
+        {
+            let key = format!("{}{}", g.base, next.base);
             if let Some(&ipa) = digraphs.get(&key) {
                 let mut marks = g.marks.clone();
-                marks.extend(&glyphs[i + 1].marks);
+                marks.extend(&next.marks);
                 out.push(Glyph {
                     base: format!("<IPA:{ipa}>"),
                     marks,
@@ -314,8 +316,7 @@ pub(crate) fn word_to_segments(word: &str) -> Vec<Segment> {
     let mut segs: Vec<Segment> = Vec::new();
     let mut onset: Vec<String> = Vec::new();
     let mut i = 0;
-    while i < glyphs.len() {
-        let g = &glyphs[i];
+    while let Some(g) = glyphs.get(i) {
         let next = glyphs.get(i + 1);
         let is_final = i == glyphs.len() - 1;
 
@@ -392,22 +393,27 @@ pub(crate) fn word_to_segments(word: &str) -> Vec<Segment> {
 fn resolve_sheva_and_qamats(mut segs: Vec<Segment>) -> Vec<Segment> {
     let mut prev_silenced_shva = false;
     for i in 0..segs.len() {
-        if segs[i].nucleus != "\u{0259}" {
+        let (before, rest) = segs.split_at_mut(i);
+        let Some(current) = rest.first_mut() else {
+            break;
+        };
+        if current.nucleus != "\u{0259}" {
             prev_silenced_shva = false;
             continue;
         }
-        let dagesh_chazak = segs[i].dagesh && i > 0;
-        let na = i == 0 || dagesh_chazak || prev_silenced_shva;
+        let has_previous = !before.is_empty();
+        let dagesh_chazak = current.dagesh && has_previous;
+        let na = !has_previous || dagesh_chazak || prev_silenced_shva;
 
         if na {
-            segs[i].nucleus = "e".to_string();
+            current.nucleus = "e".to_string();
             prev_silenced_shva = false;
         } else {
-            let onset = std::mem::take(&mut segs[i].onset);
-            if i > 0 {
-                segs[i - 1].coda.extend(onset);
+            let onset = std::mem::take(&mut current.onset);
+            if let Some(previous) = before.last_mut() {
+                previous.coda.extend(onset);
             }
-            segs[i].nucleus = String::new();
+            current.nucleus = String::new();
             prev_silenced_shva = true;
         }
     }

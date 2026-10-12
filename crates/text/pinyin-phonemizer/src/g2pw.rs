@@ -130,7 +130,11 @@ impl G2pwEngine {
 
         let (win_start, win_end) =
             truncate_window(chars.len(), query_char_index, self.config.window_size);
-        let windowed_text: String = chars[win_start..win_end].iter().collect();
+        let windowed_text: String = chars
+            .iter()
+            .skip(win_start)
+            .take(win_end.saturating_sub(win_start))
+            .collect();
         let windowed_query_id = query_char_index - win_start;
 
         let (tokens, text_to_token) =
@@ -147,7 +151,15 @@ impl G2pwEngine {
 
         let (token_start, token_end, position_id) =
             truncate_tokens_around_position(tokens.len(), token_position, self.config.max_len)?;
-        let final_tokens = tokens[token_start..token_end].to_vec();
+        let final_tokens = tokens
+            .get(token_start..token_end)
+            .ok_or_else(|| {
+                DengjenError::PhonemizationError(format!(
+                    "token window {token_start}..{token_end} is out of bounds for {} tokens",
+                    tokens.len()
+                ))
+            })?
+            .to_vec();
 
         let mut input_ids: Vec<i64> = vec![self.cls_id()];
         input_ids.extend(final_tokens.iter().map(|t| self.token_to_id(&t.text)));
@@ -181,24 +193,23 @@ impl G2pwEngine {
             ])
             .map_err(inference_error)?;
 
-        if outputs.len() == 0 {
-            return Err(inference_error("model produced no output tensors"));
-        }
-        let (shape, probs) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(inference_error)?;
+        let mut values = outputs.values();
+        let first = values
+            .next()
+            .ok_or_else(|| inference_error("model produced no output tensors"))?;
+        let (shape, probs) = first.try_extract_tensor::<f32>().map_err(inference_error)?;
 
-        if shape.len() != 2 {
+        let &[batch, label_dim] = &**shape else {
             return Err(inference_error(format!(
                 "expected a rank-2 (batch, num_labels) output tensor, got shape {shape:?}"
             )));
-        }
-        if shape[0] != 1 {
+        };
+        if batch != 1 {
             return Err(inference_error(format!(
                 "expected batch size 1, model produced shape {shape:?}"
             )));
         }
-        let num_labels = usize::try_from(shape[1])
+        let num_labels = usize::try_from(label_dim)
             .map_err(|_| inference_error(format!("invalid label dimension in shape {shape:?}")))?;
         if num_labels != self.config.labels.len() || probs.len() < num_labels {
             return Err(inference_error(format!(
@@ -208,8 +219,9 @@ impl G2pwEngine {
                 self.config.labels.len()
             )));
         }
-        let predicted = probs[..num_labels]
+        let predicted = probs
             .iter()
+            .take(num_labels)
             .enumerate()
             .max_by(|a, b| a.1.total_cmp(b.1))
             .map(|(idx, _)| idx)

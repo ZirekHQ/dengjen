@@ -1,6 +1,6 @@
 use crate::config::{resolve_default_speaker_id, ModelConfig};
 use crate::inference::{
-    build_vits_inputs, create_inference_session, inference_error, reversed_mapping,
+    build_vits_inputs, create_inference_session, first_output, inference_error, reversed_mapping,
     session_init_error, snapshot_scales_and_speaker,
 };
 use crate::phonemize::{
@@ -196,7 +196,7 @@ impl DengjenModel for VitsStreamingModel {
             chunk_padding,
             self.config.hop_length.unwrap_or(DEFAULT_HOP_LENGTH),
             cancel_token,
-        )))
+        )?))
     }
 }
 
@@ -275,9 +275,8 @@ impl EncoderOutputs {
         let inputs = self.decoder_inputs(self.z.view(), self.y_mask.view())?;
         let mut session = lock_ignoring_poison(session);
         let outputs = session.run(inputs.as_slice()).map_err(inference_error)?;
-        let (_, samples) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(inference_error)?;
+        let first = first_output(&outputs)?;
+        let (_, samples) = first.try_extract_tensor::<f32>().map_err(inference_error)?;
         Ok(samples.to_vec().into())
     }
 }
@@ -298,11 +297,13 @@ impl SpeechStreamer {
         chunk_padding: usize,
         hop_length: usize,
         cancel_token: CancellationToken,
-    ) -> Self {
-        let num_frames = encoder_outputs.z.shape()[2];
+    ) -> DengjenResult<Self> {
+        let num_frames = *encoder_outputs.z.shape().get(2).ok_or_else(|| {
+            DengjenError::with_message("Invalid encoder output: expected a time axis".to_string())
+        })?;
 
         let one_shot = num_frames <= (chunk_size * 2 + chunk_padding * 2);
-        Self {
+        Ok(Self {
             mel_chunker: AdaptiveMelChunker::new(
                 num_frames as isize,
                 chunk_size as isize,
@@ -313,7 +314,7 @@ impl SpeechStreamer {
             encoder_outputs,
             one_shot,
             cancel_token,
-        }
+        })
     }
 
     fn synthesize_chunk(
@@ -330,9 +331,8 @@ impl SpeechStreamer {
 
         let mut session = lock_ignoring_poison(&self.decoder_model);
         let outputs = session.run(inputs.as_slice()).map_err(inference_error)?;
-        let (shape, data) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(inference_error)?;
+        let first = first_output(&outputs)?;
+        let (shape, data) = first.try_extract_tensor::<f32>().map_err(inference_error)?;
         let waveform = ArrayView::from_shape(shape.to_ixdyn(), data).map_err(|e| {
             DengjenError::with_message(format!("Invalid model audio output shape: {}", e))
         })?;

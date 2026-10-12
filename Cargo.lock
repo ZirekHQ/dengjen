@@ -611,7 +611,6 @@ dependencies = [
  "dengjen-espeak-rs-sys",
  "ffi-support",
  "once_cell",
- "regex",
  "workspace-hack",
 ]
 

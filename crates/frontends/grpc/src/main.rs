@@ -1,4 +1,8 @@
 #![forbid(unsafe_code)]
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
 
 use dengjen_tts::{
     default_batch_size, AudioOutputConfig, DengjenSpeechStreamBatched, DengjenSpeechStreamLazy,

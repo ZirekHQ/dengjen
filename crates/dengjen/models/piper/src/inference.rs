@@ -44,6 +44,15 @@ pub(crate) fn inference_error(cause: impl std::fmt::Display) -> DengjenError {
     DengjenError::InferenceError(format!("Failed to run model inference. Error: {}", cause))
 }
 
+pub(crate) fn first_output<'a>(
+    outputs: &'a ort::session::SessionOutputs<'_>,
+) -> DengjenResult<ort::value::ValueRef<'a>> {
+    outputs
+        .values()
+        .next()
+        .ok_or_else(|| inference_error("model returned no outputs"))
+}
+
 pub(crate) fn build_vits_inputs(
     phoneme_ids: Vec<i64>,
     scales: [f32; 3],
@@ -135,9 +144,8 @@ impl VitsModel {
         let outputs = session.run(inputs.as_slice()).map_err(inference_error)?;
         let inference_ms = started_at.elapsed().as_millis() as f32;
 
-        let (_, samples) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(inference_error)?;
+        let first = first_output(&outputs)?;
+        let (_, samples) = first.try_extract_tensor::<f32>().map_err(inference_error)?;
         Ok(Audio::new(
             samples.to_vec().into(),
             self.config.audio.sample_rate as usize,
