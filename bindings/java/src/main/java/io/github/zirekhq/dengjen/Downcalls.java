@@ -1,16 +1,13 @@
 package io.github.zirekhq.dengjen;
 
+import java.lang.invoke.MethodHandle;
+
 final class Downcalls {
   private Downcalls() {}
 
-  @FunctionalInterface
-  interface Call {
-    void run() throws Throwable;
-  }
-
-  static void run(String function, Call call) {
+  static void run(String function, MethodHandle downcall, Object... args) {
     try {
-      call.run();
+      downcall.invokeWithArguments(args);
     } catch (Throwable t) {
       throw new IllegalStateException(function + " downcall failed", t);
     }
