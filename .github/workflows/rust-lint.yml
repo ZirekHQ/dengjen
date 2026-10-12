@@ -348,7 +348,11 @@ jobs:
   # Real voices come from the sha256-pinned release assets in .github/bench-fixtures.json, the
   # same fixtures synth-bench.yml uses.
   kokoro-real-voice-e2e:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: changes
+    # always() so a skipped `changes` (schedule, dispatch) does not skip this job.
+    if: >-
+      always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && needs.changes.outputs.e2e == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -362,11 +366,35 @@ jobs:
         with:
           apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: locate espeak-ng-data directory
+        run: |
+          data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
+          if [ -z "$data_dir" ] || [ "$data_dir" = "." ]; then
+            echo "Could not locate an espeak-ng-data directory" >&2
+            exit 1
+          fi
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
+      - name: read fixture manifest
+        id: manifest
+        run: |
+          {
+            echo "piper_sha=$(jq -r '.fixtures[] | select(.name=="piper-std") | .sha256' .github/bench-fixtures.json)"
+            echo "kokoro_sha=$(jq -r '.fixtures[] | select(.name=="kokoro") | .sha256' .github/bench-fixtures.json)"
+          } >> "$GITHUB_OUTPUT"
+      # Same key and path as synth-bench.yml, which saves it on main, so PRs rarely download.
+      - name: restore Kokoro fixture
+        id: kokoro-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: crates/dengjen/synth/models/kokoro
+          key: bench-fixture-kokoro-${{ steps.manifest.outputs.kokoro_sha }}
       - name: fetch real Kokoro voice fixture
+        if: steps.kokoro-cache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json . kokoro
+      - name: point the tests at the Kokoro voice
         run: |
-          bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json . kokoro
           voice_dir="$PWD/crates/dengjen/synth/models/kokoro"
           echo "DENGJEN_KOKORO_TEST_VOICE_CONFIG=${voice_dir}/config.json" >> "$GITHUB_ENV"
           vocab="$(jq -r '.vocab_path' "${voice_dir}/config.json")"
@@ -376,12 +404,20 @@ jobs:
       - name: cargo test (dengjen-tts-cli, kokoro real voice e2e)
         run: cargo test -p dengjen-tts-cli --test kokoro_e2e
       # The test returns early unless DENGJEN_KOKORO_VOCAB is set, so only this step exercises it.
+      # It currently fails against the pinned vocab (ʥ ʦ ʨ ᵝ are not in it), so it runs on
+      # schedule and dispatch only until the Japanese table is reconciled; PRs would otherwise
+      # fail on a defect they did not introduce.
       - name: cargo test (dengjen-tts-kokoro, Japanese table symbols exist in the real vocab)
+        if: github.event_name != 'pull_request'
         run: cargo test -p dengjen-tts-kokoro --features japanese --lib every_table_symbol_exists_in_the_kokoro_vocab
 
   # Real Piper voice from the pinned release asset; the benches live in synth-bench.yml.
   piper-real-voice-e2e:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: changes
+    # always() so a skipped `changes` (schedule, dispatch) does not skip this job.
+    if: >-
+      always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && needs.changes.outputs.e2e == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -395,7 +431,25 @@ jobs:
         with:
           apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: locate espeak-ng-data directory
+        run: |
+          data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
+          if [ -z "$data_dir" ] || [ "$data_dir" = "." ]; then
+            echo "Could not locate an espeak-ng-data directory" >&2
+            exit 1
+          fi
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
+      - name: read fixture manifest
+        id: manifest
+        run: echo "piper_sha=$(jq -r '.fixtures[] | select(.name=="piper-std") | .sha256' .github/bench-fixtures.json)" >> "$GITHUB_OUTPUT"
+      - name: restore Piper std fixture
+        id: piper-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: crates/dengjen/synth/models/std
+          key: bench-fixture-piper-std-${{ steps.manifest.outputs.piper_sha }}
       - name: fetch real Piper std voice fixture
+        if: steps.piper-cache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json . piper-std
@@ -425,6 +479,7 @@ jobs:
       pull-requests: read
     outputs:
       java: ${{ steps.filter.outputs.java }}
+      e2e: ${{ steps.filter.outputs.e2e }}
     steps:
       # dorny/paths-filter's token mode only skips checkout for pull_request events -- push
       # events still diff via git and need a checked-out repository.
@@ -440,6 +495,18 @@ jobs:
               - 'crates/**'
               - 'bindings/java/**'
               - 'Cargo.lock'
+            e2e:
+              - 'crates/dengjen/**'
+              - 'crates/text/**'
+              - 'crates/audio/**'
+              - 'crates/frontends/cli/**'
+              - 'crates/workspace-hack/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/rust-lint.yml'
+              - '.github/bench-fixtures.json'
+              - '.github/scripts/fetch-*.sh'
 
   bindings-java:
     needs: changes

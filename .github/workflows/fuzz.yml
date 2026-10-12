@@ -1,0 +1,81 @@
+name: Fuzz
+
+# rust-lint.yml's fuzz-build only compiles the targets. This runs each one for a few minutes on a
+# schedule, carrying the corpus between runs, so a crash is found without slowing every PR.
+on:
+  schedule:
+    # Twice a week so a delayed run still touches the corpus cache inside its 7-day eviction window.
+    - cron: "0 4 * * 2,5"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Seconds to fuzz each target"
+        required: false
+        default: "120"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { dir: crates/dengjen/models/piper, target: map_phonemes_to_ids }
+          - { dir: crates/text/pinyin-phonemizer, target: normalize_numbers }
+          - { dir: crates/text/hebrew-phonemizer, target: num_classes }
+          - { dir: crates/text/espeak-phonemizer, target: text_to_phonemes }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        timeout-minutes: 15
+        with:
+          apt-packages: clang libclang-dev llvm-dev cmake protobuf-compiler espeak-ng
+      - uses: dtolnay/rust-toolchain@f0d5300ba8908d942c808f4d31c08471d7798ba3 # nightly
+        with:
+          toolchain: nightly
+          components: rust-src
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: locate espeak-ng-data directory
+        run: |
+          data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
+          if [ -z "$data_dir" ] || [ "$data_dir" = "." ]; then
+            echo "Could not locate an espeak-ng-data directory" >&2
+            exit 1
+          fi
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
+      - run: cargo install cargo-fuzz --locked
+      - name: restore corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ matrix.dir }}/fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+      - name: cargo fuzz run
+        working-directory: ${{ matrix.dir }}
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
+          FUZZ_SECONDS: ${{ inputs.seconds || '120' }}
+        run: cargo +nightly fuzz run "$FUZZ_TARGET" -- -max_total_time="$FUZZ_SECONDS"
+      - name: save corpus
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ matrix.dir }}/fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+      - name: upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: ${{ matrix.dir }}/fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore

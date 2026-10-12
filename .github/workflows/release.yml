@@ -201,6 +201,20 @@ jobs:
           packages-dir: dist
           skip-existing: true
 
+  # Installs what just reached crates.io and PyPI and synthesizes once. Runs on the push path only:
+  # the override path publishes to PyPI from prepare-release.yml, after this workflow returns.
+  smoke:
+    name: Post-publish smoke
+    needs: [tag-and-release, crates, pypi]
+    if: >-
+      !cancelled() && inputs.dry_run != true &&
+      needs.crates.result == 'success' && needs.pypi.result == 'success'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/post-publish-smoke.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    with:
+      version: ${{ needs.tag-and-release.outputs.version }}
+
   # Represents the whole repo -- crates/java/go/grpc jobs only publish artifact-scoped releases,
   # so without this job GitHub's `/releases/latest` would fall back to whichever component
   # release published last.
