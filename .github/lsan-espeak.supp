@@ -1,0 +1,2 @@
+# espeak-ng leaks a voice-change allocation. Suppresses only leaks whose stack includes DoVoiceChange.
+leak:DoVoiceChange

@@ -65,6 +65,7 @@ jobs:
         env:
           FUZZ_TARGET: ${{ matrix.target }}
           FUZZ_SECONDS: ${{ inputs.seconds || '120' }}
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/.github/lsan-espeak.supp
         run: cargo +nightly fuzz run "$FUZZ_TARGET" -- -max_total_time="$FUZZ_SECONDS"
       - name: save corpus
         if: always()
