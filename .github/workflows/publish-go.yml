@@ -279,6 +279,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       module_path: ${{ steps.version.outputs.module_path }}
       release_sha: ${{ steps.push-release.outputs.release_sha }}
+      sums_digest: ${{ steps.assemble.outputs.sums_digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -324,6 +325,7 @@ jobs:
         with:
           path: artifacts
       - name: assemble release snapshot
+        id: assemble
         run: |
           set -euo pipefail
           dst="dengjen-tts-go"
@@ -348,6 +350,9 @@ jobs:
               exit 1
             fi
           done
+
+          (cd "$dst" && sha256sum lib/*/* include/libdengjen.h > SHA256SUMS)
+          echo "sums_digest=$(sha256sum "$dst/SHA256SUMS" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
           cp -r dengjen-tts/deps/dev/espeak-ng-data "$dst/espeak-ng-data"
 
@@ -556,6 +561,7 @@ jobs:
           GOFLAGS: '-mod=mod'
           NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_VERSION: ${{ needs.assemble-and-push.outputs.version }}
           NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_MODULE_PATH: ${{ needs.assemble-and-push.outputs.module_path }}
+          NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_SUMS_DIGEST: ${{ needs.assemble-and-push.outputs.sums_digest }}
         shell: bash
         run: |
           set -euo pipefail
@@ -563,6 +569,17 @@ jobs:
           cd /tmp/dengjen-go-verify
           go mod init verify
           go get "${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_MODULE_PATH}@${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_VERSION}"
+
+          # The fetched manifest must be the one the assemble job wrote, and every bundled
+          # library must match it, so a swapped or truncated native library fails the release.
+          if command -v sha256sum >/dev/null; then sha() { sha256sum "$@"; }; else sha() { shasum -a 256 "$@"; }; fi
+          sums_dir="$(go list -m -f '{{.Dir}}' "${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_MODULE_PATH}")"
+          fetched_digest="$(sha "$sums_dir/SHA256SUMS" | cut -d' ' -f1)"
+          if [[ "$fetched_digest" != "$NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_SUMS_DIGEST" ]]; then
+            echo "::error::SHA256SUMS digest ${fetched_digest} differs from the built ${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_SUMS_DIGEST}" >&2
+            exit 1
+          fi
+          (cd "$sums_dir" && sha -c SHA256SUMS)
 
           if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
             mod_dir="$(go list -m -f '{{.Dir}}' "${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_MODULE_PATH}")"

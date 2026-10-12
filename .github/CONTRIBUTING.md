@@ -151,3 +151,10 @@ step is idempotent (skips an artifact already published):
 
 See [README.md](../README.md) for build instructions and [CLAUDE.md](../CLAUDE.md) for the lint
 and CI conventions enforced on this repo.
+
+## Verifying release artifacts
+
+The gRPC server zip and the SBOM (`dengjen-tts-<version>.cdx.json`) on a GitHub release carry build
+provenance attestations: `gh attestation verify <file> --repo ZirekHQ/dengjen-tts`. The Go module
+ships `SHA256SUMS` for its bundled native libraries; the release's verify job checks the fetched
+module against the build, and a mismatch deletes the release's own tag.

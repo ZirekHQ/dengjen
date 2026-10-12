@@ -214,16 +214,14 @@ public final class Voice implements AutoCloseable {
           SynthesisParamsMarshaller.allocate(
               arena, params, SpeakTrampoline.stubPointer(), trampoline.userData());
       MemorySegment outError = arena.allocate(DengjenLayouts.EXTERN_ERROR);
-      try {
-        DengjenLib.SPEAK.invokeExact(voicePtr, cText, cParams, outError);
-      } catch (Throwable t) {
-        throw new IllegalStateException("libdengjenSpeak downcall failed", t);
-      }
+      DengjenLib.SPEAK.invokeExact(voicePtr, cText, cParams, outError);
       ErrorChecks.checkAndThrow(outError);
     } catch (RuntimeException | Error t) {
-
       trampoline.release();
       throw t;
+    } catch (Throwable t) {
+      trampoline.release();
+      throw new IllegalStateException("libdengjenSpeak downcall failed", t);
     } finally {
       Reference.reachabilityFence(this);
     }

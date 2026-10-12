@@ -404,11 +404,7 @@ jobs:
       - name: cargo test (dengjen-tts-cli, kokoro real voice e2e)
         run: cargo test -p dengjen-tts-cli --test kokoro_e2e
       # The test returns early unless DENGJEN_KOKORO_VOCAB is set, so only this step exercises it.
-      # It currently fails against the pinned vocab (ʥ ʦ ʨ ᵝ are not in it), so it runs on
-      # schedule and dispatch only until the Japanese table is reconciled; PRs would otherwise
-      # fail on a defect they did not introduce.
       - name: cargo test (dengjen-tts-kokoro, Japanese table symbols exist in the real vocab)
-        if: github.event_name != 'pull_request'
         run: cargo test -p dengjen-tts-kokoro --features japanese --lib every_table_symbol_exists_in_the_kokoro_vocab
 
   # Real Piper voice from the pinned release asset; the benches live in synth-bench.yml.
