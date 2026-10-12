@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn a_real_dictionary_phonemizes_a_greeting() {
         let Some(g2p) = dictionary() else { return };
-        assert_eq!(g2p.phonemize("こんにちは。").unwrap(), vec!["koɴniʨiwa."]);
+        assert_eq!(g2p.phonemize("こんにちは。").unwrap(), vec!["koɴnitɕiwa."]);
     }
 
     #[test]

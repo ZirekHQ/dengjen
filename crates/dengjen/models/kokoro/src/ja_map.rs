@@ -228,8 +228,12 @@ pub(crate) fn fit_to_vocab(phonemes: &str) -> String {
         .chars()
         .map(|c| match c {
             'g' => "ɡ".to_string(),
-            'G' => "ɡᵝ".to_string(),
-            'K' => "kᵝ".to_string(),
+            'G' => "ɡʷ".to_string(),
+            'K' => "kʷ".to_string(),
+            'ᵝ' => "ʷ".to_string(),
+            'ʥ' => "dʑ".to_string(),
+            'ʦ' => "ts".to_string(),
+            'ʨ' => "tɕ".to_string(),
             'ƫ' => "tʲ".to_string(),
             'ᶀ' => "bʲ".to_string(),
             'ᶁ' => "dʲ".to_string(),
@@ -314,20 +318,21 @@ mod tests {
     #[test]
     fn the_symbol_collector_sees_the_special_misaki_symbols() {
         let symbols = all_table_symbols();
-        assert!(symbols.contains(&'ʨ') && symbols.contains(&'ɴ') && symbols.contains(&'ː'));
+        assert!(symbols.contains(&'ɕ') && symbols.contains(&'ɴ') && symbols.contains(&'ː'));
     }
 
     #[test]
     fn fit_to_vocab_replaces_symbols_the_vocab_lacks() {
         assert_eq!(fit_to_vocab("ga"), "ɡa");
         assert_eq!(fit_to_vocab("ᶄo"), "kʲo");
-        assert_eq!(fit_to_vocab("Ka"), "kᵝa");
-        assert_eq!(fit_to_vocab("Ga"), "ɡᵝa");
+        assert_eq!(fit_to_vocab("Ka"), "kʷa");
+        assert_eq!(fit_to_vocab("Ga"), "ɡʷa");
+        assert_eq!(fit_to_vocab("ʨa ʥa ʦa"), "tɕa dʑa tsa");
         assert_eq!(fit_to_vocab("ᶉa"), "rʲa");
     }
 
     #[test]
     fn fit_to_vocab_leaves_vocab_symbols_alone() {
-        assert_eq!(fit_to_vocab("koɴniʨiwa. ʥuː"), "koɴniʨiwa. ʥuː");
+        assert_eq!(fit_to_vocab("koɴnitɕiwa. dʑuː"), "koɴnitɕiwa. dʑuː");
     }
 }

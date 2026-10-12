@@ -406,7 +406,7 @@ fn a_japanese_preset_phonemizes_through_the_japanese_g2p() {
     }
     let (model, dir) = build_model_with_voices("ja_g2p", &["jf_test"]);
     let sentences = model.phonemize_text("こんにちは。").unwrap().to_vec();
-    assert_eq!(sentences, vec!["koɴniʨiwa."]);
+    assert_eq!(sentences, vec!["koɴnitɕiwa."]);
     std::fs::remove_dir_all(dir).ok();
 }
 
@@ -431,7 +431,7 @@ fn switching_between_japanese_and_other_presets_picks_the_matching_g2p() {
     select(1);
     let other = model.phonemize_text("こんにちは。").unwrap().to_vec();
     select(0);
-    assert_eq!(japanese, vec!["koɴniʨiwa."]);
+    assert_eq!(japanese, vec!["koɴnitɕiwa."]);
     assert_ne!(japanese, other);
     assert_eq!(
         model.phonemize_text("こんにちは。").unwrap().to_vec(),
