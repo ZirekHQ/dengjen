@@ -122,20 +122,22 @@ impl AudioSamples {
 
     pub fn overlap_with(&mut self, other: &mut Self, overlap_len: usize) {
         let overlap_len = overlap_len.min(self.0.len()).min(other.0.len());
-        if overlap_len == 1 {
-            let tail_start = self.0.len() - 1;
-            self.0[tail_start] = (self.0[tail_start] + other.0[0]) * 0.5;
-        } else if overlap_len > 1 {
-            let tail_start = self.0.len() - overlap_len;
-            let span = (overlap_len - 1) as f32;
-            for offset in 0..overlap_len {
-                let gain_in = offset as f32 / span;
-                let gain_out = 1.0 - gain_in;
-                self.0[tail_start + offset] =
-                    self.0[tail_start + offset] * gain_out + other.0[offset] * gain_in;
-            }
-        }
-        self.0.extend_from_slice(&other.0[overlap_len..]);
+        let tail_start = self.0.len() - overlap_len;
+        let span = overlap_len.saturating_sub(1) as f32;
+        self.0
+            .iter_mut()
+            .skip(tail_start)
+            .zip(&other.0)
+            .enumerate()
+            .for_each(|(offset, (mine, theirs))| {
+                let gain_in = if overlap_len == 1 {
+                    0.5
+                } else {
+                    offset as f32 / span
+                };
+                *mine = *mine * (1.0 - gain_in) + *theirs * gain_in;
+            });
+        self.0.extend(other.0.iter().skip(overlap_len).copied());
     }
 
     pub fn fade_in(&mut self, fade_samples: usize) {
@@ -171,27 +173,40 @@ impl AudioSamples {
             return;
         }
         let span_f32 = (span - 1) as f32;
-        for i in 0..span {
-            let gain = (i as f32 / span_f32 * HALF_TURN / 2.0).sin();
-            self.0[i] *= gain;
-            self.0[length - 1 - i] *= gain;
-        }
+        let gain = |i: usize| (i as f32 / span_f32 * HALF_TURN / 2.0).sin();
+        self.0
+            .iter_mut()
+            .take(span)
+            .enumerate()
+            .for_each(|(i, sample)| *sample *= gain(i));
+        self.0
+            .iter_mut()
+            .rev()
+            .take(span)
+            .enumerate()
+            .for_each(|(i, sample)| *sample *= gain(i));
     }
 
     pub fn zero_samples_above(&mut self, sample_range: std::ops::Range<usize>, cutoff: f32) {
-        let end = sample_range.end.min(self.0.len());
-        let clamped = sample_range.start.min(end)..end;
-        self.0[clamped].iter_mut().for_each(|sample| {
-            *sample = if *sample < cutoff { *sample } else { 0.0 };
-        });
+        let count = sample_range.end.saturating_sub(sample_range.start);
+        self.0
+            .iter_mut()
+            .skip(sample_range.start)
+            .take(count)
+            .for_each(|sample| {
+                *sample = if *sample < cutoff { *sample } else { 0.0 };
+            });
     }
 
     pub fn zero_samples_below(&mut self, sample_range: std::ops::Range<usize>, cutoff: f32) {
-        let end = sample_range.end.min(self.0.len());
-        let clamped = sample_range.start.min(end)..end;
-        self.0[clamped].iter_mut().for_each(|sample| {
-            *sample = if *sample > cutoff { *sample } else { 0.0 };
-        });
+        let count = sample_range.end.saturating_sub(sample_range.start);
+        self.0
+            .iter_mut()
+            .skip(sample_range.start)
+            .take(count)
+            .for_each(|sample| {
+                *sample = if *sample > cutoff { *sample } else { 0.0 };
+            });
     }
 
     pub fn strip_silence(&mut self, sample_range: std::ops::Range<usize>, silence_threshold: f32) {
@@ -200,8 +215,11 @@ impl AudioSamples {
         if clamped.is_empty() {
             return;
         }
-        let retained: Vec<f32> = self.0[clamped.clone()]
+        let retained: Vec<f32> = self
+            .0
             .iter()
+            .skip(clamped.start)
+            .take(clamped.len())
             .copied()
             .filter(|sample| sample.abs() > silence_threshold)
             .collect();
@@ -211,12 +229,10 @@ impl AudioSamples {
     pub fn trim_trailing_silence(&mut self, threshold: f32, num_channels: usize) {
         let num_channels = num_channels.max(1);
         let is_active = |sample: &f32| sample.is_finite() && sample.abs() > threshold;
-        let frame_count = self.0.len() / num_channels;
-        let last_active_frame = (0..frame_count).rev().find(|&frame| {
-            self.0[frame * num_channels..(frame + 1) * num_channels]
-                .iter()
-                .any(is_active)
-        });
+        let last_active_frame = self
+            .0
+            .chunks_exact(num_channels)
+            .rposition(|frame| frame.iter().any(is_active));
         match last_active_frame {
             Some(frame) => self.0.truncate((frame + 1) * num_channels),
             None => self.0.clear(),
