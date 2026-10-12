@@ -32,17 +32,22 @@ fn merge_diacritics(
     let dagesh_chars = dagesh_classes();
     let sin_chars = sin_classes();
 
+    let class_char = |ids: &[usize], classes: &[char], i: usize| -> Option<char> {
+        let id = *ids.get(i)?;
+        classes.get(id.checked_sub(1)?).copied()
+    };
+
     let mut out = String::new();
     for (i, &letter) in letters.iter().enumerate() {
         out.push(letter);
-        if can_dagesh(letter) && dagesh_ids[i] > 0 {
-            out.push(dagesh_chars[dagesh_ids[i] - 1]);
+        if can_dagesh(letter) {
+            out.extend(class_char(dagesh_ids, &dagesh_chars, i));
         }
-        if can_sin(letter) && sin_ids[i] > 0 {
-            out.push(sin_chars[sin_ids[i] - 1]);
+        if can_sin(letter) {
+            out.extend(class_char(sin_ids, &sin_chars, i));
         }
-        if can_niqqud(letter) && niqqud_ids[i] > 0 {
-            out.push(niqqud_chars[niqqud_ids[i] - 1]);
+        if can_niqqud(letter) {
+            out.extend(class_char(niqqud_ids, &niqqud_chars, i));
         }
     }
     out.replace(RAFE, "")
@@ -106,11 +111,13 @@ pub fn num_classes(shape: &Shape, seq_len: usize, expected_classes: usize) -> De
 fn argmax_per_position(data: &[f32], seq_len: usize, num_classes: usize) -> Vec<usize> {
     (0..seq_len)
         .map(|pos| {
-            let row = &data[pos * num_classes..(pos + 1) * num_classes];
-            row.iter()
-                .enumerate()
-                .max_by(|a, b| a.1.total_cmp(b.1))
-                .map(|(idx, _)| idx)
+            data.get(pos * num_classes..(pos + 1) * num_classes)
+                .and_then(|row| {
+                    row.iter()
+                        .enumerate()
+                        .max_by(|a, b| a.1.total_cmp(b.1))
+                        .map(|(idx, _)| idx)
+                })
                 .unwrap_or(0)
         })
         .collect()
@@ -145,22 +152,22 @@ impl NakdimonEngine {
                 Tensor::from_array(input).map_err(inference_error)?
             ])
             .map_err(inference_error)?;
-        if outputs.len() < 3 {
+        let mut values = outputs.values();
+        let (Some(niqqud), Some(dagesh), Some(sin)) = (values.next(), values.next(), values.next())
+        else {
             return Err(inference_error(format!(
                 "expected 3 output tensors (niqqud, dagesh, sin), model produced {}",
                 outputs.len()
             )));
-        }
+        };
 
-        let (n_shape, n_data) = outputs[0]
+        let (n_shape, n_data) = niqqud
             .try_extract_tensor::<f32>()
             .map_err(inference_error)?;
-        let (d_shape, d_data) = outputs[1]
+        let (d_shape, d_data) = dagesh
             .try_extract_tensor::<f32>()
             .map_err(inference_error)?;
-        let (s_shape, s_data) = outputs[2]
-            .try_extract_tensor::<f32>()
-            .map_err(inference_error)?;
+        let (s_shape, s_data) = sin.try_extract_tensor::<f32>().map_err(inference_error)?;
 
         let niqqud_ids = argmax_per_position(
             n_data,

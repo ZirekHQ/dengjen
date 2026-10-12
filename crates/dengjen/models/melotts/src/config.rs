@@ -121,7 +121,7 @@ pub(crate) fn map_phone_tone_pairs_to_ids(
         while cursor < chars.len() {
             let widest = longest_entry.min(chars.len() - cursor);
             let matched = (1..=widest).rev().find_map(|width| {
-                let candidate: String = chars[cursor..cursor + width].iter().collect();
+                let candidate: String = chars.iter().skip(cursor).take(width).collect();
                 phone_id_map
                     .get(&candidate)
                     .and_then(|ids| ids.first().map(|&id| (width, id)))

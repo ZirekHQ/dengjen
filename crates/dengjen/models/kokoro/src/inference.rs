@@ -33,7 +33,7 @@ fn split_tokens(tokens: Vec<i64>, max_len: usize, break_id: Option<i64>) -> Vec<
     let mut chunks = Vec::new();
     let mut rest = tokens.as_slice();
     while rest.len() > max_len {
-        let window = &rest[..max_len];
+        let (window, _) = rest.split_at(max_len);
         let cut = break_id
             .and_then(|id| window.iter().rposition(|&token| token == id))
             .map_or(max_len, |position| position + 1);
@@ -138,7 +138,10 @@ impl KokoroModel {
                 Tensor::from_array(speed).map_err(|e| DengjenError::with_message(e.to_string()))?,
             ])
             .map_err(|e| DengjenError::InferenceError(format!("Kokoro inference failed: {}", e)))?;
-        let (_, data) = outputs[0].try_extract_tensor::<f32>().map_err(|e| {
+        let output = outputs.values().next().ok_or_else(|| {
+            DengjenError::InferenceError("Kokoro inference returned no outputs".to_string())
+        })?;
+        let (_, data) = output.try_extract_tensor::<f32>().map_err(|e| {
             DengjenError::InferenceError(format!("Failed to extract Kokoro output: {}", e))
         })?;
         Ok(Audio::new(
@@ -281,7 +284,7 @@ impl Iterator for KokoroAudioStreamer {
             return None;
         }
         let end = (self.cursor + self.chunk_size).min(self.samples.len());
-        let chunk = self.samples.as_slice()[self.cursor..end].to_vec();
+        let chunk = self.samples.as_slice().get(self.cursor..end)?.to_vec();
         self.cursor = end;
         Some(Ok(AudioSamples::new(chunk)))
     }

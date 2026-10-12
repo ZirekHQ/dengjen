@@ -1,4 +1,8 @@
 #![forbid(unsafe_code)]
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
 
 #[cfg(feature = "espeak")]
 use dengjen_espeak_phonemizer::text_to_phonemes;
@@ -194,9 +198,11 @@ trait VitsModelCommons {
     #[cfg(feature = "tashkeel")]
     #[cfg_attr(not(feature = "espeak"), allow(dead_code))]
     fn diacritize_text(&self, text: &str) -> DengjenResult<String> {
-        let engine = self
-            .get_tashkeel_engine()
-            .expect("tashkeel engine missing for a voice that needs diacritization");
+        let engine = self.get_tashkeel_engine().ok_or_else(|| {
+            DengjenError::PhonemizationError(
+                "tashkeel engine missing for a voice that needs diacritization".to_string(),
+            )
+        })?;
         do_tashkeel(engine, text, None, false).map_err(|msg| {
             DengjenError::InferenceError(format!(
                 "Failed to diacritize text using libtashkeel. {msg}"

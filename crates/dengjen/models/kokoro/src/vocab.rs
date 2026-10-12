@@ -76,7 +76,7 @@ impl Vocab {
             let limit = self.max_token_chars.min(chars.len() - i);
             let mut matched = false;
             for len in (1..=limit).rev() {
-                let candidate: String = chars[i..i + len].iter().collect();
+                let candidate: String = chars.iter().skip(i).take(len).collect();
                 if let Some(&id) = self.map.get(&candidate) {
                     ids.push(id);
                     i += len;

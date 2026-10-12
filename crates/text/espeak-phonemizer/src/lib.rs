@@ -1,8 +1,12 @@
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
+)]
+
 mod espeakng;
 
 use ffi_support::FfiStr;
 use once_cell::sync::Lazy;
-use regex::Regex;
 use std::env;
 use std::error::Error;
 use std::ffi;
@@ -39,11 +43,6 @@ impl fmt::Display for ESpeakError {
     }
 }
 
-// Matches the parenthesized language-switch annotations eSpeak-ng inserts into phoneme output
-// when it detects a mid-utterance language change, e.g. `(en)`.
-static LANG_SWITCH_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\([^)]*\)").unwrap());
-// Matches eSpeak-ng's two IPA stress markers: `ˈ` (primary) and `ˌ` (secondary).
-static STRESS_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"[ˈˌ]").unwrap());
 static ESPEAKNG_INIT: Lazy<ESpeakResult<()>> = Lazy::new(init_espeakng);
 
 static ESPEAK_LOCK: Mutex<()> = Mutex::new(());
@@ -60,10 +59,7 @@ fn resolve_data_directory() -> Option<CString> {
     if !base.join("espeak-ng-data").exists() {
         return None;
     }
-    Some(
-        CString::new(base.display().to_string())
-            .expect("Error: the resolved data directory path holds an interior NUL byte."),
-    )
+    CString::new(base.display().to_string()).ok()
 }
 
 fn init_espeakng() -> ESpeakResult<()> {
@@ -149,8 +145,12 @@ fn phonemize_line(
         ESpeakError("Input holds a NUL byte, which eSpeak-ng cannot read".to_string())
     })?;
     let sentences = read_clauses(&espeak, &line, phoneme_mode(phoneme_separator));
-    let sentences = strip_matches(remove_lang_switch_flags, sentences, &LANG_SWITCH_PATTERN);
-    Ok(strip_matches(remove_stress, sentences, &STRESS_PATTERN))
+    let sentences = strip_matches(remove_lang_switch_flags, sentences, strip_language_switches);
+    Ok(strip_matches(
+        remove_stress,
+        sentences,
+        strip_stress_markers,
+    ))
 }
 
 fn select_voice(_espeak: &ESpeakLock<'_>, language: &str) -> ESpeakResult<()> {
@@ -213,14 +213,35 @@ fn read_clauses(
     sentences
 }
 
-fn strip_matches(enabled: bool, sentences: Vec<String>, pattern: &Regex) -> Vec<String> {
+fn strip_matches(enabled: bool, sentences: Vec<String>, strip: fn(&str) -> String) -> Vec<String> {
     if !enabled {
         return sentences;
     }
-    sentences
-        .into_iter()
-        .map(|sentence| pattern.replace_all(&sentence, "").into_owned())
-        .collect()
+    sentences.iter().map(|sentence| strip(sentence)).collect()
+}
+
+// Removes the parenthesized language-switch annotations eSpeak-ng inserts into phoneme output
+// when it detects a mid-utterance language change, e.g. `(en)`. An unclosed `(` stays.
+fn strip_language_switches(text: &str) -> String {
+    let mut stripped = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('(') {
+        let (head, from_open) = rest.split_at(open);
+        stripped.push_str(head);
+        match from_open.find(')') {
+            Some(close) => rest = from_open.split_at(close + 1).1,
+            None => {
+                stripped.push_str(from_open);
+                return stripped;
+            }
+        }
+    }
+    stripped.push_str(rest);
+    stripped
+}
+
+fn strip_stress_markers(text: &str) -> String {
+    text.replace(['ˈ', 'ˌ'], "")
 }
 
 #[cfg(test)]
@@ -274,6 +295,23 @@ mod tests {
         let phonemes = text_to_phonemes(text, "ar", None, false, false)?.join("");
         assert_eq!(phonemes, expected);
         Ok(())
+    }
+
+    #[test]
+    fn strip_language_switches_removes_each_parenthesized_marker() {
+        assert_eq!(strip_language_switches("(en)hə(ar)lo"), "həlo");
+        assert_eq!(strip_language_switches("a(b)c(d)"), "ac");
+    }
+
+    #[test]
+    fn strip_language_switches_keeps_an_unclosed_parenthesis() {
+        assert_eq!(strip_language_switches("a(b)c(d"), "ac(d");
+        assert_eq!(strip_language_switches("no markers"), "no markers");
+    }
+
+    #[test]
+    fn strip_stress_markers_removes_primary_and_secondary_stress() {
+        assert_eq!(strip_stress_markers("ˈhɛˌloʊ"), "hɛloʊ");
     }
 
     #[test]
