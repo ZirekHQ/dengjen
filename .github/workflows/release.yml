@@ -137,8 +137,9 @@ jobs:
       previous_tag: ${{ inputs.previous_tag }}
       dry_run: ${{ inputs.dry_run == true }}
     secrets:
-      JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
-      JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
+      # push: the org secret; workflow_call from prepare-release.yml: the JRELEASER_* input it maps.
+      JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.SONATYPE_USERNAME || secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
+      JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.SONATYPE_PASSWORD || secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
       JRELEASER_GPG_PASSPHRASE: ${{ secrets.JRELEASER_GPG_PASSPHRASE }}
       JRELEASER_GPG_SECRET_KEY: ${{ secrets.JRELEASER_GPG_SECRET_KEY }}
       JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.JRELEASER_GPG_PUBLIC_KEY }}
