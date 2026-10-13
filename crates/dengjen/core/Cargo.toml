@@ -22,7 +22,7 @@ once_cell = "1.18.0"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [dependencies.ort]
-version = "2.0.0-rc.13"
+version = "=2.0.0-rc.13"
 default-features = false
 features = ["std"]
 optional = true
