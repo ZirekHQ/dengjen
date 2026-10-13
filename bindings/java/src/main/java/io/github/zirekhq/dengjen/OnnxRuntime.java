@@ -3,6 +3,7 @@ package io.github.zirekhq.dengjen;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.invoke.MethodHandle;
+import java.util.Optional;
 
 /** Points a dynamically linked native library at the onnxruntime named by a system property. */
 final class OnnxRuntime {
@@ -21,8 +22,13 @@ final class OnnxRuntime {
     if (configured || path == null) {
       return;
     }
+    apply(path, DengjenLib.SET_ORT_DYLIB_PATH);
+    configured = true;
+  }
+
+  static void apply(String path, Optional<MethodHandle> setter) {
     MethodHandle setPath =
-        DengjenLib.SET_ORT_DYLIB_PATH.orElseThrow(
+        setter.orElseThrow(
             () ->
                 new IllegalStateException(
                     "-D" + PATH_PROPERTY + " is set but this native library embeds onnxruntime"));
@@ -35,6 +41,5 @@ final class OnnxRuntime {
       }
       ErrorChecks.checkAndThrow(outError);
     }
-    configured = true;
   }
 }
