@@ -1,4 +1,0 @@
-[submodule "deps/sonic"]
-	path = deps/sonic
-	url = https://github.com/ZirekHQ/waywardgeek-sonic
-	branch = master

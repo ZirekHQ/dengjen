@@ -1,0 +1,11 @@
+source: https://github.com/ZirekHQ/waywardgeek-sonic
+commit: 6195e4ed0b6dfd794d3998f3ad0d3fc2c074d100 (develop)
+base:   https://github.com/waywardgeek/sonic @ b93885dcb70aae50c6f76b0fe4e0868f029a077e
+files:  sonic.c, sonic.h
+
+Patches on top of base, pending review upstream:
+- Restore vocal-chord-emulation ("linear") pitch scaling (espeak-ng/sonic#9)
+- Fix rate-position desync from repeated sonicSetPitch calls (espeak-ng/sonic#10)
+- Fix sonicFlushStream understating duration at low speed (espeak-ng/sonic#11)
+- Replace left-shift of a signed value in findSincCoefficient (UB) (espeak-ng/sonic#6)
+- Fix chord-pitch crossfade, rate, NaN and buffer-drain defects (waywardgeek/sonic#75)

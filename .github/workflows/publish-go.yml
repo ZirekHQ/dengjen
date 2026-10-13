@@ -286,11 +286,8 @@ jobs:
           ref: ${{ github.sha }}
           path: dengjen-tts
           persist-credentials: false
-      # Local-action paths resolve off $GITHUB_WORKSPACE, not this step's own `path:` -- since the
-      # repo landed under dengjen-tts/, both the action reference and its own steps' cwd need it.
+      # Local-action paths resolve off $GITHUB_WORKSPACE, not this step's own `path:`.
       - uses: ./dengjen-tts/.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
-        with:
-          working-directory: dengjen-tts
       - name: Create deploy App token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
