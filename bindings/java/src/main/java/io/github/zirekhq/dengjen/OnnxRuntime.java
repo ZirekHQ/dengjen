@@ -17,12 +17,15 @@ final class OnnxRuntime {
    * Applies {@value #PATH_PROPERTY} once per process; without the property the native side falls
    * back to {@code ORT_DYLIB_PATH} and the platform loader search path.
    */
-  static synchronized void configure() {
-    String path = System.getProperty(PATH_PROPERTY);
+  static void configure() {
+    configure(System.getProperty(PATH_PROPERTY), DengjenLib.SET_ORT_DYLIB_PATH);
+  }
+
+  static synchronized void configure(String path, Optional<MethodHandle> setter) {
     if (configured || path == null) {
       return;
     }
-    apply(path, DengjenLib.SET_ORT_DYLIB_PATH);
+    apply(path, setter);
     configured = true;
   }
 

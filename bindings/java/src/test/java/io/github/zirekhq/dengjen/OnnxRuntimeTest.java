@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -94,13 +93,15 @@ class OnnxRuntimeTest {
   }
 
   @Test
-  void configureRejectsThePropertyOnALibraryThatEmbedsOnnxruntime() {
-    assumeTrue(DengjenLib.SET_ORT_DYLIB_PATH.isEmpty(), "needs a statically linked library");
-    System.setProperty(OnnxRuntime.PATH_PROPERTY, "/x");
-    try {
-      assertThrows(IllegalStateException.class, OnnxRuntime::configure);
-    } finally {
-      System.clearProperty(OnnxRuntime.PATH_PROPERTY);
-    }
+  void configureWithoutAPathLeavesTheNativeSideAlone() {
+    OnnxRuntime.configure(null, Optional.empty());
+  }
+
+  @Test
+  void configureAppliesThePathOnceAndIgnoresLaterCalls() throws Exception {
+    OnnxRuntime.configure("/first", setter("recordingSetter"));
+    OnnxRuntime.configure("/second", setter("rejectingSetter"));
+
+    assertEquals("/first", lastPath);
   }
 }
