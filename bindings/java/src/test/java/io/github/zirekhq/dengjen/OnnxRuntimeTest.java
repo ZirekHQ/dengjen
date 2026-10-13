@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -16,14 +17,21 @@ import org.junit.jupiter.api.Test;
 class OnnxRuntimeTest {
 
   private static String lastPath;
+  private static MemorySegment lastOutError;
+
+  private static String read(MemorySegment path) {
+    return path.reinterpret(Long.MAX_VALUE).getString(0);
+  }
 
   @SuppressWarnings("unused")
   private static void recordingSetter(MemorySegment path, MemorySegment outError) {
-    lastPath = path.reinterpret(Long.MAX_VALUE).getString(0);
+    lastPath = read(path);
+    lastOutError = outError;
   }
 
   @SuppressWarnings("unused")
   private static void rejectingSetter(MemorySegment path, MemorySegment outError) {
+    lastPath = read(path);
     outError
         .reinterpret(DengjenLayouts.EXTERN_ERROR.byteSize())
         .set(
@@ -34,7 +42,7 @@ class OnnxRuntimeTest {
 
   @SuppressWarnings("unused")
   private static void crashingSetter(MemorySegment path, MemorySegment outError) {
-    throw new UnsupportedOperationException("boom");
+    throw new UnsupportedOperationException("boom: " + read(path) + " " + outError.byteSize());
   }
 
   private static Optional<MethodHandle> setter(String name) throws ReflectiveOperationException {
@@ -47,35 +55,52 @@ class OnnxRuntimeTest {
   }
 
   @Test
-  void passesThePathToTheNativeSetter() throws Exception {
+  void passesThePathAndAnOutErrorToTheNativeSetter() throws Exception {
     OnnxRuntime.apply("/opt/onnxruntime/libonnxruntime.so", setter("recordingSetter"));
 
     assertEquals("/opt/onnxruntime/libonnxruntime.so", lastPath);
+    assertEquals(DengjenLayouts.EXTERN_ERROR.byteSize(), lastOutError.byteSize());
   }
 
   @Test
   void rejectsThePropertyWhenTheNativeLibraryEmbedsOnnxruntime() {
+    Optional<MethodHandle> missing = Optional.empty();
+
     IllegalStateException error =
-        assertThrows(IllegalStateException.class, () -> OnnxRuntime.apply("/x", Optional.empty()));
+        assertThrows(IllegalStateException.class, () -> OnnxRuntime.apply("/x", missing));
 
     assertTrue(error.getMessage().contains(OnnxRuntime.PATH_PROPERTY));
   }
 
   @Test
   void surfacesAnErrorTheNativeSetterReports() throws Exception {
+    Optional<MethodHandle> rejecting = setter("rejectingSetter");
+
     DengjenException error =
-        assertThrows(
-            DengjenException.class, () -> OnnxRuntime.apply("/x", setter("rejectingSetter")));
+        assertThrows(DengjenException.class, () -> OnnxRuntime.apply("/x", rejecting));
 
     assertSame(ErrorCode.OPERATION_ERROR, error.errorCode());
+    assertEquals("/x", lastPath);
   }
 
   @Test
   void wrapsAFailedDowncall() throws Exception {
+    Optional<MethodHandle> crashing = setter("crashingSetter");
+
     IllegalStateException error =
-        assertThrows(
-            IllegalStateException.class, () -> OnnxRuntime.apply("/x", setter("crashingSetter")));
+        assertThrows(IllegalStateException.class, () -> OnnxRuntime.apply("/x", crashing));
 
     assertTrue(error.getMessage().contains("libdengjenSetOrtDylibPath"));
+  }
+
+  @Test
+  void configureRejectsThePropertyOnALibraryThatEmbedsOnnxruntime() {
+    assumeTrue(DengjenLib.SET_ORT_DYLIB_PATH.isEmpty(), "needs a statically linked library");
+    System.setProperty(OnnxRuntime.PATH_PROPERTY, "/x");
+    try {
+      assertThrows(IllegalStateException.class, OnnxRuntime::configure);
+    } finally {
+      System.clearProperty(OnnxRuntime.PATH_PROPERTY);
+    }
   }
 }
