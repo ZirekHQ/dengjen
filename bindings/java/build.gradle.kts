@@ -329,6 +329,10 @@ tasks.withType<PublishToMavenRepository>().configureEach {
     onlyIf { !(publication.name == "natives" && skipNativesPublish.get()) }
 }
 
+tasks.withType<PublishToMavenLocal>().configureEach {
+    onlyIf { !(publication.name == "natives" && skipNativesPublish.get()) }
+}
+
 configure<org.jreleaser.gradle.plugin.JReleaserExtension> {
     // Validates and logs everything (signing, Maven Central deploy, GitHub
     // Release) without performing the remote writes -- the Gradle plugin
