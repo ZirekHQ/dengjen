@@ -3,7 +3,6 @@
 //! Original C library: Copyright 2010 Bill Cox, licensed under the Apache License 2.0.
 //! Behaviour matches `sonic.c` for quality 0, chord pitch off, rate 1.0 and float I/O.
 #![allow(clippy::indexing_slicing)]
-#![allow(dead_code)]
 
 use std::fmt;
 
@@ -238,8 +237,80 @@ impl SonicStream {
         } else {
             self.copy_input_to_output(frames);
         }
+        let rate = self.pitch;
+        if rate != 1.0 {
+            self.adjust_rate(rate, original);
+        }
         if self.volume != 1.0 {
             scale_samples(&mut self.output[original * self.channels..], self.volume);
+        }
+    }
+
+    fn adjust_rate(&mut self, rate: f32, original_frames: usize) {
+        let mut new_rate = (self.sample_rate as f32 / rate) as i32;
+        let mut old_rate = self.sample_rate;
+        while new_rate > (1 << 14) || old_rate > (1 << 14) {
+            new_rate >>= 1;
+            old_rate >>= 1;
+        }
+        if self.output_frames() == original_frames {
+            return;
+        }
+        self.move_new_samples_to_pitch_buffer(original_frames);
+        let ch = self.channels;
+        let limit = self.pitch_frames() as i32 - SINC_FILTER_POINTS as i32;
+        let mut position = 0i32;
+        while position < limit {
+            while (self.old_rate_position + 1) * new_rate > self.new_rate_position * old_rate {
+                let base = position as usize * ch;
+                for channel in 0..ch {
+                    let window = &self.pitch_buffer[base + channel..];
+                    let sample = self.interpolate(window, old_rate, new_rate);
+                    self.output.push(sample);
+                }
+                self.new_rate_position += 1;
+            }
+            self.old_rate_position += 1;
+            if self.old_rate_position == old_rate {
+                self.old_rate_position = 0;
+                self.new_rate_position = 0;
+            }
+            position += 1;
+        }
+        self.remove_pitch_samples(position as usize);
+    }
+
+    fn move_new_samples_to_pitch_buffer(&mut self, original_frames: usize) {
+        let moved = self.output.split_off(original_frames * self.channels);
+        self.pitch_buffer.extend(moved);
+    }
+
+    fn remove_pitch_samples(&mut self, frames: usize) {
+        let count = (frames * self.channels).min(self.pitch_buffer.len());
+        self.pitch_buffer.drain(..count);
+    }
+
+    fn interpolate(&self, input: &[i16], old_rate: i32, new_rate: i32) -> i16 {
+        let position = self.new_rate_position * old_rate;
+        let left = self.old_rate_position * new_rate;
+        let right = (self.old_rate_position + 1) * new_rate;
+        let ratio = right - position - 1;
+        let width = right - left;
+        let mut total = 0i32;
+        let mut overflow_count = 0i32;
+        for i in 0..SINC_FILTER_POINTS {
+            let weight = find_sinc_coefficient(i as i32, ratio, width);
+            let value = i32::from(input[i * self.channels]) * weight;
+            let old_sign = sign(total);
+            total = total.wrapping_add(value);
+            if old_sign != sign(total) && sign(value) == old_sign {
+                overflow_count += old_sign;
+            }
+        }
+        match overflow_count.signum() {
+            1 => i16::MAX,
+            -1 => i16::MIN,
+            _ => (total >> 16) as i16,
         }
     }
 
@@ -486,5 +557,23 @@ fn overlap_add(
                 / n;
             out[idx] = value as i16;
         }
+    }
+}
+
+fn find_sinc_coefficient(i: i32, ratio: i32, width: i32) -> i32 {
+    let lobe_points = (SINC_TABLE.len() as i32 - 1) / SINC_FILTER_POINTS as i32;
+    let left = i * lobe_points + (ratio * lobe_points) / width;
+    let right = left + 1;
+    let position = i * lobe_points * width + ratio * lobe_points - left * width;
+    let left_val = i32::from(SINC_TABLE[left as usize]);
+    let right_val = i32::from(SINC_TABLE[right as usize]);
+    ((left_val * (width - position) + right_val * position) * 2) / width
+}
+
+fn sign(value: i32) -> i32 {
+    if value >= 0 {
+        1
+    } else {
+        -1
     }
 }

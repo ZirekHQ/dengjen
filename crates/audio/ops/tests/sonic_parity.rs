@@ -31,3 +31,18 @@ fn identity_matches_c() {
 fn speed_changes_match_c() {
     assert_parity(&[0.5, 0.75, 1.5, 2.0, 3.0, 5.5], &[1.0], &[1.0]);
 }
+
+#[test]
+fn pitch_changes_match_c() {
+    assert_parity(&[1.0], &[0.5, 0.75, 1.25, 1.5, 2.0], &[1.0]);
+}
+
+#[test]
+fn volume_changes_match_c() {
+    assert_parity(&[1.0], &[1.0], &[0.01, 0.25, 0.5, 2.0]);
+}
+
+#[test]
+fn combined_params_match_c() {
+    assert_parity(&[0.5, 1.5, 3.0, 5.5], &[0.5, 1.0, 1.5], &[0.5, 1.0]);
+}
