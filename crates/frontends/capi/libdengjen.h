@@ -104,6 +104,10 @@ void libdengjenFreePiperSynthConfig(struct PiperSynthConfig *synth_config);
 
 void libdengjenFreeSynthesisEvent(struct SynthesisEvent event);
 
+#if defined(LIBDENGJEN_ORT_DYLIB)
+void libdengjenSetOrtDylibPath(FfiStr path_ptr, struct ExternError *out_error);
+#endif
+
 struct DengjenVoice *libdengjenLoadVoiceFromConfigPath(FfiStr config_path_ptr,
                                                        struct ExternError *out_error);
 

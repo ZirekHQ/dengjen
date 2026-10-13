@@ -71,6 +71,11 @@ be undefined behavior at this FFI boundary.
   loads the matching classifier's native library automatically; set
   `-Ddengjen.native.library.path=<file>` to override with a library you
   built or placed yourself.
+- **onnxruntime is not bundled** in the classifier jars. Install `onnxruntime` 1.28 or newer
+  (the shared library of the official release, or the copy inside the `onnxruntime` pip package)
+  and point to it with `-Ddengjen.onnxruntime.path=<file>` or the `ORT_DYLIB_PATH` environment
+  variable; otherwise the platform loader search path is used. Set it before the first
+  `Voice.load`.
 - Every JVM invocation of a consumer built against this module needs
   `--enable-native-access=ALL-UNNAMED` (or the module-qualified equivalent)
   to avoid a native-access warning — `build.gradle.kts` already adds this

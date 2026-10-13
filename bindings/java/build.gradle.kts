@@ -78,6 +78,11 @@ java {
     withJavadocJar()
 }
 
+// The javadoc tool copies ~4 MB of DejaVu fonts into every output; browsers fall back to system fonts.
+tasks.named<Jar>("javadocJar") {
+    exclude("resource-files/fonts/**")
+}
+
 repositories {
     mavenCentral()
 }

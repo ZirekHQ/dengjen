@@ -16,6 +16,7 @@ public final class Voice implements AutoCloseable {
   }
 
   public static Voice load(String configPath) {
+    OnnxRuntime.configure();
     try (Arena arena = Arena.ofConfined()) {
       MemorySegment cPath = arena.allocateFrom(configPath);
       MemorySegment outError = arena.allocate(DengjenLayouts.EXTERN_ERROR);
