@@ -577,3 +577,94 @@ fn sign(value: i32) -> i32 {
         -1
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tone(frames: usize) -> Vec<f32> {
+        (0..frames).map(|n| (n as f32 * 0.05).sin() * 0.5).collect()
+    }
+
+    fn process(stream: &mut SonicStream, input: &[f32]) -> Vec<f32> {
+        stream.write_f32(input);
+        stream.flush();
+        let available = stream.available_frames();
+        stream.read_f32(available)
+    }
+
+    #[test]
+    fn out_of_range_dimensions_are_errors() {
+        assert_eq!(
+            SonicStream::new(999, 1).err(),
+            Some(SonicError::SampleRateOutOfRange(999))
+        );
+        assert_eq!(
+            SonicStream::new(500_001, 1).err(),
+            Some(SonicError::SampleRateOutOfRange(500_001))
+        );
+        assert_eq!(
+            SonicStream::new(22_050, 0).err(),
+            Some(SonicError::ChannelsOutOfRange(0))
+        );
+        assert_eq!(
+            SonicStream::new(22_050, 33).err(),
+            Some(SonicError::ChannelsOutOfRange(33))
+        );
+    }
+
+    #[test]
+    fn out_of_range_float_input_saturates() {
+        let mut stream = SonicStream::new(22_050, 1).unwrap();
+        stream.write_f32(&[2.0, -2.0, f32::NAN, f32::INFINITY]);
+        let converted: Vec<i16> = stream.output.clone();
+        assert_eq!(converted, vec![i16::MAX, i16::MIN, 0, i16::MAX]);
+    }
+
+    #[test]
+    fn nan_parameters_clamp_to_minimum() {
+        let mut stream = SonicStream::new(22_050, 1).unwrap();
+        stream.set_speed(f32::NAN);
+        stream.set_pitch(f32::NAN);
+        stream.set_volume(f32::NAN);
+        assert_eq!(
+            (stream.speed, stream.pitch, stream.volume),
+            (MIN_SPEED, MIN_PITCH_SETTING, MIN_VOLUME)
+        );
+    }
+
+    #[test]
+    fn chunked_reads_equal_single_read() {
+        let input = tone(30_000);
+        let mut whole = SonicStream::new(22_050, 1).unwrap();
+        whole.set_speed(1.7);
+        let expected = process(&mut whole, &input);
+
+        let mut chunked = SonicStream::new(22_050, 1).unwrap();
+        chunked.set_speed(1.7);
+        chunked.write_f32(&input);
+        chunked.flush();
+        let mut actual = Vec::new();
+        loop {
+            let part = chunked.read_f32(137);
+            if part.is_empty() {
+                break;
+            }
+            actual.extend(part);
+        }
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn write_after_flush_and_double_flush_do_not_panic() {
+        let mut stream = SonicStream::new(16_000, 2).unwrap();
+        stream.set_speed(2.5);
+        stream.set_pitch(0.7);
+        stream.write_f32(&tone(8_000));
+        stream.flush();
+        stream.flush();
+        stream.write_f32(&tone(8_000));
+        stream.flush();
+        assert!(stream.available_frames() > 0);
+    }
+}

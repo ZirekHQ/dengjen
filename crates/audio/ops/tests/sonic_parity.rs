@@ -46,3 +46,46 @@ fn volume_changes_match_c() {
 fn combined_params_match_c() {
     assert_parity(&[0.5, 1.5, 3.0, 5.5], &[0.5, 1.0, 1.5], &[0.5, 1.0]);
 }
+
+#[test]
+fn edge_inputs_match_c() {
+    for (id, case, input) in common::edge_cases() {
+        assert_eq!(
+            first_mismatch(&run_c(&case, &input), &run_rust(&case, &input)),
+            None,
+            "{id}"
+        );
+    }
+}
+
+use dengjen_audio_ops::SonicStream;
+use proptest::prelude::*;
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    #[test]
+    fn arbitrary_input_and_params_never_panic(
+        rate_idx in 0usize..4,
+        channels in 1u32..=3,
+        speed in 0.05f32..20.0,
+        pitch in 0.05f32..20.0,
+        volume in 0.0f32..120.0,
+        samples in proptest::collection::vec(-4.0f32..4.0, 0..6000),
+        chunk in 1usize..2500,
+    ) {
+        let rate = [8_000u32, 16_000, 22_050, 48_000][rate_idx];
+        let mut stream = SonicStream::new(rate, channels).unwrap();
+        stream.set_speed(speed);
+        stream.set_pitch(pitch);
+        stream.set_volume(volume);
+        for part in samples.chunks(chunk) {
+            stream.write_f32(part);
+        }
+        stream.flush();
+        let available = stream.available_frames();
+        let out = stream.read_f32(available);
+        prop_assert_eq!(out.len(), available * channels as usize);
+        prop_assert!(out.iter().all(|s| s.is_finite() && s.abs() <= 1.0001));
+    }
+}

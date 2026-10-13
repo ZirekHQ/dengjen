@@ -109,3 +109,32 @@ pub fn matrix(speeds: &[f32], pitches: &[f32], volumes: &[f32]) -> Vec<Case> {
     }
     cases
 }
+
+pub fn edge_cases() -> Vec<(String, Case, Vec<f32>)> {
+    let base = Case {
+        sample_rate: 22_050,
+        channels: 1,
+        speed: 1.5,
+        pitch: 1.25,
+        volume: 0.8,
+    };
+    let window = 2 * (base.sample_rate as usize / 65);
+    let mut cases: Vec<_> = [0, 1, 7, window - 1, window, window + 1, 3 * window + 13]
+        .into_iter()
+        .map(|frames| {
+            (
+                format!("edge-frames-{frames}"),
+                base,
+                signal(base.sample_rate, 1, frames),
+            )
+        })
+        .collect();
+    let stereo = Case {
+        channels: 2,
+        ..base
+    };
+    let mut partial = signal(stereo.sample_rate, 2, 5000);
+    partial.push(0.25);
+    cases.push(("edge-partial-frame".to_string(), stereo, partial));
+    cases
+}
