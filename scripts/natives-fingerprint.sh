@@ -30,7 +30,7 @@ sources() {
 }
 
 dependencies() {
-  cargo tree --locked -p libdengjen --features ort-dylib --target all -e normal,build,features \
+  cargo tree --color never --locked -p libdengjen --features ort-dylib --target all -e normal,build,features \
     --prefix none --no-dedupe \
     | grep -v '(/' | LC_ALL=C sort -u
 }
@@ -39,15 +39,10 @@ fingerprint() {
   { sources; printf '== dependencies\n'; dependencies; } | sha256sum | cut -d' ' -f1
 }
 
-# Printed on a failed check so a CI mismatch can be compared with a local run: the dependency
-# lines of the call that failed, and whether a second call returns the same lines.
+# Printed on a failed check so a CI mismatch can be compared section by section with a local run.
 diagnose() {
-  local first="$1" second
-  second="$(dependencies)"
   echo "sources:      $(sources | sha256sum | cut -d' ' -f1)" >&2
-  echo "dependencies: first $(printf '%s\n' "$first" | sha256sum | cut -c1-16) second $(printf '%s\n' "$second" | sha256sum | cut -c1-16) ($(printf '%s\n' "$first" | wc -l) lines)" >&2
-  printf '%s\n' "$first" | sed 's/^/d1| /' >&2
-  diff <(printf '%s\n' "$first") <(printf '%s\n' "$second") | sed 's/^/d1-vs-d2| /' >&2 || true
+  echo "dependencies: $(dependencies | sha256sum | cut -d' ' -f1)" >&2
 }
 
 nativesVersion() { grep -m1 '^val nativesVersion = '; }
@@ -56,11 +51,9 @@ case "${1:-}" in
   "") fingerprint ;;
   --update) fingerprint > "$record"; echo "updated $record" ;;
   --check)
-    first="$(dependencies)"
-    current="$({ sources; printf '== dependencies\n'; printf '%s\n' "$first"; } | sha256sum | cut -d' ' -f1)"
-    if [ "$current" != "$(tr -d '[:space:]' < "$record")" ]; then
+    if [ "$(fingerprint)" != "$(tr -d '[:space:]' < "$record")" ]; then
       echo "::error::the native inputs changed: run scripts/natives-fingerprint.sh --update and bump nativesVersion in ${gradle}" >&2
-      diagnose "$first"
+      diagnose
       exit 1
     fi
     ;;
