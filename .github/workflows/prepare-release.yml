@@ -60,7 +60,12 @@ jobs:
             rc=$?
           fi
           if [ "$rc" -eq 0 ]; then
+            current="$(awk '/^\[workspace\.package\]/{f=1;next} /^\[/{f=0} f && /^version = /{gsub(/version = "|"/,""); print; exit}' Cargo.toml)"
             echo "version=${version}" >> "$GITHUB_OUTPUT"
+            if [ "$current" = "$version" ]; then
+              echo "::warning::Cargo.toml is already at ${version}, so there is nothing to bump -- release it with new_tag=v${version}"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
           elif [ "$rc" -eq 1 ]; then
             echo "::notice::Nothing release-worthy since the last tag -- skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"

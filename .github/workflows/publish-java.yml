@@ -83,7 +83,6 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
           persist-credentials: false
       # The natives ship as their own artifact; a release uploads them only when nativesVersion is
       # not on Maven Central yet, and refuses a version published with a different fingerprint.
@@ -140,7 +139,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
           persist-credentials: false
       - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
         timeout-minutes: 15
@@ -195,7 +193,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
           fetch-depth: 0 # needed for JReleaser's conventional-commits changelog; VERSIONING_GIT_TAG (below) drives the actual version resolution
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
