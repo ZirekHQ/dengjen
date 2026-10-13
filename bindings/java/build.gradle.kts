@@ -245,16 +245,27 @@ fun expectedNativeLibraryFileName(classifier: String): String =
 val nativeArtifactsDir: Directory =
     layout.projectDirectory.dir((findProperty("nativeArtifactsDir") as String?) ?: "native-artifacts")
 
+// The native libraries ship once per native change as their own artifact, one classifier jar per
+// platform, so a binding-only release uploads a few KB. natives.fingerprint is regenerated with
+// scripts/natives-fingerprint.sh --update; bump nativesVersion whenever it changes.
+val nativesVersion = "1.0.0"
+val nativesArtifactId = "dengjen-tts-natives"
+val nativesFingerprint: String = file("natives.fingerprint").readText().trim()
+
+val skipNativesPublish = providers.gradleProperty("skipNativesPublish").map(String::toBoolean).orElse(false)
+
+val publishRequested =
+    gradle.startParameter.taskNames.any { it.contains("publish", ignoreCase = true) || it.contains("jreleaser", ignoreCase = true) }
+
 val nativeClassifierJars =
     nativeClassifiers.associateWith { classifier ->
         tasks.register<Jar>("nativeJar-$classifier") {
+            archiveBaseName.set(nativesArtifactId)
+            archiveVersion.set(nativesVersion)
             archiveClassifier.set(classifier)
             val sourceDir = nativeArtifactsDir.dir(classifier)
             from(sourceDir) { into("natives/$classifier") }
-            onlyIf { sourceDir.asFile.exists() }
-            
-            
-            
+            onlyIf { !skipNativesPublish.get() && (sourceDir.asFile.exists() || publishRequested) }
             doFirst {
                 val expectedName = expectedNativeLibraryFileName(classifier)
                 val files = sourceDir.asFile.listFiles().orEmpty()
@@ -265,12 +276,61 @@ val nativeClassifierJars =
         }
     }
 
-publishing {
-    publications {
-        named<MavenPublication>("maven") {
-            nativeClassifierJars.values.forEach { jarTask -> artifact(jarTask) }
+// Maven Central requires sources and javadoc jars for every artifact; these carry a note only.
+val nativesAuxiliaryJars =
+    listOf("sources", "javadoc").map { kind ->
+        tasks.register<Jar>("natives${kind.replaceFirstChar { it.uppercase() }}Jar") {
+            archiveBaseName.set(nativesArtifactId)
+            archiveVersion.set(nativesVersion)
+            archiveClassifier.set(kind)
+            from(resources.text.fromString("$nativesArtifactId ships binaries only; see https://github.com/ZirekHQ/dengjen-tts.\n")) {
+                rename { "README.txt" }
+            }
         }
     }
+
+publishing {
+    publications {
+        create<MavenPublication>("natives") {
+            artifactId = nativesArtifactId
+            version = nativesVersion
+            nativeClassifierJars.values.forEach { jarTask -> artifact(jarTask) }
+            nativesAuxiliaryJars.forEach { jarTask -> artifact(jarTask) }
+            pom {
+                name.set("dengjen-tts-natives")
+                description.set("Native libdengjen libraries (one classifier per platform) for the dengjen-tts Java bindings.")
+                url.set("https://github.com/ZirekHQ/dengjen-tts")
+                licenses {
+                    license {
+                        name.set("GPL-3.0-or-later")
+                        url.set("https://www.gnu.org/licenses/gpl-3.0.txt")
+                        distribution.set("repo")
+                    }
+                }
+                scm {
+                    connection.set("scm:git:https://github.com/ZirekHQ/dengjen-tts.git")
+                    developerConnection.set("scm:git:git@github.com:ZirekHQ/dengjen-tts.git")
+                    url.set("https://github.com/ZirekHQ/dengjen-tts.git")
+                }
+                developers {
+                    developer {
+                        id.set("austek")
+                        name.set("Ali Ustek")
+                    }
+                }
+                // The release workflow compares this with natives.fingerprint to catch a missed version bump.
+                properties.put("dengjen.natives.fingerprint", nativesFingerprint)
+            }
+        }
+    }
+}
+
+tasks.withType<PublishToMavenRepository>().configureEach {
+    onlyIf { !(publication.name == "natives" && skipNativesPublish.get()) }
+}
+
+tasks.withType<PublishToMavenLocal>().configureEach {
+    onlyIf { !(publication.name == "natives" && skipNativesPublish.get()) }
 }
 
 configure<org.jreleaser.gradle.plugin.JReleaserExtension> {

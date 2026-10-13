@@ -41,6 +41,7 @@ jobs:
       contents: read
     outputs:
       skip: ${{ steps.check.outputs.skip }}
+      skip_natives: ${{ steps.natives.outputs.skip_natives }}
     steps:
       # github.workflow_ref stays bound to the top-level caller through nested workflow_call hops
       # too -- release.yml (always @refs/heads/main) or prepare-release.yml (the override path,
@@ -80,9 +81,47 @@ jobs:
               ;;
           esac
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      # The natives ship as their own artifact; a release uploads them only when nativesVersion is
+      # not on Maven Central yet, and refuses a version published with a different fingerprint.
+      - name: Check whether this natives version is already on Maven Central
+        id: natives
+        run: |
+          set -euo pipefail
+          natives_version="$(sed -nE 's/^val nativesVersion = "([0-9]+\.[0-9]+\.[0-9]+[^"]*)".*$/\1/p' bindings/java/build.gradle.kts | head -n1)"
+          if ! [[ "${natives_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::could not read nativesVersion from bindings/java/build.gradle.kts" >&2
+            exit 1
+          fi
+          pom="https://repo1.maven.org/maven2/io/github/zirekhq/dengjen-tts-natives/${natives_version}/dengjen-tts-natives-${natives_version}.pom"
+          status="$(curl -s -o "${RUNNER_TEMP}/natives.pom" -w '%{http_code}' "$pom")"
+          case "$status" in
+            200)
+              published="$(grep -oE '<dengjen\.natives\.fingerprint>[0-9a-f]{64}<' "${RUNNER_TEMP}/natives.pom" | grep -oE '[0-9a-f]{64}' || true)"
+              if [ -z "${published}" ]; then
+                echo "::error::the dengjen-tts-natives ${natives_version} POM on Maven Central has no dengjen.natives.fingerprint property" >&2
+                exit 1
+              fi
+              recorded="$(tr -d '[:space:]' < bindings/java/natives.fingerprint)"
+              if [ "${published}" != "${recorded}" ]; then
+                echo "::error::dengjen-tts-natives ${natives_version} is on Maven Central with a different fingerprint; bump nativesVersion in bindings/java/build.gradle.kts" >&2
+                exit 1
+              fi
+              echo "skip_natives=true" >> "$GITHUB_OUTPUT"
+              ;;
+            404) echo "skip_natives=false" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::unexpected HTTP ${status} checking Maven Central for dengjen-tts-natives ${natives_version}" >&2
+              exit 1
+              ;;
+          esac
+
   build-natives:
     needs: check
-    if: needs.check.outputs.skip != 'true'
+    if: needs.check.outputs.skip != 'true' && needs.check.outputs.skip_natives != 'true'
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 30
     permissions:
@@ -101,6 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag }}
           persist-credentials: false
       - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
         timeout-minutes: 15
@@ -146,7 +186,8 @@ jobs:
 
   release:
     needs: [check, build-natives]
-    if: needs.check.outputs.skip != 'true'
+    # build-natives is skipped when the natives version is already on Central.
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.check.outputs.skip != 'true' && needs.build-natives.result != 'failure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -154,6 +195,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag }}
           fetch-depth: 0 # needed for JReleaser's conventional-commits changelog; VERSIONING_GIT_TAG (below) drives the actual version resolution
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -165,11 +207,13 @@ jobs:
           # A publish-credentialed job must never consume a cache entry a
           # less-trusted run could have written.
           cache-disabled: true
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - if: needs.check.outputs.skip_natives != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: bindings/java/native-artifacts
           pattern: "native-*"
       - name: Flatten downloaded native artifacts
+        if: needs.check.outputs.skip_natives != 'true'
         working-directory: bindings/java/native-artifacts
         run: for d in native-*; do mv "$d" "${d#native-}"; done
       - name: Publish
@@ -186,7 +230,8 @@ jobs:
           JRELEASER_GPG_SECRET_KEY: ${{ secrets.JRELEASER_GPG_SECRET_KEY }}
           JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.JRELEASER_GPG_PUBLIC_KEY }}
           JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew publish jreleaserFullRelease --no-daemon --stacktrace
+          SKIP_NATIVES: ${{ needs.check.outputs.skip_natives }}
+        run: ./gradlew publish jreleaserFullRelease --no-daemon --stacktrace -PskipNativesPublish="${SKIP_NATIVES}"
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

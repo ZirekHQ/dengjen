@@ -57,14 +57,16 @@ be undefined behavior at this FFI boundary.
 
 - **Not yet published** — the coordinates below apply once the first `java-v*`
   release lands; Central Portal namespace verification and release secrets
-  are still pending prerequisites. Published artifacts ship the native `libdengjen` library as per-platform
-  classifier jars (`linux-x86_64`, `linux-aarch64`, `windows-x64`,
-  `macos-aarch64`). Consumers need both the main dependency and a
+  are still pending prerequisites. The native `libdengjen` library ships in the separate
+  `dengjen-tts-natives` artifact as per-platform classifier jars (`linux-x86_64`, `linux-aarch64`,
+  `windows-x64`, `macos-aarch64`). It is published only when the native code changes, so its
+  version differs from the binding's (`NATIVES_VERSION` below is the `nativesVersion` in
+  `build.gradle.kts` at the binding's tag). Consumers need both the main dependency and a
   `runtimeOnly` dependency on the classifier matching their platform:
 
   ```kotlin
   implementation("io.github.zirekhq:dengjen-tts:<version>")
-  runtimeOnly("io.github.zirekhq:dengjen-tts:<version>:linux-x86_64")
+  runtimeOnly("io.github.zirekhq:dengjen-tts-natives:<NATIVES_VERSION>:linux-x86_64")
   ```
 
   `DengjenLib` (via `NativeLibraryLoader`) detects the running platform and

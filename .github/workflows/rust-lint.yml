@@ -532,6 +532,14 @@ jobs:
           pip install --only-binary ':all:' onnxruntime==1.30.0
           lib="$(python3 -c 'import glob, os, onnxruntime; print(glob.glob(os.path.join(os.path.dirname(onnxruntime.__file__), "capi", "libonnxruntime.so*"))[0])')"
           echo "ORT_DYLIB_PATH=${lib}" >> "$GITHUB_ENV"
+      - name: Check the natives fingerprint
+        # A native change must refresh bindings/java/natives.fingerprint and bump nativesVersion.
+        run: scripts/natives-fingerprint.sh --check
+      - name: Check nativesVersion was bumped with the fingerprint
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: scripts/natives-fingerprint.sh --check-bump "origin/${BASE_REF}"
       - name: make test
         working-directory: bindings/java
         env:
