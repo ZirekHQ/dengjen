@@ -109,7 +109,10 @@ jobs:
           # paste is unmaintained (transitive via tokenizers -> pinyin-phonemizer; no
           # direct usage here). Upstream declined to migrate to a maintained fork:
           # https://github.com/huggingface/tokenizers/issues/1833
-          ignore: RUSTSEC-2024-0436
+          # bincode is unmaintained (transitive via jpreprocess, optional `japanese`
+          # feature); upstream replacement is open:
+          # https://github.com/jpreprocess/jpreprocess/issues/497
+          ignore: RUSTSEC-2024-0436,RUSTSEC-2025-0141
 
   fmt:
     runs-on: ubuntu-latest
