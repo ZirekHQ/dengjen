@@ -43,7 +43,7 @@ once_cell = "1.18.0"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [dependencies.dengjen-tashkeel]
-version = "2.0.0"
+version = "3.0.0"
 default-features = false
 features = ["ort-static", "rayon"]
 optional = true
