@@ -232,9 +232,174 @@ impl SonicStream {
         if frames == 0 {
             return;
         }
-        self.copy_input_to_output(frames);
+        let local_speed = frames as f32 * self.sample_period / self.input_play_time;
+        if f64::from(local_speed) > 1.00001 || f64::from(local_speed) < 0.99999 {
+            self.change_speed(local_speed);
+        } else {
+            self.copy_input_to_output(frames);
+        }
         if self.volume != 1.0 {
             scale_samples(&mut self.output[original * self.channels..], self.volume);
+        }
+    }
+
+    fn change_speed(&mut self, speed: f32) {
+        let num_frames = self.input_frames();
+        if num_frames < self.max_required {
+            return;
+        }
+        let mut position = 0usize;
+        loop {
+            let copying = (speed > 1.0 && speed < 2.0 && self.time_error < 0.0)
+                || (speed < 1.0 && speed > 0.5 && self.time_error > 0.0);
+            if copying {
+                position += self.copy_unmodified_samples(speed, position);
+            } else {
+                let period = self.find_pitch_period(position, true) as usize;
+                let new_samples = if speed > 1.0 {
+                    let added = self.skip_pitch_period(speed, position, period);
+                    position += period + added;
+                    if speed < 2.0 {
+                        self.time_error += added as f32 * self.sample_period
+                            - (period + added) as f32 * self.input_play_time / num_frames as f32;
+                    }
+                    added
+                } else {
+                    let added = self.insert_pitch_period(speed, position, period);
+                    position += added;
+                    if speed > 0.5 {
+                        self.time_error += (period + added) as f32 * self.sample_period
+                            - added as f32 * self.input_play_time / num_frames as f32;
+                    }
+                    added
+                };
+                if new_samples == 0 {
+                    return;
+                }
+            }
+            if position + self.max_required > num_frames {
+                break;
+            }
+        }
+        self.remove_input_samples(position);
+    }
+
+    fn copy_unmodified_samples(&mut self, speed: f32, position: usize) -> usize {
+        let available = self.input_frames() - position;
+        let to_copy = 1.0f64
+            - f64::from(self.time_error * speed)
+                / (f64::from(self.sample_period) * (f64::from(speed) - 1.0));
+        let to_copy = to_copy as f32;
+        let copied = if to_copy > available as f32 {
+            available
+        } else {
+            (to_copy as i32).max(0) as usize
+        };
+        let start = position * self.channels;
+        self.output
+            .extend_from_slice(&self.input[start..start + copied * self.channels]);
+        self.time_error = (f64::from(self.time_error)
+            + f64::from(copied as f32 * self.sample_period) * (f64::from(speed) - 1.0)
+                / f64::from(speed)) as f32;
+        copied
+    }
+
+    fn skip_pitch_period(&mut self, speed: f32, position: usize, period: usize) -> usize {
+        let new_samples = if speed >= 2.0 {
+            (period as f32 / (speed - 1.0)) as usize
+        } else {
+            period
+        };
+        let ch = self.channels;
+        let out_start = self.output.len();
+        self.output.resize(out_start + new_samples * ch, 0);
+        let samples = &self.input[position * ch..];
+        overlap_add(
+            new_samples,
+            ch,
+            &mut self.output[out_start..],
+            samples,
+            &samples[period * ch..],
+        );
+        new_samples
+    }
+
+    fn insert_pitch_period(&mut self, speed: f32, position: usize, period: usize) -> usize {
+        let new_samples = if speed <= 0.5 {
+            (period as f32 * speed / (1.0 - speed)) as usize
+        } else {
+            period
+        };
+        let ch = self.channels;
+        let samples = &self.input[position * ch..];
+        self.output.extend_from_slice(&samples[..period * ch]);
+        let out_start = self.output.len();
+        self.output.resize(out_start + new_samples * ch, 0);
+        overlap_add(
+            new_samples,
+            ch,
+            &mut self.output[out_start..],
+            &samples[period * ch..],
+            samples,
+        );
+        new_samples
+    }
+
+    fn find_pitch_period(&mut self, position: usize, prefer_new_period: bool) -> i32 {
+        let skip = if self.sample_rate > AMDF_FREQ {
+            self.sample_rate / AMDF_FREQ
+        } else {
+            1
+        };
+        let ch = self.channels;
+        let samples = &self.input[position * ch..];
+        let (mut period, mut min_diff, mut max_diff);
+        if ch == 1 && skip == 1 {
+            (period, min_diff, max_diff) =
+                find_pitch_period_in_range(samples, self.min_period, self.max_period);
+        } else {
+            down_sample_input(
+                samples,
+                &mut self.down_sample,
+                self.max_required / skip as usize,
+                ch * skip as usize,
+            );
+            (period, min_diff, max_diff) = find_pitch_period_in_range(
+                &self.down_sample,
+                self.min_period / skip,
+                self.max_period / skip,
+            );
+            if skip != 1 {
+                period *= skip;
+                let low = (period - (skip << 2)).max(self.min_period);
+                let high = (period + (skip << 2)).min(self.max_period);
+                if ch == 1 {
+                    (period, min_diff, max_diff) = find_pitch_period_in_range(samples, low, high);
+                } else {
+                    down_sample_input(samples, &mut self.down_sample, self.max_required, ch);
+                    (period, min_diff, max_diff) =
+                        find_pitch_period_in_range(&self.down_sample, low, high);
+                }
+            }
+        }
+        let result = if self.prev_period_better(min_diff, max_diff, prefer_new_period) {
+            self.prev_period
+        } else {
+            period
+        };
+        self.prev_min_diff = min_diff;
+        self.prev_period = period;
+        result
+    }
+
+    fn prev_period_better(&self, min_diff: i32, max_diff: i32, prefer_new_period: bool) -> bool {
+        if min_diff == 0 || self.prev_period == 0 {
+            return false;
+        }
+        if prefer_new_period {
+            max_diff <= min_diff * 3 && min_diff * 2 > self.prev_min_diff * 3
+        } else {
+            min_diff > self.prev_min_diff
         }
     }
 
@@ -258,5 +423,68 @@ fn scale_samples(samples: &mut [i16], volume: f32) {
     for sample in samples {
         let value = (i32::from(*sample) * fixed_point) >> 8;
         *sample = value.clamp(-32767, 32767) as i16;
+    }
+}
+
+fn down_sample_input(samples: &[i16], out: &mut [i16], num_values: usize, per_value: usize) {
+    for (value, chunk) in out
+        .iter_mut()
+        .zip(samples.chunks_exact(per_value))
+        .take(num_values)
+    {
+        let sum: i32 = chunk.iter().map(|&s| i32::from(s)).sum();
+        *value = (sum / per_value as i32) as i16;
+    }
+}
+
+fn find_pitch_period_in_range(
+    samples: &[i16],
+    min_period: i32,
+    max_period: i32,
+) -> (i32, i32, i32) {
+    let mut best_period = 0i32;
+    let mut worst_period = 255i32;
+    let mut min_diff = 1u64;
+    let mut max_diff = 0u64;
+    for period in min_period..=max_period {
+        let p = period as usize;
+        let diff: u64 = samples[..p]
+            .iter()
+            .zip(&samples[p..2 * p])
+            .map(|(&s, &q)| u64::from(s.abs_diff(q)))
+            .sum();
+        if best_period == 0 || diff * (best_period as u64) < min_diff * (period as u64) {
+            min_diff = diff;
+            best_period = period;
+        }
+        if diff * (worst_period as u64) > max_diff * (period as u64) {
+            max_diff = diff;
+            worst_period = period;
+        }
+    }
+    let best = best_period.max(1) as u64;
+    (
+        best_period,
+        (min_diff / best) as i32,
+        (max_diff / worst_period as u64) as i32,
+    )
+}
+
+fn overlap_add(
+    num_samples: usize,
+    channels: usize,
+    out: &mut [i16],
+    ramp_down: &[i16],
+    ramp_up: &[i16],
+) {
+    let n = num_samples as i32;
+    for t in 0..num_samples {
+        for ch in 0..channels {
+            let idx = t * channels + ch;
+            let value = (i32::from(ramp_down[idx]) * (n - t as i32)
+                + i32::from(ramp_up[idx]) * t as i32)
+                / n;
+            out[idx] = value as i16;
+        }
     }
 }

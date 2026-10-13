@@ -26,3 +26,8 @@ fn assert_parity(speeds: &[f32], pitches: &[f32], volumes: &[f32]) {
 fn identity_matches_c() {
     assert_parity(&[1.0], &[1.0], &[1.0]);
 }
+
+#[test]
+fn speed_changes_match_c() {
+    assert_parity(&[0.5, 0.75, 1.5, 2.0, 3.0, 5.5], &[1.0], &[1.0]);
+}
