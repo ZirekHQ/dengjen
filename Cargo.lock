@@ -597,6 +597,7 @@ dependencies = [
 name = "dengjen-audio-ops"
 version = "3.0.0"
 dependencies = [
+ "dengjen-sonic-sys",
  "divan",
  "once_cell",
  "proptest",
