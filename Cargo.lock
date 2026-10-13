@@ -212,32 +212,13 @@ dependencies = [
  "clang-sys",
  "itertools 0.12.1",
  "log",
- "prettyplease 0.2.37",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
  "rustc-hash",
  "shlex 1.3.0",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "bindgen"
-version = "0.73.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "787ef8ef523575546b106a58213d6e6b06198a05c2f757258c68a74273670cfa"
-dependencies = [
- "bitflags 2.13.2",
- "cexpr",
- "clang-sys",
- "log",
- "prettyplease 0.3.0",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash",
- "shlex 2.0.1",
- "syn 3.0.5",
 ]
 
 [[package]]
@@ -597,7 +578,6 @@ dependencies = [
 name = "dengjen-audio-ops"
 version = "3.0.0"
 dependencies = [
- "dengjen-sonic-sys",
  "divan",
  "once_cell",
  "proptest",
@@ -621,7 +601,7 @@ version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0588d315e7ea1d23a70adbc5810a5b3aae13ae24051c8eb08ddf53077d79cad7"
 dependencies = [
- "bindgen 0.72.1",
+ "bindgen",
  "cc",
  "cmake",
  "glob",
@@ -651,15 +631,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokenizers",
- "workspace-hack",
-]
-
-[[package]]
-name = "dengjen-sonic-sys"
-version = "3.0.0"
-dependencies = [
- "bindgen 0.73.2",
- "cc",
  "workspace-hack",
 ]
 
@@ -2091,16 +2062,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prettyplease"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bfe0f4c752e450fc2faf62654f1c134747922825d5b04ca717b8874f41a40c0"
-dependencies = [
- "proc-macro2",
- "syn 3.0.5",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2149,7 +2110,7 @@ dependencies = [
  "log",
  "multimap",
  "petgraph",
- "prettyplease 0.2.37",
+ "prettyplease",
  "prost",
  "prost-types",
  "pulldown-cmark",
@@ -3058,7 +3019,7 @@ version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c68f61875ac5293cf72e6c8cf0158086428c82c37229e98c840878f1706b0322"
 dependencies = [
- "prettyplease 0.2.37",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -3081,7 +3042,7 @@ version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "654e5643eff75d7f8c99197ce1440ed19a3474eada74c12bbac488b2cafdae27"
 dependencies = [
- "prettyplease 0.2.37",
+ "prettyplease",
  "proc-macro2",
  "prost-build",
  "prost-types",

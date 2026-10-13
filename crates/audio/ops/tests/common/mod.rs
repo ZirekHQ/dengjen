@@ -54,40 +54,6 @@ pub fn run_rust(case: &Case, input: &[f32]) -> Vec<f32> {
     stream.read_f32(available)
 }
 
-pub fn run_c(case: &Case, input: &[f32]) -> Vec<f32> {
-    use dengjen_sonic_sys as c;
-    let channels = case.channels as usize;
-    // SAFETY: plain allocation; the null result is asserted before use.
-    let raw = unsafe { c::sonicCreateStream(case.sample_rate as i32, case.channels as i32) };
-    assert!(!raw.is_null());
-    // SAFETY: `raw` is live until `sonicDestroyStream` below; `input` holds
-    // `frames * channels` floats, the most `sonicWriteFloatToStream` reads;
-    // `out` holds `available * channels` floats, the most the read writes.
-    unsafe {
-        c::sonicSetSpeed(raw, case.speed);
-        c::sonicSetPitch(raw, case.pitch);
-        c::sonicSetVolume(raw, case.volume);
-        let frames = (input.len() / channels) as i32;
-        assert_ne!(c::sonicWriteFloatToStream(raw, input.as_ptr(), frames), 0);
-        c::sonicFlushStream(raw);
-        let available = c::sonicSamplesAvailable(raw).max(0);
-        let mut out = vec![0f32; available as usize * channels];
-        let read = c::sonicReadFloatFromStream(raw, out.as_mut_ptr(), available);
-        out.truncate(read.max(0) as usize * channels);
-        c::sonicDestroyStream(raw);
-        out
-    }
-}
-
-pub fn first_mismatch(a: &[f32], b: &[f32]) -> Option<usize> {
-    if a.len() != b.len() {
-        return Some(a.len().min(b.len()));
-    }
-    a.iter()
-        .zip(b)
-        .position(|(x, y)| x.to_bits() != y.to_bits())
-}
-
 pub fn matrix(speeds: &[f32], pitches: &[f32], volumes: &[f32]) -> Vec<Case> {
     let mut cases = Vec::new();
     for &sample_rate in &[16_000u32, 22_050, 44_100] {
@@ -137,4 +103,14 @@ pub fn edge_cases() -> Vec<(String, Case, Vec<f32>)> {
     partial.push(0.25);
     cases.push(("edge-partial-frame".to_string(), stereo, partial));
     cases
+}
+
+pub fn fnv1a(samples: &[f32]) -> u64 {
+    samples
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325u64, |hash, sample| {
+            sample.to_bits().to_le_bytes().iter().fold(hash, |h, &b| {
+                (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+            })
+        })
 }

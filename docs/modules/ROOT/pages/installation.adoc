@@ -1,7 +1,7 @@
 = Build from source
 
-Dengjen vendors Sonic under `crates/audio/sonic-sys/vendor` (see `vendor/UPSTREAM` for the
-source commit). eSpeak-ng comes from the `dengjen-espeak-rs-sys` crate, and its data ships in
+Prosody control is a Rust port of Sonic inside `dengjen-audio-ops`, so no C toolchain is needed
+for it. eSpeak-ng comes from the `dengjen-espeak-rs-sys` crate, and its data ships in
 `deps/dev/espeak-ng-data`.
 
 [source,sh]

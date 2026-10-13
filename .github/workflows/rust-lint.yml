@@ -90,7 +90,7 @@ jobs:
         with:
           rust-toolchain: manual
           baseline-root: ${{ steps.baseline.outputs.root }}
-          package: dengjen-audio-ops,dengjen-sonic-sys,dengjen-tts-core,dengjen-hebrew-phonemizer,dengjen-pinyin-phonemizer,dengjen-espeak-phonemizer,dengjen-tts-piper,dengjen-tts-kokoro,dengjen-tts-melotts,dengjen-tts
+          package: dengjen-audio-ops,dengjen-tts-core,dengjen-hebrew-phonemizer,dengjen-pinyin-phonemizer,dengjen-espeak-phonemizer,dengjen-tts-piper,dengjen-tts-kokoro,dengjen-tts-melotts,dengjen-tts
 
   audit:
     runs-on: ubuntu-latest
@@ -185,7 +185,7 @@ jobs:
         run: cargo check --workspace --locked --all-features
 
   # Miri can't run this workspace's unsafe code -- every unsafe block calls into real linked C
-  # libraries (onnxruntime, libsonic, espeak-ng), and Miri doesn't support arbitrary FFI.
+  # libraries (onnxruntime, espeak-ng), and Miri doesn't support arbitrary FFI.
   # AddressSanitizer does, and is validated locally clean against libdengjen and dengjen-tts.
   asan:
     runs-on: ubuntu-latest
