@@ -44,6 +44,7 @@ diagnose() {
   echo "sources:      $(sources | sha256sum | cut -d' ' -f1)" >&2
   echo "dependencies: $(dependencies | sha256sum | cut -d' ' -f1) ($(dependencies | wc -l) lines)" >&2
   echo "files:        $(git ls-files crates/dengjen crates/text crates/audio crates/frontends/capi crates/workspace-hack | wc -l) tracked" >&2
+  dependencies | sed 's/^/dep| /' >&2
 }
 
 nativesVersion() { grep -m1 '^val nativesVersion = '; }
