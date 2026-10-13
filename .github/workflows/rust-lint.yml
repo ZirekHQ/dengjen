@@ -523,8 +523,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Install onnxruntime
+        # The published natives load onnxruntime dynamically (ort-dylib), so test that build.
+        run: |
+          pip install --only-binary ':all:' onnxruntime==1.30.0
+          lib="$(python3 -c 'import glob, os, onnxruntime; print(glob.glob(os.path.join(os.path.dirname(onnxruntime.__file__), "capi", "libonnxruntime.so*"))[0])')"
+          echo "ORT_DYLIB_PATH=${lib}" >> "$GITHUB_ENV"
       - name: make test
         working-directory: bindings/java
+        env:
+          CARGO_FEATURES: ort-dylib
         run: make test
       - name: make fmt-check
         working-directory: bindings/java

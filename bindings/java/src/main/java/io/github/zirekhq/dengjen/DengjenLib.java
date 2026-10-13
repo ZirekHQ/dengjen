@@ -10,6 +10,7 @@ import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
 import java.lang.foreign.SymbolLookup;
 import java.lang.invoke.MethodHandle;
+import java.util.Optional;
 
 final class DengjenLib {
   private static final Linker LINKER = Linker.nativeLinker();
@@ -49,6 +50,14 @@ final class DengjenLib {
       handle(
           "libdengjenFreeSynthesisEvent",
           FunctionDescriptor.ofVoid(DengjenLayouts.SYNTHESIS_EVENT));
+
+  /** Present only when the native library was built with the {@code ort-dylib} feature. */
+  static final Optional<MethodHandle> SET_ORT_DYLIB_PATH =
+      LOOKUP
+          .find("libdengjenSetOrtDylibPath")
+          .map(
+              address ->
+                  LINKER.downcallHandle(address, FunctionDescriptor.ofVoid(ADDRESS, ADDRESS)));
 
   static final MethodHandle LOAD_VOICE_FROM_CONFIG_PATH =
       handle("libdengjenLoadVoiceFromConfigPath", FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS));

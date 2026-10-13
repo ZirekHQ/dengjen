@@ -11,3 +11,6 @@ include = ["SpeechSynthesisCallback"]
 [parse]
 parse_deps = true
 include = ["ffi-support"]
+
+[defines]
+"feature = ort-dylib" = "LIBDENGJEN_ORT_DYLIB"

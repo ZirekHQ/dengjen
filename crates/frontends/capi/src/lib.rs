@@ -40,6 +40,14 @@ ffi_support::define_box_destructor!(PiperSynthConfig, _internal_libdengjenFreePi
 
 static INIT_ORT_ENVIRONMENT: OnceLock<Result<(), String>> = OnceLock::new();
 
+#[cfg(feature = "ort-dylib")]
+static ORT_DYLIB_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+// Serializes `libdengjenSetOrtDylibPath` against environment initialization, so a reported success
+// always means the path was in place before onnxruntime was loaded.
+#[cfg(feature = "ort-dylib")]
+static ORT_CONFIG_LOCK: Mutex<()> = Mutex::new(());
+
 pub mod error_codes {
     pub const INVALID_SYNTHESIS_MODE: i32 = 16;
     pub const FAILED_TO_LOAD_RESOURCE: i32 = 17;
@@ -493,6 +501,19 @@ pub unsafe extern "C" fn libdengjenFreeSynthesisEvent(event: SynthesisEvent) {
     });
 }
 
+/// Sets the onnxruntime shared library to load, for builds with the `ort-dylib` feature (the header
+/// guards the declaration with `LIBDENGJEN_ORT_DYLIB`). Must precede the first
+/// `libdengjenLoadVoiceFromConfigPath`; without it the library is found through `ORT_DYLIB_PATH`
+/// and the platform loader search path.
+#[cfg(feature = "ort-dylib")]
+#[no_mangle]
+#[allow(non_snake_case)]
+pub extern "C" fn libdengjenSetOrtDylibPath(path_ptr: FfiStr, out_error: &mut ExternError) {
+    call_with_result(out_error, move || {
+        set_ort_dylib_path(path_ptr.into_opt_string())
+    })
+}
+
 #[no_mangle]
 #[allow(non_snake_case)]
 pub extern "C" fn libdengjenLoadVoiceFromConfigPath(
@@ -798,6 +819,10 @@ pub unsafe extern "C" fn libdengjenSpeakToFile(
 }
 
 fn init_ort_environment() -> DengjenResult<()> {
+    #[cfg(feature = "ort-dylib")]
+    let _config_guard = ORT_CONFIG_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     INIT_ORT_ENVIRONMENT
         .get_or_init(commit_ort_environment)
         .clone()
@@ -818,12 +843,65 @@ fn commit_ort_environment() -> Result<(), String> {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let execution_providers = vec![ort::execution_providers::CPU::default().build()];
 
-    let committed = ort::init()
+    let committed = ort_environment_builder()?
         .with_name("dengjen")
         .with_execution_providers(execution_providers)
         .commit();
 
     committed_or_error(committed)
+}
+
+#[cfg(feature = "ort-dylib")]
+fn ort_environment_builder() -> Result<ort::environment::EnvironmentBuilder, String> {
+    match ORT_DYLIB_PATH.get() {
+        Some(path) => ort::init_from(path).map_err(|error| {
+            format!(
+                "Failed to load onnxruntime from `{}`: {error}",
+                path.display()
+            )
+        }),
+        None => Ok(ort::init()),
+    }
+}
+
+#[cfg(not(feature = "ort-dylib"))]
+fn ort_environment_builder() -> Result<ort::environment::EnvironmentBuilder, String> {
+    Ok(ort::init())
+}
+
+#[cfg(feature = "ort-dylib")]
+fn set_ort_dylib_path(path: Option<String>) -> DengjenFFIResult<()> {
+    let path = path
+        .map(PathBuf::from)
+        .ok_or_else(|| DengjenFFIError::null_pointer("path_ptr"))?;
+    let _config_guard = ORT_CONFIG_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(current) = ORT_DYLIB_PATH.get() {
+        return if *current == path {
+            Ok(())
+        } else {
+            Err(DengjenFFIError::with_code(
+                error_codes::OPERATION_ERROR,
+                format!(
+                    "the onnxruntime path is already set to `{}`",
+                    current.display()
+                ),
+            ))
+        };
+    }
+    if INIT_ORT_ENVIRONMENT.get().is_some() {
+        return Err(DengjenFFIError::with_code(
+            error_codes::OPERATION_ERROR,
+            "onnxruntime is already initialized; set its path before loading a voice",
+        ));
+    }
+    ORT_DYLIB_PATH.set(path).map_err(|_| {
+        DengjenFFIError::with_code(
+            error_codes::OPERATION_ERROR,
+            "the onnxruntime path is already set",
+        )
+    })
 }
 
 fn committed_or_error(committed: bool) -> Result<(), String> {
@@ -2172,5 +2250,17 @@ mod ffi_flow_tests {
             "unknown model_type must be an explicit configuration error"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(all(test, feature = "ort-dylib"))]
+mod ort_dylib_tests {
+    use super::*;
+
+    #[test]
+    fn a_null_onnxruntime_path_is_a_null_pointer_error() {
+        let error = set_ort_dylib_path(None).unwrap_err();
+
+        assert_eq!(error.0, error_codes::NULL_POINTER);
     }
 }

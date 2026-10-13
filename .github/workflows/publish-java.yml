@@ -126,7 +126,9 @@ jobs:
       # channel comes from rust-toolchain.toml
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - name: Build libdengjen
-        run: cargo build --release --manifest-path Cargo.toml -p libdengjen --locked
+        # ort-dylib leaves onnxruntime out of the library (~14 MB -> ~6 MB gzipped per platform);
+        # Java users supply it through -Ddengjen.onnxruntime.path or ORT_DYLIB_PATH.
+        run: cargo build --release --manifest-path Cargo.toml -p libdengjen --locked --features ort-dylib
       - name: Stage native library
         shell: bash
         run: |
