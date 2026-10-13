@@ -61,6 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
         timeout-minutes: 15
@@ -69,6 +70,18 @@ jobs:
       # channel comes from rust-toolchain.toml
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # cargo-semver-checks builds each baseline from the registry or a git rev without our
+      # Cargo.lock, so a release whose manifests allow ort ^2.0.0-rc.13 resolves rc.14 and no
+      # longer compiles. Build the latest tag from a worktree with ort pinned instead.
+      # Releases that already carry the pin make the sed a no-op.
+      - name: prepare pinned baseline
+        id: baseline
+        run: |
+          tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)
+          git worktree add "$RUNNER_TEMP/baseline" "$tag"
+          find "$RUNNER_TEMP/baseline" -name Cargo.toml -not -path '*/target/*' \
+            -exec sed -i 's/^version = "2\.0\.0-rc\.13"/version = "=2.0.0-rc.13"/' {} +
+          echo "root=$RUNNER_TEMP/baseline" >> "$GITHUB_OUTPUT"
       - name: cargo semver-checks
         # Only the crates with a meaningful public Rust API (rlib targets) are checked --
         # dengjen-tts-cli (bin-only), dengjen-tts-grpc (bin-only), and dengjen-tts-python /
@@ -76,6 +89,7 @@ jobs:
         uses: obi1kenobi/cargo-semver-checks-action@6b69fcf40e9b5fb17adeb57e4b6ecd020649a239 # v2.9
         with:
           rust-toolchain: manual
+          baseline-root: ${{ steps.baseline.outputs.root }}
           package: dengjen-audio-ops,dengjen-sonic-sys,dengjen-tts-core,dengjen-hebrew-phonemizer,dengjen-pinyin-phonemizer,dengjen-espeak-phonemizer,dengjen-tts-piper,dengjen-tts-kokoro,dengjen-tts-melotts,dengjen-tts
 
   audit:
