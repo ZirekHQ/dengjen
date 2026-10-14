@@ -38,22 +38,24 @@ it.
 - **`synth`** needs real voices. [`synth-bench.yml`](workflows/synth-bench.yml) runs on pull
   requests that touch the synth path (`crates/dengjen/synth`, `core`, `models/piper`,
   `models/kokoro`, `crates/text/espeak-phonemizer`), `crates/audio/**`, `Cargo.lock`,
-  `rust-toolchain.toml`, or the bench scripts and fixture manifest, benches the merge base and
-  the PR merged onto it on the same runner, and writes base-vs-head tables of median
-  times to the job summary. If a PR changes `bench-fixtures.json`, the base run downloads the
-  fixtures pinned by the base's manifest instead of reusing the PR's. A case that is 2x or more slower than the base raises a warning
-  annotation. The job is advisory and never a required check. A weekly run on `main` stores the
-  raw output as a `bench-main-<sha>` artifact; manual runs on other refs only write the job
-  summary.
+  `rust-toolchain.toml`, the fixture manifest or `run-synth-bench.sh`. It benches the merge base
+  and the PR merged onto it on the same runner, with `DIVAN_SAMPLE_SIZE=3` for the Piper benches
+  (Kokoro keeps its own), and writes base-vs-head tables of median times to the job summary. If a
+  PR changes `bench-fixtures.json`, the base run downloads the fixtures pinned by the base's
+  manifest instead of reusing the PR's. A case that is 2x or more slower than the base raises a
+  warning annotation. The job is advisory and never a required check. Runs on `main` (after each
+  merge that touches those paths, weekly, and manual) use `DIVAN_SAMPLE_SIZE=10` and store the raw
+  output as a `bench-main-<sha>` artifact; manual runs on other refs only write the job summary.
+  The compare-script unit tests run separately in `bench-script-test.yml`.
 - **Fixtures** are one Piper voice (`en_US-lessac-medium`) and one Kokoro voice (`af_bella`).
   They are archives on the `bench-fixtures-v1` release of this repo, pinned by sha256 in
   [`bench-fixtures.json`](bench-fixtures.json) and downloaded from the release on a cache miss.
   Only runs on `main` save the `actions/cache` entries, because a PR-scoped cache is invisible to
-  other PRs. After merging a fixture change, dispatch the workflow on `main` to seed the cache; the
-  weekly run does too. Until then PR runs download from the release.
+  other PRs. Merging a fixture change seeds the cache through the `main` push run; the weekly run
+  does too. Until then PR runs download from the release.
 - **Piper `rt`** (`encoder.onnx` + `decoder.onnx`) has no upstream export. Its tests run in
   `piper-real-voice-e2e` when `PIPER_RT_TEST_VOICE_ARCHIVE_URL` and
-  `PIPER_RT_TEST_VOICE_ARCHIVE_SHA256` are set; `synth-bench.yml` skips
+  `PIPER_RT_TEST_VOICE_ARCHIVE_SHA256` are set; `run-synth-bench.sh` skips
   its benches (`--skip bench_realtime`), so run them locally.
 
 Running synth benches locally: download the release archives, extract `piper-std.tar.gz` into
