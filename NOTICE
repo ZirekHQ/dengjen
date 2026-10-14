@@ -13,7 +13,7 @@ repository in a form requiring MIT notice retention.
 
 ---
 
-crates/audio/ops/src/sonic.rs is a Rust port of the sonic audio-processing
+The libsonic crate (https://github.com/ZirekHQ/libsonic-rs), a Rust port of the sonic audio-processing
 library (https://github.com/waywardgeek/sonic), originally distributed under
 the Apache License, Version 2.0 below. Per the Apache License's terms, its
 license text is retained here for this derived source.
