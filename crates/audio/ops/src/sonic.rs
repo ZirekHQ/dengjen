@@ -61,10 +61,13 @@ static SINC_TABLE: [i16; 601] = [
     0, 0, 0, 0, 0, 0, 0,
 ];
 
+/// Rejected stream dimensions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SonicError {
+    /// Sample rate outside the supported range.
     SampleRateOutOfRange(u32),
+    /// Channel count outside the supported range.
     ChannelsOutOfRange(u32),
 }
 
@@ -98,6 +101,7 @@ fn clamp(value: f32, min: f32, max: f32) -> f32 {
 }
 
 /// Streaming pitch-synchronous speed, pitch and volume changer.
+#[derive(Debug)]
 pub struct SonicStream {
     input: Vec<i16>,
     output: Vec<i16>,
@@ -121,6 +125,7 @@ pub struct SonicStream {
 }
 
 impl SonicStream {
+    /// Errors with [`SonicError`] when the dimensions are out of range.
     pub fn new(sample_rate: u32, channels: u32) -> Result<Self, SonicError> {
         if !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&sample_rate) {
             return Err(SonicError::SampleRateOutOfRange(sample_rate));

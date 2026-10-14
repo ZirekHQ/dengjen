@@ -12,6 +12,14 @@ fn golden_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/sonic_golden.tsv")
 }
 
+// Regenerate with the C reference: `run_c` in tests/common/mod.rs at 4890b48, against dengjen-sonic-sys at 5465339^.
+fn golden_for<'a>(
+    m: &std::collections::HashMap<&str, (usize, &'a str)>,
+    id: &str,
+) -> (usize, &'a str) {
+    *m.get(id).unwrap_or_else(|| panic!("no golden for {id}"))
+}
+
 #[test]
 fn golden_matches_rust() {
     let golden = std::fs::read_to_string(golden_path()).expect("goldens present");
@@ -29,7 +37,7 @@ fn golden_matches_rust() {
             case.sample_rate as usize / 2,
         );
         let out = run_rust(&case, &input);
-        let (len, hash) = expected[case.id().as_str()];
+        let (len, hash) = golden_for(&expected, &case.id());
         assert_eq!(out.len(), len, "length for {}", case.id());
         assert_eq!(
             format!("{:016x}", common::fnv1a(&out)),
@@ -40,7 +48,7 @@ fn golden_matches_rust() {
     }
     for (id, case, input) in common::edge_cases() {
         let out = run_rust(&case, &input);
-        let (len, hash) = expected[id.as_str()];
+        let (len, hash) = golden_for(&expected, &id);
         assert_eq!(out.len(), len, "length for {id}");
         assert_eq!(
             format!("{:016x}", common::fnv1a(&out)),

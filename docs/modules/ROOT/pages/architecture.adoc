@@ -96,7 +96,7 @@ classDiagram
 
 == Versioning
 
-All 14 published crates share a single lockstep version via
+All 13 published crates share a single lockstep version via
 `[workspace.package].version` in the root `Cargo.toml`, rather than letting
 each crate version independently. A one-line fix in a single low-level crate
 (e.g. `dengjen-audio-ops`) still forces a version bump and republish of every

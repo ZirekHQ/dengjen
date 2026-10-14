@@ -414,7 +414,7 @@ mod synthesis_processing_tests {
         process_synthesis_request(&args, &synth, &default_config(), req, &mut buffer).unwrap();
 
         // Not an exact byte count: output always passes through
-        // `AudioOutputConfig::apply` (real Sonic FFI even with all fields `None`),
+        // `AudioOutputConfig::apply` (the Sonic port even with all fields `None`),
         // which is `dengjen-audio-ops`'s own tested responsibility.
         assert!(!buffer.is_empty());
     }

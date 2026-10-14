@@ -88,7 +88,7 @@ The Python wheel tests (`crates/frontends/python/tests`) run on every PR in the 
 
 ## Workspace dependencies
 
-`crates/workspace-hack` unifies feature flags for shared dependencies across the workspace's 14
+`crates/workspace-hack` unifies feature flags for shared dependencies across the workspace's 13
 crates (via [`cargo-hakari`](https://docs.rs/cargo-hakari)), so CI jobs that check the same crate
 under different feature combinations (e.g. `coverage`) don't force a rebuild of shared deps on
 every switch. After adding, removing, or changing the features of a dependency, run

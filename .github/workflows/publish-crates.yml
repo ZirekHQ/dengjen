@@ -34,7 +34,7 @@ jobs:
       # channel comes from rust-toolchain.toml
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
 
-      # Requires crates.io Trusted Publishing configured for all 14 crates, targeting BOTH
+      # Requires crates.io Trusted Publishing configured for all 13 crates, targeting BOTH
       # release.yml and prepare-release.yml (crates.io matches the JWT's top-level triggering
       # workflow, not this reusable file, even though id-token: write lives here).
 
@@ -50,7 +50,7 @@ jobs:
           expected_prepare_path="ZirekHQ/dengjen-tts/.github/workflows/prepare-release.yml"
           actual_path="${WORKFLOW_REF%@*}"
           if [ "$WORKFLOW_REF" != "$expected_release" ] && [ "$actual_path" != "$expected_prepare_path" ]; then
-            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected '${expected_release}' or '${expected_prepare_path}@<any ref>'. crates.io Trusted Publishing for all 14 crates must target both release.yml and prepare-release.yml -- if either workflow was renamed, update crates.io's config and this check together." >&2
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected '${expected_release}' or '${expected_prepare_path}@<any ref>'. crates.io Trusted Publishing for all 13 crates must target both release.yml and prepare-release.yml -- if either workflow was renamed, update crates.io's config and this check together." >&2
             exit 1
           fi
       - name: Authenticate with crates.io
