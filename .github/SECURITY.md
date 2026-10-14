@@ -12,8 +12,8 @@ Include, where possible: the affected crate/version, a minimal reproduction, and
 
 ## Scope
 
-dengjen embeds several C libraries via FFI (onnxruntime, libsonic, espeak-ng). The public C ABI
-(`crates/frontends/capi`) is in scope, as is any `unsafe` code in `crates/audio/sonic-sys`,
+dengjen embeds several C libraries via FFI (onnxruntime, espeak-ng). The public C ABI
+(`crates/frontends/capi`) is in scope, as is any `unsafe` code in
 `crates/text/espeak-phonemizer`, and `dengjen-tts`'s FFI boundary. This also covers every other
 crate that talks to `onnxruntime` via `ort` — `crates/frontends/cli`, `crates/frontends/grpc`,
 `crates/frontends/python`, `crates/dengjen/models/{piper,kokoro,melotts}`, and

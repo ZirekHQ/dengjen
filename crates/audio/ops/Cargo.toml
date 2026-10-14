@@ -3,7 +3,7 @@ name = "dengjen-audio-ops"
 version.workspace = true
 edition = "2021"
 license.workspace = true
-description = "Audio post-processing primitives shared across dengjen-tts's speech synthesis pipeline: sample buffers, Hann windowing, and WAV encoding"
+description = "Audio post-processing primitives shared across dengjen-tts's speech synthesis pipeline: sample buffers, Hann windowing, WAV encoding, and a Rust port of Sonic for rate, pitch and volume"
 repository.workspace = true
 homepage.workspace = true
 
@@ -11,6 +11,7 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
+libsonic = "0.1"
 once_cell = "1.18.0"
 riff-wave = "0.1.3"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }

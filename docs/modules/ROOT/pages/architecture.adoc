@@ -50,7 +50,7 @@ C4Component
         Component(piper, "dengjen-tts-piper", "Rust crate", "VitsModel / VitsStreamingModel")
         Component(kokoro, "dengjen-tts-kokoro", "Rust crate", "KokoroModel")
         Component(melotts, "dengjen-tts-melotts", "Rust crate", "MeloTTSModel")
-        Component(sonic, "dengjen-sonic-sys", "FFI binding", "libsonic, used for prosody (pitch/speed) adjustment")
+        Component(audioops, "dengjen-audio-ops", "Rust crate", "Sonic port, used for prosody (pitch/speed) adjustment")
     }
 
     Rel(synth, core, "Implements")
@@ -58,7 +58,7 @@ C4Component
     Rel(kokoro, core, "Implements")
     Rel(melotts, core, "Implements")
     Rel(synth, piper, "Wraps one model, e.g.")
-    Rel(synth, sonic, "Post-processes via")
+    Rel(synth, audioops, "Post-processes via")
 ----
 
 == Code
@@ -96,7 +96,7 @@ classDiagram
 
 == Versioning
 
-All 14 published crates share a single lockstep version via
+All 13 published crates share a single lockstep version via
 `[workspace.package].version` in the root `Cargo.toml`, rather than letting
 each crate version independently. A one-line fix in a single low-level crate
 (e.g. `dengjen-audio-ops`) still forces a version bump and republish of every

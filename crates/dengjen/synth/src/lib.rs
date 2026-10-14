@@ -89,84 +89,47 @@ pub fn default_batch_size() -> NonZeroUsize {
 pub const MAX_APPENDED_SILENCE_MS: u32 = 60_000;
 const MAX_SILENCE_SAMPLES: usize = 64 * 1024 * 1024;
 
-/// Owning handle for a libsonic stream; destroys the stream on drop.
-struct SonicStream {
-    raw: dengjen_sonic_sys::sonicStream,
-    channels: usize,
-}
+/// Adapter between `AudioOutputConfig` and the audio-ops sonic port.
+struct SonicStream(dengjen_audio_ops::SonicStream);
 
 impl SonicStream {
     fn new(sample_rate: i32, channels: i32) -> DengjenResult<Self> {
-        // SAFETY: plain allocation call taking two integers; a null result is
-        // handled below and no other state is touched.
-        let raw = unsafe { dengjen_sonic_sys::sonicCreateStream(sample_rate, channels) };
-        if raw.is_null() {
-            return Err(DengjenError::OperationError(
-                "Sonic Error: failed to allocate the audio processing stream".to_string(),
-            ));
-        }
-        Ok(Self {
-            raw,
-            channels: channels as usize,
-        })
-    }
-
-    fn set_speed(&self, speed: f32) {
-        // SAFETY: `self.raw` is a live stream owned by `self`.
-        unsafe { dengjen_sonic_sys::sonicSetSpeed(self.raw, speed) }
-    }
-
-    fn set_volume(&self, volume: f32) {
-        // SAFETY: `self.raw` is a live stream owned by `self`.
-        unsafe { dengjen_sonic_sys::sonicSetVolume(self.raw, volume) }
-    }
-
-    fn set_pitch(&self, pitch: f32) {
-        // SAFETY: `self.raw` is a live stream owned by `self`.
-        unsafe { dengjen_sonic_sys::sonicSetPitch(self.raw, pitch) }
-    }
-
-    /// Buffers whole frames of `input`; returns `false` when libsonic cannot grow its buffer.
-    fn write(&self, input: &[f32]) -> bool {
-        let frames = i32::try_from(input.len() / self.channels).unwrap_or(0);
-        // SAFETY: `self.raw` is live and `frames * channels <= input.len()`, so
-        // libsonic reads only inside `input`.
-        let written =
-            unsafe { dengjen_sonic_sys::sonicWriteFloatToStream(self.raw, input.as_ptr(), frames) };
-        written != 0
-    }
-
-    fn flush(&self) {
-        // SAFETY: `self.raw` is a live stream owned by `self`.
-        unsafe { dengjen_sonic_sys::sonicFlushStream(self.raw) };
-    }
-
-    fn samples_available(&self) -> i32 {
-        // SAFETY: `self.raw` is a live stream owned by `self`.
-        unsafe { dengjen_sonic_sys::sonicSamplesAvailable(self.raw) }
-    }
-
-    fn read(&self, max_frames: i32) -> Vec<f32> {
-        let mut output = vec![0f32; max_frames.max(0) as usize * self.channels];
-        // SAFETY: `self.raw` is live and `output` holds `max_frames * channels`
-        // floats, the most libsonic writes for `max_frames` frames.
-        let frames_read = unsafe {
-            dengjen_sonic_sys::sonicReadFloatFromStream(
-                self.raw,
-                output.as_mut_ptr(),
-                max_frames.max(0),
-            )
+        let invalid = |what: &str| {
+            DengjenError::OperationError(format!("Sonic Error: {what} is out of range"))
         };
-        output.truncate(frames_read.clamp(0, max_frames.max(0)) as usize * self.channels);
-        output
+        let rate = u32::try_from(sample_rate).map_err(|_| invalid("sample rate"))?;
+        let channels = u32::try_from(channels).map_err(|_| invalid("channel count"))?;
+        dengjen_audio_ops::SonicStream::new(rate, channels)
+            .map(Self)
+            .map_err(|err| DengjenError::OperationError(format!("Sonic Error: {err}")))
     }
-}
 
-impl Drop for SonicStream {
-    fn drop(&mut self) {
-        // SAFETY: `self.raw` came from `sonicCreateStream` and is destroyed
-        // exactly once, here.
-        unsafe { dengjen_sonic_sys::sonicDestroyStream(self.raw) };
+    fn set_speed(&mut self, speed: f32) {
+        self.0.set_speed(speed);
+    }
+
+    fn set_volume(&mut self, volume: f32) {
+        self.0.set_volume(volume);
+    }
+
+    fn set_pitch(&mut self, pitch: f32) {
+        self.0.set_pitch(pitch);
+    }
+
+    fn write(&mut self, input: &[f32]) {
+        self.0.write_f32(input);
+    }
+
+    fn flush(&mut self) {
+        self.0.flush();
+    }
+
+    fn samples_available(&self) -> usize {
+        self.0.available_frames()
+    }
+
+    fn read(&mut self, max_frames: usize) -> Vec<f32> {
+        self.0.read_f32(max_frames)
     }
 }
 
@@ -210,7 +173,7 @@ impl AudioOutputConfig {
         let input = samples.into_vec();
         let (rate, channels, _) =
             Self::sonic_stream_dimensions(input.len(), sample_rate, num_channels)?;
-        let stream = SonicStream::new(rate, channels)?;
+        let mut stream = SonicStream::new(rate, channels)?;
 
         if let Some(pct) = self.rate {
             let speed = utils::percent_to_param(pct, SPEED_PARAM_RANGE.min, SPEED_PARAM_RANGE.max);
@@ -226,15 +189,11 @@ impl AudioOutputConfig {
             stream.set_pitch(pitch);
         }
 
-        if !stream.write(&input) {
-            return Err(DengjenError::OperationError(
-                "Sonic Error: failed to buffer samples for audio processing".to_string(),
-            ));
-        }
+        stream.write(&input);
         stream.flush();
 
         let available_frames = stream.samples_available();
-        if available_frames <= 0 {
+        if available_frames == 0 {
             return Err(DengjenError::OperationError(
                 "Sonic Error: failed to apply audio config. Invalid parameter value for rate, volume, or pitch".to_string(),
             ));
