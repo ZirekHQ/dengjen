@@ -11,18 +11,13 @@ homepage.workspace = true
 workspace = true
 
 [features]
-ort-providers = ["dep:ort"]
-cuda = ["ort-providers", "ort/cuda"]
-coreml = ["ort-providers", "ort/coreml"]
-directml = ["ort-providers", "ort/directml"]
+ort-providers = ["dengjen-core/ort-providers"]
+cuda = ["dengjen-core/cuda"]
+coreml = ["dengjen-core/coreml"]
+directml = ["dengjen-core/directml"]
 
 [dependencies]
+dengjen-core.workspace = true
 dengjen-audio-ops.workspace = true
 once_cell = "1.18.0"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
-
-[dependencies.ort]
-version = "=2.0.0-rc.13"
-default-features = false
-features = ["std"]
-optional = true

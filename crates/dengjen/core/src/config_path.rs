@@ -1,23 +1,16 @@
 use crate::{DengjenError, DengjenResult};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 /// Joins `relative` onto `base_dir`, rejecting values that would leave it.
 ///
 /// Absolute paths, drive prefixes and `..` components are refused, so a voice config cannot name
 /// a path outside its directory by lexical traversal. Symlinks are not resolved.
 pub fn resolve_within(base_dir: &Path, field: &str, relative: &str) -> DengjenResult<PathBuf> {
-    let escapes = Path::new(relative).components().any(|c| {
-        matches!(
-            c,
-            Component::ParentDir | Component::RootDir | Component::Prefix(_)
-        )
-    });
-    if escapes || relative.is_empty() {
-        return Err(DengjenError::InvalidConfiguration(format!(
+    dengjen_core::resolve_within(base_dir, relative).map_err(|_| {
+        DengjenError::InvalidConfiguration(format!(
             "`{field}` must be a relative path inside the voice directory, got `{relative}`"
-        )));
-    }
-    Ok(base_dir.join(relative))
+        ))
+    })
 }
 
 #[cfg(test)]
