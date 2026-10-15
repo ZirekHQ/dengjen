@@ -1,0 +1,26 @@
+[package]
+name = "dengjen-core"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "Shared runtime primitives for the dengjen speech engines: cancellation, ONNX Runtime providers, path confinement and poison-tolerant locks"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+ort-providers = ["dep:ort"]
+cuda = ["ort-providers", "ort/cuda"]
+coreml = ["ort-providers", "ort/coreml"]
+directml = ["ort-providers", "ort/directml"]
+
+[dependencies]
+workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dependencies.ort]
+version = "=2.0.0-rc.13"
+default-features = false
+features = ["std"]
+optional = true

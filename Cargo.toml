@@ -2,6 +2,7 @@
 resolver = "2"
 
 members = [
+    "crates/core",
     "crates/dengjen/core",
     "crates/dengjen/synth",
     "crates/dengjen/models/piper",
@@ -35,6 +36,7 @@ homepage = "https://github.com/ZirekHQ/dengjen"
 
 
 [workspace.dependencies]
+dengjen-core = { path = "crates/core", version = "3.0.0" }
 dengjen-tts-core = { path = "crates/dengjen/core", version = "3.0.0" }
 dengjen-tts = { path = "crates/dengjen/synth", version = "3.0.0" }
 dengjen-tts-piper = { path = "crates/dengjen/models/piper", version = "3.0.0" }

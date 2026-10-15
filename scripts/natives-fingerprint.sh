@@ -15,7 +15,7 @@ record=bindings/java/natives.fingerprint
 gradle=bindings/java/build.gradle.kts
 
 sources() {
-  git ls-files Cargo.toml rust-toolchain.toml .cargo crates/dengjen crates/text crates/audio \
+  git ls-files Cargo.toml rust-toolchain.toml .cargo crates/core crates/dengjen crates/text crates/audio \
       crates/frontends/capi crates/workspace-hack \
     | grep -E '(\.(rs|toml|json|c|h)|/config)$' \
     | grep -vE '/(tests|benches|examples)/' \

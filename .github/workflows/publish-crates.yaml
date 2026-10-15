@@ -79,18 +79,20 @@ jobs:
 
       # publish-crate-if-needed.sh skips a crate crates.io already has (a curl lookup, no token
       # needed) before CARGO_REGISTRY_TOKEN is read -- see the script's own comment for why.
-      - name: publish tier 1 (dengjen-audio-ops)
+      - name: publish tier 1 (dengjen-audio-ops, dengjen-core)
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           bash .github/scripts/publish-crate-if-needed.sh dengjen-audio-ops "$VERSION"
+          bash .github/scripts/publish-crate-if-needed.sh dengjen-core "$VERSION"
       - name: wait for tier 1 to index
         if: env.DRY_RUN != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           bash .github/scripts/wait-for-crate.sh dengjen-audio-ops "$VERSION"
+          bash .github/scripts/wait-for-crate.sh dengjen-core "$VERSION"
 
       - name: publish tier 2 (dengjen-tts-core)
         env:

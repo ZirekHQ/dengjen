@@ -587,6 +587,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dengjen-core"
+version = "3.0.0"
+dependencies = [
+ "ort",
+ "workspace-hack",
+]
+
+[[package]]
 name = "dengjen-espeak-phonemizer"
 version = "3.0.0"
 dependencies = [
@@ -697,8 +705,8 @@ name = "dengjen-tts-core"
 version = "3.0.0"
 dependencies = [
  "dengjen-audio-ops",
+ "dengjen-core",
  "once_cell",
- "ort",
  "workspace-hack",
 ]
 
