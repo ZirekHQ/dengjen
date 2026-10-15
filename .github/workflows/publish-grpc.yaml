@@ -1,9 +1,9 @@
 name: Publish gRPC server release
 
 on:
-  # Called as a job of release.yml's flow. release.yml has no gate of its own: the push-to-main
+  # Called as a job of release.yaml's flow. release.yaml has no gate of its own: the push-to-main
   # path is gated by the PR merge that triggers it, and the override path is gated by
-  # prepare-release.yml's own `gate` job before it ever calls release.yml.
+  # prepare-release.yaml's own `gate` job before it ever calls release.yaml.
   workflow_call:
     inputs:
       tag:
@@ -28,9 +28,9 @@ jobs:
       skip: ${{ steps.check.outputs.skip }}
     steps:
       # github.workflow_ref stays bound to the top-level caller through nested workflow_call hops
-      # too -- release.yml (always @refs/heads/main) or prepare-release.yml (the override path,
+      # too -- release.yaml (always @refs/heads/main) or prepare-release.yaml (the override path,
       # which can legitimately run from a stale-retry tag ref, not just main).
-      - name: verify this workflow was only reached through release.yml or prepare-release.yml
+      - name: verify this workflow was only reached through release.yaml or prepare-release.yaml
         env:
           WORKFLOW_REF: ${{ github.workflow_ref }}
         run: |
@@ -38,13 +38,13 @@ jobs:
           actual_path="${WORKFLOW_REF%@*}"
           matched=false
           for repo in ZirekHQ/dengjen-tts ZirekHQ/dengjen; do
-            if [ "$WORKFLOW_REF" = "${repo}/.github/workflows/release.yml@refs/heads/main" ] \
-              || [ "$actual_path" = "${repo}/.github/workflows/prepare-release.yml" ]; then
+            if [ "$WORKFLOW_REF" = "${repo}/.github/workflows/release.yaml@refs/heads/main" ] \
+              || [ "$actual_path" = "${repo}/.github/workflows/prepare-release.yaml" ]; then
               matched=true
             fi
           done
           if [ "$matched" != true ]; then
-            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yml@refs/heads/main or prepare-release.yml@<any ref> in ZirekHQ/dengjen-tts or ZirekHQ/dengjen -- refusing to run outside release.yml's main-branch flow or prepare-release.yml's override path" >&2
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen-tts or ZirekHQ/dengjen -- refusing to run outside release.yaml's main-branch flow or prepare-release.yaml's override path" >&2
             exit 1
           fi
       - name: Check whether this version already has a GitHub Release
@@ -100,7 +100,7 @@ jobs:
       - name: cargo build (release)
         run: cargo build --release --locked -p dengjen-tts-grpc --features japanese --target x86_64-pc-windows-msvc
       - name: assert no unbundled runtime dependency
-        # Same check as publish-go.yml's build-windows job: ort's copy-dylibs feature can drop a
+        # Same check as publish-go.yaml's build-windows job: ort's copy-dylibs feature can drop a
         # companion ONNX Runtime DLL next to the build output instead of statically linking it -- the
         # release archive below must include it too, or dengjen-nvda's vendored binary fails to start.
         shell: bash

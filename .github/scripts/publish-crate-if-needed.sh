@@ -15,7 +15,7 @@ case "$status" in
   404)
     if [ "${DRY_RUN:-}" = "true" ]; then
       # A per-crate dry run cannot resolve workspace deps that are not published yet;
-      # publish-crates.yml's `cargo package --workspace` step already validated packaging.
+      # publish-crates.yaml's `cargo package --workspace` step already validated packaging.
       echo "::notice::DRY_RUN: ${crate} ${version} not published -- skipping per-crate publish"
     else
       cargo publish -p "$crate" --locked --no-verify

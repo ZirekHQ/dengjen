@@ -11,7 +11,7 @@ version = 2
 ignore = [
     # paste is unmaintained (transitive via tokenizers -> pinyin-phonemizer); upstream declined
     # to migrate: https://github.com/huggingface/tokenizers/issues/1833
-    # Kept in sync with rust-lint.yml's audit job, this repo's actual advisory gate.
+    # Kept in sync with rust-lint.yaml's audit job, this repo's actual advisory gate.
     "RUSTSEC-2024-0436",
 ]
 

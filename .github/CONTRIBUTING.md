@@ -23,8 +23,8 @@ ask you to sign before merging.
 ## Fuzzing
 
 Each phonemizer/model crate with a `fuzz/` directory has one or more `cargo-fuzz` targets. The
-`fuzz-build` job in `rust-lint.yml` builds them on every PR so they don't bit-rot.
-[`fuzz.yml`](workflows/fuzz.yml) runs each target for two minutes every Tuesday and Friday (or on dispatch,
+`fuzz-build` job in `rust-lint.yaml` builds them on every PR so they don't bit-rot.
+[`fuzz.yaml`](workflows/fuzz.yaml) runs each target for two minutes every Tuesday and Friday (or on dispatch,
 with a `seconds` input), carries the corpus between runs, and uploads a crash artifact when one
 is found. To run a target yourself, use `cargo +nightly fuzz run <target>` from the crate that owns
 it.
@@ -33,9 +33,9 @@ it.
 
 `crates/audio/ops` and `crates/dengjen/synth` each have `divan` benches.
 
-- **`audio/ops`** is self-contained (synthetic samples). The `benchmarks` job in `rust-lint.yml`
+- **`audio/ops`** is self-contained (synthetic samples). The `benchmarks` job in `rust-lint.yaml`
   runs it and posts the numbers to the job summary.
-- **`synth`** needs real voices. [`synth-bench.yml`](workflows/synth-bench.yml) runs on pull
+- **`synth`** needs real voices. [`synth-bench.yaml`](workflows/synth-bench.yaml) runs on pull
   requests that touch the synth path (`crates/dengjen/synth`, `core`, `models/piper`,
   `models/kokoro`, `crates/text/espeak-phonemizer`), `crates/audio/**`, `Cargo.lock`,
   `rust-toolchain.toml`, the fixture manifest or `run-synth-bench.sh`. It benches the merge base
@@ -46,7 +46,7 @@ it.
   warning annotation. The job is advisory and never a required check. Runs on `main` (after each
   merge that touches those paths, weekly, and manual) use `DIVAN_SAMPLE_SIZE=10` and store the raw
   output as a `bench-main-<sha>` artifact; manual runs on other refs only write the job summary.
-  The compare-script unit tests run separately in `bench-script-test.yml`.
+  The compare-script unit tests run separately in `bench-script-test.yaml`.
 - **Fixtures** are one Piper voice (`en_US-lessac-medium`) and one Kokoro voice (`af_bella`).
   They are archives on the `bench-fixtures-v1` release of this repo, pinned by sha256 in
   [`bench-fixtures.json`](bench-fixtures.json) and downloaded from the release on a cache miss.
@@ -67,7 +67,7 @@ tests self-skip and the benches panic.
 Changing a fixture: run `.github/scripts/build-bench-fixtures.sh OUT_DIR` with `PIPER_REV` and
 `KOKORO_REV` set to the upstream commits, upload the archives to a new release tag, and update
 `tag` and `sha256` in `bench-fixtures.json`. Never overwrite an existing release asset. Fixture
-tags must not start with `v`, which is what keeps `notify-docs.yml` from pinging the docs site.
+tags must not start with `v`, which is what keeps `notify-docs.yaml` from pinging the docs site.
 
 CI's `piper-real-voice-e2e` and `kokoro-real-voice-e2e` jobs run the real-voice *tests* on the
 weekly schedule, on manual dispatch, and on pull requests that touch `crates/dengjen`,
@@ -85,8 +85,8 @@ the ones whose fixture a job already downloads:
 | `DENGJEN_MELOTTS_TEST_VOICE_CONFIG` | `e2e_real_voice.rs` in `dengjen-tts-melotts` | Not set. No MeloTTS fixture archive exists. Point it at a downloaded voice's `config.json` locally. |
 
 The Python wheel tests (`crates/frontends/python/tests`) run on every PR in the `linux` and
-`macos` jobs of `CI.yml`; the Go and Java binding suites run in the `bindings-go` and
-`bindings-java` jobs of `rust-lint.yml`.
+`macos` jobs of `CI.yaml`; the Go and Java binding suites run in the `bindings-go` and
+`bindings-java` jobs of `rust-lint.yaml`.
 
 ## Workspace dependencies
 
@@ -98,7 +98,7 @@ every switch. After adding, removing, or changing the features of a dependency, 
 
 ## Releasing
 
-`prepare-release.yml` opens the release PR with the optional `RELEASE_PR_TOKEN` repository secret
+`prepare-release.yaml` opens the release PR with the optional `RELEASE_PR_TOKEN` repository secret
 (a fine-grained PAT or GitHub App token with Contents and Pull requests write access) and falls
 back to `GITHUB_TOKEN` when it is unset. A PR created with `GITHUB_TOKEN` triggers no
 `pull_request` workflows, so without `RELEASE_PR_TOKEN` the release PR gets no CI and required
@@ -114,19 +114,19 @@ mirror, the gRPC server release, and the Python wheels all track it.
    major, only docs/chore/style/refactor/test/ci/build/perf since the last tag means no release) and opens a PR
    bumping every hand-synced copy of it.
 2. Review and merge that PR. **This is the release gate** — merging it releases the version in the
-   diff, with nothing further to confirm: [`release.yml`](workflows/release.yml) tags that merge
-   commit `vX.Y.Z` and runs [`publish-crates.yml`](workflows/publish-crates.yml) (crates.io),
-   [`publish-java.yml`](workflows/publish-java.yml) (Maven Central),
-   [`publish-go.yml`](workflows/publish-go.yml) (the `ZirekHQ/dengjen-tts-go` mirror),
-   [`publish-grpc.yml`](workflows/publish-grpc.yml) (the gRPC server's GitHub Release), and
-   [`publish-python.yml`](workflows/publish-python.yml) (wheel build) as jobs of that same run.
-   `release.yml` then uploads the wheels to PyPI (Trusted Publishing for `pydengjen`, registered
-   for both `release.yml` and `prepare-release.yml` because PyPI rejects reusable workflows) and
+   diff, with nothing further to confirm: [`release.yaml`](workflows/release.yaml) tags that merge
+   commit `vX.Y.Z` and runs [`publish-crates.yaml`](workflows/publish-crates.yaml) (crates.io),
+   [`publish-java.yaml`](workflows/publish-java.yaml) (Maven Central),
+   [`publish-go.yaml`](workflows/publish-go.yaml) (the `ZirekHQ/dengjen-tts-go` mirror),
+   [`publish-grpc.yaml`](workflows/publish-grpc.yaml) (the gRPC server's GitHub Release), and
+   [`publish-python.yaml`](workflows/publish-python.yaml) (wheel build) as jobs of that same run.
+   `release.yaml` then uploads the wheels to PyPI (Trusted Publishing for `pydengjen`, registered
+   for both `release.yaml` and `prepare-release.yaml` because PyPI rejects reusable workflows) and
    publishes one whole-repo GitHub Release once crates/java/go/grpc/python all succeed. On the
-   override path below, `prepare-release.yml` does the PyPI upload after `release.yml` returns.
+   override path below, `prepare-release.yaml` does the PyPI upload after `release.yaml` returns.
 3. **Direct-release override**: setting `new_tag` (and optionally `previous_tag` — overrides the
    Java changelog baseline — and `dry_run`) on **Prepare release** skips `next-version.sh`,
-   `bump-version.sh`, and the PR entirely, and hands off straight to `release.yml` for the
+   `bump-version.sh`, and the PR entirely, and hands off straight to `release.yaml` for the
    tag/publish given in `new_tag`. Because this bypasses the PR review that's normally the release
    gate, it requires approval on the `release` environment (Maintainers team) before it runs.
    **Self-approval is currently still possible** — the environment's `prevent_self_review` setting
@@ -136,7 +136,7 @@ mirror, the gRPC server release, and the Python wheels all track it.
 If publishing fails partway through, retry — no new tag needed either way, since every publish
 step is idempotent (skips an artifact already published):
 - Same version, still current on `main`: use GitHub's "Re-run failed jobs" on the original
-  `release.yml` run (Actions tab). It re-runs just the failed job(s) against that run's own
+  `release.yaml` run (Actions tab). It re-runs just the failed job(s) against that run's own
   commit, no new dispatch needed.
 - Stale version (a newer version has since bumped past it on `main`): run **Prepare release**
   again, this time from the old tag (`--ref v<old-version>` on the CLI, or pick it from the

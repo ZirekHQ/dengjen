@@ -1,4 +1,4 @@
-# LeakSanitizer suppressions for the `asan` CI job (.github/workflows/rust-lint.yml).
+# LeakSanitizer suppressions for the `asan` CI job (.github/workflows/rust-lint.yaml).
 #
 # Each entry here is a known leak we don't control, not one we've decided to ignore in our
 # own code. Adding to this file should come with the same evidence as the one below: a local
