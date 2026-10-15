@@ -16,8 +16,8 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/ZirekHQ/dengjen-tts"
-Issues = "https://github.com/ZirekHQ/dengjen-tts/issues"
+Repository = "https://github.com/ZirekHQ/dengjen"
+Issues = "https://github.com/ZirekHQ/dengjen/issues"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

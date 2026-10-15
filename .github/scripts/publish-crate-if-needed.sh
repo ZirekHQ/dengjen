@@ -8,7 +8,7 @@ crate="${1:?usage: publish-crate-if-needed.sh <crate-name> <version>}"
 version="${2:?usage: publish-crate-if-needed.sh <crate-name> <version>}"
 
 status="$(curl -s -o /dev/null -w '%{http_code}' \
-  -H "User-Agent: dengjen-tts-publish-ci (https://github.com/ZirekHQ/dengjen-tts)" \
+  -H "User-Agent: dengjen-tts-publish-ci (https://github.com/ZirekHQ/dengjen)" \
   "https://crates.io/api/v1/crates/${crate}/${version}")"
 case "$status" in
   200) echo "${crate} ${version} is already published -- skipping" ;;

@@ -60,8 +60,8 @@ attributions.
 
 If this repository saves you time and effort, please consider supporting it!
 
-- ⭐ [Star on GitHub](https://github.com/ZirekHQ/dengjen-tts)
-- 🐦 [Share on Twitter](https://twitter.com/intent/tweet?text=dengjen%20-%20a%20cross-platform%20Rust%20engine%20for%20neural%20TTS%20models&url=https%3A%2F%2Fgithub.com%2FZirekHQ%2Fdengjen-tts)
-- 💼 [Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2FZirekHQ%2Fdengjen-tts)
+- ⭐ [Star on GitHub](https://github.com/ZirekHQ/dengjen)
+- 🐦 [Share on Twitter](https://twitter.com/intent/tweet?text=dengjen%20-%20a%20cross-platform%20Rust%20engine%20for%20neural%20TTS%20models&url=https%3A%2F%2Fgithub.com%2FZirekHQ%2Fdengjen)
+- 💼 [Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2FZirekHQ%2Fdengjen)
 - 💖 [Support on Open Collective](https://opencollective.com/zirek)
 

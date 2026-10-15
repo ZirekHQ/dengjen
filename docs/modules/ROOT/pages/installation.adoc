@@ -6,8 +6,8 @@ for it. eSpeak-ng comes from the `dengjen-espeak-rs-sys` crate, and its data shi
 
 [source,sh]
 ----
-git clone https://github.com/ZirekHQ/dengjen-tts.git
-cd dengjen-tts
+git clone https://github.com/ZirekHQ/dengjen.git
+cd dengjen
 ----
 
 Then build the workspace, or just the CLI frontend:

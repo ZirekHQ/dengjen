@@ -198,7 +198,7 @@ publishing {
             pom {
                 name.set("dengjen-tts")
                 description.set("Java bindings for libdengjen, the C API for dengjen-tts.")
-                url.set("https://github.com/ZirekHQ/dengjen-tts")
+                url.set("https://github.com/ZirekHQ/dengjen")
                 licenses {
                     license {
                         name.set("GPL-3.0-or-later")
@@ -207,9 +207,9 @@ publishing {
                     }
                 }
                 scm {
-                    connection.set("scm:git:https://github.com/ZirekHQ/dengjen-tts.git")
-                    developerConnection.set("scm:git:git@github.com:ZirekHQ/dengjen-tts.git")
-                    url.set("https://github.com/ZirekHQ/dengjen-tts.git")
+                    connection.set("scm:git:https://github.com/ZirekHQ/dengjen.git")
+                    developerConnection.set("scm:git:git@github.com:ZirekHQ/dengjen.git")
+                    url.set("https://github.com/ZirekHQ/dengjen.git")
                 }
                 developers {
                     developer {
@@ -248,7 +248,7 @@ val nativeArtifactsDir: Directory =
 // The native libraries ship once per native change as their own artifact, one classifier jar per
 // platform, so a binding-only release uploads a few KB. natives.fingerprint is regenerated with
 // scripts/natives-fingerprint.sh --update; bump nativesVersion whenever it changes.
-val nativesVersion = "1.0.2"
+val nativesVersion = "1.0.3"
 val nativesArtifactId = "dengjen-tts-natives"
 val nativesFingerprint: String = file("natives.fingerprint").readText().trim()
 
@@ -283,7 +283,7 @@ val nativesAuxiliaryJars =
             archiveBaseName.set(nativesArtifactId)
             archiveVersion.set(nativesVersion)
             archiveClassifier.set(kind)
-            from(resources.text.fromString("$nativesArtifactId ships binaries only; see https://github.com/ZirekHQ/dengjen-tts.\n")) {
+            from(resources.text.fromString("$nativesArtifactId ships binaries only; see https://github.com/ZirekHQ/dengjen.\n")) {
                 rename { "README.txt" }
             }
         }
@@ -299,7 +299,7 @@ publishing {
             pom {
                 name.set("dengjen-tts-natives")
                 description.set("Native libdengjen libraries (one classifier per platform) for the dengjen-tts Java bindings.")
-                url.set("https://github.com/ZirekHQ/dengjen-tts")
+                url.set("https://github.com/ZirekHQ/dengjen")
                 licenses {
                     license {
                         name.set("GPL-3.0-or-later")
@@ -308,9 +308,9 @@ publishing {
                     }
                 }
                 scm {
-                    connection.set("scm:git:https://github.com/ZirekHQ/dengjen-tts.git")
-                    developerConnection.set("scm:git:git@github.com:ZirekHQ/dengjen-tts.git")
-                    url.set("https://github.com/ZirekHQ/dengjen-tts.git")
+                    connection.set("scm:git:https://github.com/ZirekHQ/dengjen.git")
+                    developerConnection.set("scm:git:git@github.com:ZirekHQ/dengjen.git")
+                    url.set("https://github.com/ZirekHQ/dengjen.git")
                 }
                 developers {
                     developer {

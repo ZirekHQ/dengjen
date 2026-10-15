@@ -49,8 +49,8 @@ into the installed package (run it with the environment where you installed `pyd
 
 [source,sh]
 ----
-curl -sSL https://github.com/ZirekHQ/dengjen-tts/archive/refs/tags/v2.0.3.tar.gz \
-  | tar xz --strip-components=3 dengjen-tts-2.0.3/deps/dev/espeak-ng-data
+curl -sSL https://github.com/ZirekHQ/dengjen/archive/refs/tags/v2.0.3.tar.gz \
+  | tar xz --strip-components=3 dengjen-2.0.3/deps/dev/espeak-ng-data
 cp -r espeak-ng-data "$(python -c 'import os, pydengjen; print(os.path.dirname(pydengjen.__file__))')"
 ----
 ====
@@ -58,7 +58,7 @@ cp -r espeak-ng-data "$(python -c 'import os, pydengjen; print(os.path.dirname(p
 == Run the example
 
 The example is `examples/python/synthesize.py` in the
-https://github.com/ZirekHQ/dengjen-tts[repository]. Clone the repository, then run the example with the
+https://github.com/ZirekHQ/dengjen[repository]. Clone the repository, then run the example with the
 manifest path:
 
 [source,sh]

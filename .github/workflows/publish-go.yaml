@@ -435,16 +435,16 @@ jobs:
           cp dengjen-tts/LICENSE "$dst/LICENSE"
 
           cat > "$dst/NOTICE" <<EOF
-          The binaries in this module were built from ZirekHQ/dengjen-tts at
+          The binaries in this module were built from ZirekHQ/dengjen at
           commit ${GITHUB_SHA}
-          (https://github.com/ZirekHQ/dengjen-tts/tree/${GITHUB_SHA}).
+          (https://github.com/ZirekHQ/dengjen/tree/${GITHUB_SHA}).
           That exact tree — not the parent repository's moving \`main\`
           branch — is the corresponding source for this release under
           GPL-3.0-or-later.
 
           This module bundles third-party components as prebuilt native
           binaries. See the parent project's own NOTICE
-          (https://github.com/ZirekHQ/dengjen-tts/blob/${GITHUB_SHA}/NOTICE)
+          (https://github.com/ZirekHQ/dengjen/blob/${GITHUB_SHA}/NOTICE)
           for the full attribution text; the same ONNX Runtime (MIT) and
           sonic (Apache-2.0) attributions apply here, since this module's
           binaries are built from that project's source. espeak-ng-data is
@@ -455,7 +455,7 @@ jobs:
           cat > "$dst/README.md" <<EOF
           # dengjen-tts-go
 
-          Go bindings for [dengjen-tts](https://github.com/ZirekHQ/dengjen-tts),
+          Go bindings for [dengjen-tts](https://github.com/ZirekHQ/dengjen),
           published with prebuilt native binaries for linux/amd64,
           linux/arm64, windows/amd64, and darwin/arm64.
 
@@ -464,7 +464,7 @@ jobs:
           \`\`\`
 
           This repository is generated on every release from
-          [\`bindings/go\`](https://github.com/ZirekHQ/dengjen-tts/tree/main/bindings/go)
+          [\`bindings/go\`](https://github.com/ZirekHQ/dengjen/tree/main/bindings/go)
           in the parent monorepo — do not hand-edit files here; changes go
           through the parent repo's \`bindings/go\` instead, and a new
           tagged release regenerates this repo from it.
@@ -514,7 +514,7 @@ jobs:
 
           git checkout --orphan release-snapshot
           git add -A
-          git commit -m "release: ${VERSION} (built from ZirekHQ/dengjen-tts@${GITHUB_SHA})"
+          git commit -m "release: ${VERSION} (built from ZirekHQ/dengjen@${GITHUB_SHA})"
 
           commits="$(git rev-list --count HEAD)"
           if [[ "$commits" -ne 1 ]]; then

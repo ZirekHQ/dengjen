@@ -28,8 +28,8 @@ version = "3.0.0"
 # both default and --all-features.
 rust-version = "1.88.0"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/ZirekHQ/dengjen-tts"
-homepage = "https://github.com/ZirekHQ/dengjen-tts"
+repository = "https://github.com/ZirekHQ/dengjen"
+homepage = "https://github.com/ZirekHQ/dengjen"
 
 
 

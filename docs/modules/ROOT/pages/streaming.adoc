@@ -80,7 +80,7 @@ defaults to `min(available CPU cores, 4)`, and an explicit `0` is rejected as
 `invalid_argument`. `MODE_BATCHED` does not mean tensor-level ONNX batching — a real trained
 voice's duration predictor is stochastic, so there is no reliable way to recover each
 sentence's audio length from a single padded multi-row inference call; see the design notes on
-https://github.com/ZirekHQ/dengjen-tts/issues/248[issue #248] for the underlying experiment.
+https://github.com/ZirekHQ/dengjen/issues/248[issue #248] for the underlying experiment.
 ====
 
 === Trying it with grpcurl
