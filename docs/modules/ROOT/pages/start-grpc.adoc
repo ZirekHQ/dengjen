@@ -35,7 +35,7 @@ Expand-Archive dengjen-tts-grpc-v2.1.1-windows-x64.zip -DestinationPath dengjen-
 [source,powershell]
 ----
 curl.exe -LO https://github.com/ZirekHQ/dengjen/archive/refs/tags/v2.1.1.tar.gz
-tar -xzf v2.1.1.tar.gz --strip-components=3 -C dengjen-tts-grpc dengjen-tts-2.1.1/deps/dev/espeak-ng-data
+tar -xzf v2.1.1.tar.gz --strip-components=3 -C dengjen-tts-grpc dengjen-2.1.1/deps/dev/espeak-ng-data
 ----
 
 == Start the server
