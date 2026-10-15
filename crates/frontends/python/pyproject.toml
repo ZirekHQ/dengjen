@@ -1,9 +1,13 @@
 [build-system]
-requires = ["maturin>=1.3"]
+requires = ["maturin>=1.9"]
 build-backend = "maturin"
 
 [project]
 name = "pydengjen"
+description = "Python bindings for the dengjen-tts speech synthesis engine"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+keywords = ["tts", "text-to-speech", "speech-synthesis", "onnx", "piper"]
 requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Rust",
@@ -11,6 +15,9 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
+[project.urls]
+Repository = "https://github.com/ZirekHQ/dengjen-tts"
+Issues = "https://github.com/ZirekHQ/dengjen-tts/issues"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
