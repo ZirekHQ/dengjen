@@ -17,6 +17,6 @@
 # Verification Gates (Run Before Finalizing)
 - Clippy: `cargo clippy --workspace --lib --bins -- -D warnings`
 - Format: `cargo fmt --all -- --check`
-- Tests: `cargo test --workspace --no-fail-fast` (plain `cargo test` stops at the first failing crate and never reaches the rest of the workspace). Needs `espeak-ng` installed or `DENGJEN_ESPEAKNG_DATA_DIRECTORY` pointed at its data dir — see `.github/workflows/rust-lint.yml`'s `asan` job for the same recipe. `dengjen-tts`'s `test_lazy_stream`/`test_parallel_stream`/`test_realtime_stream` self-skip (print and pass) when real Piper voice fixtures aren't at `crates/dengjen/synth/models/{std,rt}/`, which is the case by default; see `.github/CONTRIBUTING.md#benchmarks`.
+- Tests: `cargo test --workspace --no-fail-fast` (plain `cargo test` stops at the first failing crate and never reaches the rest of the workspace). Needs `espeak-ng` installed or `DENGJEN_ESPEAKNG_DATA_DIRECTORY` pointed at its data dir — see `.github/workflows/rust-lint.yaml`'s `asan` job for the same recipe. `dengjen-tts`'s `test_lazy_stream`/`test_parallel_stream`/`test_realtime_stream` self-skip (print and pass) when real Piper voice fixtures aren't at `crates/dengjen/synth/models/{std,rt}/`, which is the case by default; see `.github/CONTRIBUTING.md#benchmarks`.
 - Dependencies & Licenses: `cargo deny check licenses bans sources`
 - Review: Run `/code-review` before merging non-trivial changes

@@ -6,7 +6,7 @@ on:
       - ".github/scripts/bench-compare.py"
       - ".github/scripts/test_bench_compare.py"
       - ".github/scripts/testdata/**"
-      - ".github/workflows/bench-script-test.yml"
+      - ".github/workflows/bench-script-test.yaml"
 
 permissions:
   contents: read

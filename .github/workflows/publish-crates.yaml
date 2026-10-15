@@ -1,7 +1,7 @@
 name: Publish to crates.io
 
-# Called as a job of release.yml's flow, which is gated upstream (PR merge for the normal path,
-# prepare-release.yml's `gate` job for the override path) -- this file has none of its own. Not
+# Called as a job of release.yaml's flow, which is gated upstream (PR merge for the normal path,
+# prepare-release.yaml's `gate` job for the override path) -- this file has none of its own. Not
 # tag-triggered itself, so a stray tag push can't fire a real publish.
 on:
   workflow_call:
@@ -35,11 +35,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
 
       # Requires crates.io Trusted Publishing configured for all 13 crates, targeting BOTH
-      # release.yml and prepare-release.yml (crates.io matches the JWT's top-level triggering
+      # release.yaml and prepare-release.yaml (crates.io matches the JWT's top-level triggering
       # workflow, not this reusable file, even though id-token: write lives here).
 
       # github.workflow_ref stays bound to the top-level caller through nested workflow_call hops
-      # too -- release.yml (always @refs/heads/main, its only trigger) or prepare-release.yml (the
+      # too -- release.yaml (always @refs/heads/main, its only trigger) or prepare-release.yaml (the
       # override path, which can legitimately run from a tag ref -- see the stale-retry path).
       - name: verify OIDC workflow_ref matches crates.io Trusted Publishing target
         env:
@@ -49,13 +49,13 @@ jobs:
           actual_path="${WORKFLOW_REF%@*}"
           matched=false
           for repo in ZirekHQ/dengjen-tts ZirekHQ/dengjen; do
-            if [ "$WORKFLOW_REF" = "${repo}/.github/workflows/release.yml@refs/heads/main" ] \
-              || [ "$actual_path" = "${repo}/.github/workflows/prepare-release.yml" ]; then
+            if [ "$WORKFLOW_REF" = "${repo}/.github/workflows/release.yaml@refs/heads/main" ] \
+              || [ "$actual_path" = "${repo}/.github/workflows/prepare-release.yaml" ]; then
               matched=true
             fi
           done
           if [ "$matched" != true ]; then
-            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yml@refs/heads/main or prepare-release.yml@<any ref> in ZirekHQ/dengjen-tts or ZirekHQ/dengjen. crates.io Trusted Publishing for all 13 crates must target both release.yml and prepare-release.yml -- if either workflow was renamed, update crates.io's config and this check together." >&2
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen-tts or ZirekHQ/dengjen. crates.io Trusted Publishing for all 13 crates must target both release.yaml and prepare-release.yaml -- if either workflow was renamed, update crates.io's config and this check together." >&2
             exit 1
           fi
       - name: Authenticate with crates.io

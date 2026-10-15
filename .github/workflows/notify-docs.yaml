@@ -7,7 +7,7 @@ on:
       - 'docs/**'
       - 'examples/python/**'
       - 'examples/grpc/**'
-  # Fires only for releases created by a person or a PAT. release.yml creates its releases with
+  # Fires only for releases created by a person or a PAT. release.yaml creates its releases with
   # GITHUB_TOKEN, which does not trigger workflows, so it calls this file via workflow_call.
   release:
     types: [published]

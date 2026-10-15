@@ -1,20 +1,21 @@
-name: Publish Python wheels
+name: CI
 
-# Called as a job of release.yml's flow. release.yml has no gate of its own: the push-to-main
-# path is gated by the PR merge that triggers it, and the override path is gated by
-# prepare-release.yml's own `gate` job before it ever calls release.yml. Separate from CI.yml's
-# own build matrix, which smoke-tests on every push/PR but never publishes -- this file
-# duplicates that matrix rather than sharing it, same split tashkeel already uses for its
-# own python-wheel.yml (CI-only) vs python-publish.yml (release-only) pair.
-#
-# Build-only: PyPI Trusted Publishing is unsupported from a reusable workflow (see
-# pypa/gh-action-pypi-publish's README), so the upload lives in the top-level release.yml (push
-# path) and prepare-release.yml (override path), which download this file's `wheels-*` artifacts.
+# Smoke-test only: builds the wheel matrix to catch build breakage on every push/PR, but never
+# publishes. The real release build+publish lives in publish-python.yaml, invoked by release.yaml
+# (single-trigger, single-gate) -- this file is never called by it and has no gate of its own.
 on:
-  workflow_call:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   linux:
@@ -102,18 +103,18 @@ jobs:
         if: steps.build-wheels-3.outcome == 'failure'
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with: *build-wheels-args
-      - name: Check wheel metadata
+      - name: Test the x86_64 wheel
+        if: matrix.platform.target == 'x86_64'
         run: |
-          python3 -m pip install --quiet --only-binary :all: twine==6.1.0
-          python3 -m twine check --strict crates/frontends/python/dist/*
+          wheels=(crates/frontends/python/dist/*.whl)
+          [ "${#wheels[@]}" -eq 1 ] && [ -f "${wheels[0]}" ] || { echo "expected exactly one wheel, found: ${wheels[*]}" >&2; exit 1; }
+          python -m zipfile -e "${wheels[0]}" "$RUNNER_TEMP/wheel-test"
+          PYTHONPATH="$RUNNER_TEMP/wheel-test" python -m unittest discover -s crates/frontends/python/tests -v
       - name: Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wheels-linux-${{ matrix.platform.target }}
-          # maturin-action's working-directory (above) is where --out dist actually lands --
-          # not the workspace root upload-artifact resolves `path:` against by default.
           path: crates/frontends/python/dist
-          if-no-files-found: error
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
@@ -139,7 +140,7 @@ jobs:
           arch: ${{ matrix.platform.target }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: 3.x
           architecture: ${{ matrix.platform.target }}
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
@@ -152,21 +153,11 @@ jobs:
           # rather than the action re-resolving "latest" over the network
           # on every retry.
           maturin-version: v1.15.0
-      # Python is pinned, not 3.x, so a floating interpreter can't change what the abi3-py39
-      # wheel is tested against; it must load there with its bundled onnxruntime DLLs. Extracted
-      # rather than pip-installed: Sonar S8544 flags any pip install that doesn't pin hashes.
-      - name: Smoke-test wheel
-        shell: bash
-        run: |
-          python -m zipfile -e crates/frontends/python/dist/*.whl smoke
-          PYTHONPATH=smoke python -c "import pydengjen"
-          test -f smoke/pydengjen/espeak-ng-data/phontab
       - name: Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wheels-windows-${{ matrix.platform.target }}
           path: crates/frontends/python/dist
-          if-no-files-found: error
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
@@ -201,12 +192,17 @@ jobs:
           # rather than the action re-resolving "latest" over the network
           # on every retry.
           maturin-version: v1.15.0
+      - name: Test the wheel
+        run: |
+          wheels=(crates/frontends/python/dist/*.whl)
+          [ "${#wheels[@]}" -eq 1 ] && [ -f "${wheels[0]}" ] || { echo "expected exactly one wheel, found: ${wheels[*]}" >&2; exit 1; }
+          python -m zipfile -e "${wheels[0]}" "$RUNNER_TEMP/wheel-test"
+          PYTHONPATH="$RUNNER_TEMP/wheel-test" python -m unittest discover -s crates/frontends/python/tests -v
       - name: Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: crates/frontends/python/dist
-          if-no-files-found: error
 
   sdist:
     runs-on: ubuntu-latest
@@ -233,4 +229,56 @@ jobs:
         with:
           name: wheels-sdist
           path: crates/frontends/python/dist
-          if-no-files-found: error
+
+  go-module-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27'
+          cache: false
+      - run: bash scripts/test-go-module-path.sh v1.2.3 v2.0.0 v3.0.0
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        timeout-minutes: 15
+        with:
+          apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng protobuf-compiler
+      - name: locate espeak-ng-data directory
+        run: |
+          data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
+          if [ -z "$data_dir" ] || [ "$data_dir" = "." ]; then
+            echo "Could not locate an espeak-ng-data directory" >&2
+            exit 1
+          fi
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
+      - name: cargo test (workspace, excluding dengjen-espeak-phonemizer, dengjen-tts, and dengjen-tts-kokoro)
+        run: cargo test --workspace --exclude dengjen-espeak-phonemizer --exclude dengjen-tts --exclude dengjen-tts-kokoro --no-fail-fast
+      # libdengjen's build script rewrites libdengjen.h from cbindgen.toml; fail if that differs
+      # from the committed copy.
+      - name: libdengjen.h matches the committed header
+        run: git diff --exit-code -- crates/frontends/capi/libdengjen.h
+      - name: cargo test (dengjen-espeak-phonemizer, single-threaded)
+        run: cargo test -p dengjen-espeak-phonemizer -- --test-threads=1
+      - name: cargo test (dengjen-tts-piper, hebrew and pinyin features enabled)
+        run: cargo test -p dengjen-tts-piper --no-default-features --features espeak,tashkeel,hebrew,pinyin
+      - name: cargo test (dengjen-tts-piper, espeak feature disabled)
+        run: cargo test -p dengjen-tts-piper --no-default-features --features tashkeel
+      - name: cargo test (dengjen-tts-kokoro, espeak feature enabled)
+        run: cargo test -p dengjen-tts-kokoro --features espeak
+      - name: cargo test (dengjen-tts-kokoro, espeak feature disabled)
+        run: cargo test -p dengjen-tts-kokoro --no-default-features

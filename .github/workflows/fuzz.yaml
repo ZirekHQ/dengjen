@@ -1,6 +1,6 @@
 name: Fuzz
 
-# rust-lint.yml's fuzz-build only compiles the targets. This runs each one for a few minutes on a
+# rust-lint.yaml's fuzz-build only compiles the targets. This runs each one for a few minutes on a
 # schedule, carrying the corpus between runs, so a crash is found without slowing every PR.
 on:
   schedule:

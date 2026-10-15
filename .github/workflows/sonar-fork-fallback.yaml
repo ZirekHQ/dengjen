@@ -1,7 +1,7 @@
 name: Sonar fork fallback
 
 # Required check "SonarCloud Code Analysis" needs a status even for fork PRs, which never get
-# SONAR_TOKEN (sonar.yml skips them) -- this posts one via pull_request_target instead, since
+# SONAR_TOKEN (sonar.yaml skips them) -- this posts one via pull_request_target instead, since
 # GITHUB_TOKEN is read-only on pull_request. It deliberately never checks out or runs PR code.
 
 on:  # zizmor: ignore[dangerous-triggers]

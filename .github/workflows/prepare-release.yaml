@@ -95,10 +95,10 @@ jobs:
           git commit -m "chore: bump workspace version -> ${VERSION}"
           git push -u origin "$branch"
           gh pr create --title "chore: bump workspace version -> ${VERSION}" \
-            --body "Computed by \`prepare-release.yml\` from Conventional Commit subjects since the last tag (see \`scripts/next-version.sh\`). **Merging this releases v${VERSION}**: \`release.yml\` tags this merge commit \`v${VERSION}\` and runs \`publish-crates.yml\` (crates.io), \`publish-java.yml\` (Maven Central), \`publish-go.yml\` (the ZirekHQ/dengjen-tts-go mirror), \`publish-grpc.yml\` (the gRPC server's GitHub Release), and \`publish-python.yml\` (PyPI) all as jobs of that same run, no further approval needed. Review the version and the diff carefully before merging -- this is the real decision point." \
+            --body "Computed by \`prepare-release.yaml\` from Conventional Commit subjects since the last tag (see \`scripts/next-version.sh\`). **Merging this releases v${VERSION}**: \`release.yaml\` tags this merge commit \`v${VERSION}\` and runs \`publish-crates.yaml\` (crates.io), \`publish-java.yaml\` (Maven Central), \`publish-go.yaml\` (the ZirekHQ/dengjen-tts-go mirror), \`publish-grpc.yaml\` (the gRPC server's GitHub Release), and \`publish-python.yaml\` (PyPI) all as jobs of that same run, no further approval needed. Review the version and the diff carefully before merging -- this is the real decision point." \
             --base main --head "$branch"
 
-  # Override path: skip prepare/PR entirely and hand off straight to release.yml. This is
+  # Override path: skip prepare/PR entirely and hand off straight to release.yaml. This is
   # the one path in the whole pipeline with no PR review to fall back on, so it's the only
   # thing that still needs a human gate.
   gate:
@@ -115,7 +115,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    uses: ./.github/workflows/release.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     secrets:
       JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
       JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
@@ -135,9 +135,9 @@ jobs:
       previous_tag: ${{ inputs.previous_tag }}
       dry_run: ${{ inputs.dry_run == true }}
 
-  # Override-path counterpart of release.yml's `pypi` job: PyPI Trusted Publishing is unsupported
-  # from a reusable workflow, and release.yml is reusable here, so the upload has to run in this
-  # top-level file. Reads the `wheels-*` artifacts release.yml's `python` job produced.
+  # Override-path counterpart of release.yaml's `pypi` job: PyPI Trusted Publishing is unsupported
+  # from a reusable workflow, and release.yaml is reusable here, so the upload has to run in this
+  # top-level file. Reads the `wheels-*` artifacts release.yaml's `python` job produced.
   pypi:
     needs: release-now
     if: "!cancelled() && needs.release-now.result != 'skipped' && inputs.dry_run != true"

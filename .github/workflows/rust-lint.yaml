@@ -215,7 +215,7 @@ jobs:
         env:
           RUSTFLAGS: -Z sanitizer=address
         # test_lazy_stream/test_parallel_stream/test_realtime_stream need real model fixtures not
-        # present in CI (same reason CI.yml's test job excludes dengjen-tts entirely) -- everything
+        # present in CI (same reason CI.yaml's test job excludes dengjen-tts entirely) -- everything
         # else in the same binary, including synthetic-model tests, still runs.
         run: cargo +nightly test -p libdengjen -p dengjen-tts -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip test_lazy_stream --skip test_parallel_stream --skip test_realtime_stream
       - name: cargo test under AddressSanitizer (dengjen-espeak-phonemizer, single-threaded)
@@ -260,7 +260,7 @@ jobs:
 
   # audio/ops's bench is self-contained (synthetic samples) so it runs for real here. synth's
   # divan benches need real voice fixtures and run, compared against the merge base, in
-  # synth-bench.yml -- see CONTRIBUTING.md#benchmarks.
+  # synth-bench.yaml -- see CONTRIBUTING.md#benchmarks.
   benchmarks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -284,7 +284,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Mirrors CI.yml's `test` job's per-crate invocations under cargo-llvm-cov instrumentation.
+  # Mirrors CI.yaml's `test` job's per-crate invocations under cargo-llvm-cov instrumentation.
   # SonarCloud doesn't scan crates/** (see sonar-project.properties), so this reports coverage
   # to GitHub's own feature instead.
   coverage:
@@ -346,7 +346,7 @@ jobs:
           language: Rust
 
   # Real voices come from the sha256-pinned release assets in .github/bench-fixtures.json, the
-  # same fixtures synth-bench.yml uses.
+  # same fixtures synth-bench.yaml uses.
   kokoro-real-voice-e2e:
     needs: changes
     # always() so a skipped `changes` (schedule, dispatch) does not skip this job.
@@ -381,7 +381,7 @@ jobs:
             echo "piper_sha=$(jq -r '.fixtures[] | select(.name=="piper-std") | .sha256' .github/bench-fixtures.json)"
             echo "kokoro_sha=$(jq -r '.fixtures[] | select(.name=="kokoro") | .sha256' .github/bench-fixtures.json)"
           } >> "$GITHUB_OUTPUT"
-      # Same key and path as synth-bench.yml, which saves it on main, so PRs rarely download.
+      # Same key and path as synth-bench.yaml, which saves it on main, so PRs rarely download.
       - name: restore Kokoro fixture
         id: kokoro-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -407,7 +407,7 @@ jobs:
       - name: cargo test (dengjen-tts-kokoro, Japanese table symbols exist in the real vocab)
         run: cargo test -p dengjen-tts-kokoro --features japanese --lib every_table_symbol_exists_in_the_kokoro_vocab
 
-  # Real Piper voice from the pinned release asset; the benches live in synth-bench.yml.
+  # Real Piper voice from the pinned release asset; the benches live in synth-bench.yaml.
   piper-real-voice-e2e:
     needs: changes
     # always() so a skipped `changes` (schedule, dispatch) does not skip this job.
@@ -500,7 +500,7 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
-              - '.github/workflows/rust-lint.yml'
+              - '.github/workflows/rust-lint.yaml'
               - '.github/bench-fixtures.json'
               - '.github/scripts/fetch-*.sh'
 

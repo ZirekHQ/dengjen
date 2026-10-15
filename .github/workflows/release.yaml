@@ -1,6 +1,6 @@
 name: Release
 
-# No trigger or gate of its own -- prepare-release.yml is the single entry point (its `prepare`
+# No trigger or gate of its own -- prepare-release.yaml is the single entry point (its `prepare`
 # job for the PR-merge path, `gate`+`release-now` for the override path). Reacts to that PR's
 # merge landing on main (push) or the override path's direct call (workflow_call).
 on:
@@ -121,7 +121,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/publish-crates.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    uses: ./.github/workflows/publish-crates.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       dry_run: ${{ inputs.dry_run == true }}
 
@@ -131,13 +131,13 @@ jobs:
     if: "!cancelled() && needs.tag-and-release.result == 'success'"
     permissions:
       contents: write
-    uses: ./.github/workflows/publish-java.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    uses: ./.github/workflows/publish-java.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       tag: java-v${{ needs.tag-and-release.outputs.version }}
       previous_tag: ${{ inputs.previous_tag }}
       dry_run: ${{ inputs.dry_run == true }}
     secrets:
-      # push: the org secret; workflow_call from prepare-release.yml: the JRELEASER_* input it maps.
+      # push: the org secret; workflow_call from prepare-release.yaml: the JRELEASER_* input it maps.
       JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.SONATYPE_USERNAME || secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
       JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.SONATYPE_PASSWORD || secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
       JRELEASER_GPG_PASSPHRASE: ${{ secrets.JRELEASER_GPG_PASSPHRASE }}
@@ -150,7 +150,7 @@ jobs:
     if: "!cancelled() && needs.tag-and-release.result == 'success'"
     permissions:
       contents: read
-    uses: ./.github/workflows/publish-go.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    uses: ./.github/workflows/publish-go.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       tag: go-release-v${{ needs.tag-and-release.outputs.version }}
       dry_run: ${{ inputs.dry_run == true }}
@@ -166,7 +166,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: ./.github/workflows/publish-grpc.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    uses: ./.github/workflows/publish-grpc.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       tag: grpc-release-v${{ needs.tag-and-release.outputs.version }}
       dry_run: ${{ inputs.dry_run == true }}
@@ -177,12 +177,12 @@ jobs:
     if: "!cancelled() && needs.tag-and-release.result == 'success'"
     permissions:
       contents: read
-    uses: ./.github/workflows/publish-python.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    uses: ./.github/workflows/publish-python.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
 
   # PyPI Trusted Publishing matches the workflow file holding this job and is unsupported from a
-  # reusable one, so it can't live in publish-python.yml. Runs only on the push path, where
-  # release.yml is top-level -- the override path publishes from prepare-release.yml instead.
-  # Requires a PyPI trusted publisher for `pydengjen` on release.yml and prepare-release.yml.
+  # reusable one, so it can't live in publish-python.yaml. Runs only on the push path, where
+  # release.yaml is top-level -- the override path publishes from prepare-release.yaml instead.
+  # Requires a PyPI trusted publisher for `pydengjen` on release.yaml and prepare-release.yaml.
   pypi:
     name: PyPI
     needs: python
@@ -205,7 +205,7 @@ jobs:
           skip-existing: true
 
   # Installs what just reached crates.io and PyPI and synthesizes once. Runs on the push path only:
-  # the override path publishes to PyPI from prepare-release.yml, after this workflow returns.
+  # the override path publishes to PyPI from prepare-release.yaml, after this workflow returns.
   smoke:
     name: Post-publish smoke
     needs: [tag-and-release, crates, pypi]
@@ -214,7 +214,7 @@ jobs:
       needs.crates.result == 'success' && needs.pypi.result == 'success'
     permissions:
       contents: read
-    uses: ./.github/workflows/post-publish-smoke.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    uses: ./.github/workflows/post-publish-smoke.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       version: ${{ needs.tag-and-release.outputs.version }}
 
@@ -223,7 +223,7 @@ jobs:
   # release published last.
   github-release:
     name: Whole-repo GitHub Release
-    # On the override path `pypi` is skipped (prepare-release.yml publishes to PyPI after this
+    # On the override path `pypi` is skipped (prepare-release.yaml publishes to PyPI after this
     # workflow returns), so only the wheel build gates the release there.
     needs: [tag-and-release, crates, java, go, grpc, python, pypi]
     if: >-
@@ -302,7 +302,7 @@ jobs:
             "${notes_args[@]}" \
             "dengjen-tts-${VERSION}.cdx.json"
 
-  # A release created with GITHUB_TOKEN does not fire notify-docs.yml's `release: published`
+  # A release created with GITHUB_TOKEN does not fire notify-docs.yaml's `release: published`
   # trigger, so the docs site is pinged by calling that workflow directly.
   docs:
     name: Notify the docs site
@@ -310,7 +310,7 @@ jobs:
     if: ${{ !cancelled() && inputs.dry_run != true && needs.github-release.result == 'success' }}
     permissions:
       contents: read
-    uses: ./.github/workflows/notify-docs.yml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    uses: ./.github/workflows/notify-docs.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       tag: v${{ needs.tag-and-release.outputs.version }}
     secrets:
