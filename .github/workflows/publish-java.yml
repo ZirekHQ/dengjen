@@ -51,11 +51,16 @@ jobs:
           WORKFLOW_REF: ${{ github.workflow_ref }}
         run: |
           set -euo pipefail
-          expected_release="ZirekHQ/dengjen-tts/.github/workflows/release.yml@refs/heads/main"
-          expected_prepare_path="ZirekHQ/dengjen-tts/.github/workflows/prepare-release.yml"
           actual_path="${WORKFLOW_REF%@*}"
-          if [ "$WORKFLOW_REF" != "$expected_release" ] && [ "$actual_path" != "$expected_prepare_path" ]; then
-            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected '${expected_release}' or '${expected_prepare_path}@<any ref>' -- refusing to run outside release.yml's main-branch flow or prepare-release.yml's override path" >&2
+          matched=false
+          for repo in ZirekHQ/dengjen-tts ZirekHQ/dengjen; do
+            if [ "$WORKFLOW_REF" = "${repo}/.github/workflows/release.yml@refs/heads/main" ] \
+              || [ "$actual_path" = "${repo}/.github/workflows/prepare-release.yml" ]; then
+              matched=true
+            fi
+          done
+          if [ "$matched" != true ]; then
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yml@refs/heads/main or prepare-release.yml@<any ref> in ZirekHQ/dengjen-tts or ZirekHQ/dengjen -- refusing to run outside release.yml's main-branch flow or prepare-release.yml's override path" >&2
             exit 1
           fi
       - name: Check whether this version is already on Maven Central
