@@ -6,7 +6,7 @@ for it. eSpeak-ng comes from the `dengjen-espeak-rs-sys` crate, and its data shi
 
 [source,sh]
 ----
-git clone https://github.com/ZirekHQ/dengjen-tts.git
+git clone https://github.com/ZirekHQ/dengjen.git
 cd dengjen-tts
 ----
 

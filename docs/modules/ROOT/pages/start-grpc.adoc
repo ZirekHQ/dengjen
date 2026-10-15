@@ -21,7 +21,7 @@ In PowerShell:
 
 [source,powershell]
 ----
-curl.exe -LO https://github.com/ZirekHQ/dengjen-tts/releases/download/grpc-release-v2.1.1/dengjen-tts-grpc-v2.1.1-windows-x64.zip
+curl.exe -LO https://github.com/ZirekHQ/dengjen/releases/download/grpc-release-v2.1.1/dengjen-tts-grpc-v2.1.1-windows-x64.zip
 Expand-Archive dengjen-tts-grpc-v2.1.1-windows-x64.zip -DestinationPath dengjen-tts-grpc
 ----
 
@@ -34,7 +34,7 @@ Expand-Archive dengjen-tts-grpc-v2.1.1-windows-x64.zip -DestinationPath dengjen-
 +
 [source,powershell]
 ----
-curl.exe -LO https://github.com/ZirekHQ/dengjen-tts/archive/refs/tags/v2.1.1.tar.gz
+curl.exe -LO https://github.com/ZirekHQ/dengjen/archive/refs/tags/v2.1.1.tar.gz
 tar -xzf v2.1.1.tar.gz --strip-components=3 -C dengjen-tts-grpc dengjen-tts-2.1.1/deps/dev/espeak-ng-data
 ----
 
@@ -79,7 +79,7 @@ in WSL2 cannot reach a server running on the Windows host. Run the client on the
 
 [source,sh]
 ----
-curl -LO https://raw.githubusercontent.com/ZirekHQ/dengjen-tts/v2.1.1/crates/frontends/grpc/proto/dengjen_grpc.proto
+curl -LO https://raw.githubusercontent.com/ZirekHQ/dengjen/v2.1.1/crates/frontends/grpc/proto/dengjen_grpc.proto
 grpcurl -plaintext -import-path . -proto dengjen_grpc.proto -d '{}' \
     127.0.0.1:49314 dengjen_grpc.DengjenGrpc/GetDengjenVersion
 ----
@@ -87,7 +87,7 @@ grpcurl -plaintext -import-path . -proto dengjen_grpc.proto -d '{}' \
 If the server runs on another port, for example after `DENGJEN_GRPC_SERVER_PORT=0`, replace `49314` in
 that command.
 
-`examples/grpc/call_sequence.sh` in the https://github.com/ZirekHQ/dengjen-tts[repository] makes the same
+`examples/grpc/call_sequence.sh` in the https://github.com/ZirekHQ/dengjen[repository] makes the same
 call through a `call` function that adds the grpcurl flags and the address:
 
 [source,sh]

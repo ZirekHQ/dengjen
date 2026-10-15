@@ -19,7 +19,7 @@ sleep_seconds=5
 
 for attempt in $(seq 1 "$max_attempts"); do
   body=$(curl -s --connect-timeout 10 --max-time 30 \
-    -H "User-Agent: dengjen-tts-publish-ci (https://github.com/ZirekHQ/dengjen-tts)" \
+    -H "User-Agent: dengjen-tts-publish-ci (https://github.com/ZirekHQ/dengjen)" \
     "$url") || body=""
   if printf '%s\n' "$body" | grep -q "\"vers\":\"${version}\""; then
     echo "${name} ${version} is live on the crates.io index"
