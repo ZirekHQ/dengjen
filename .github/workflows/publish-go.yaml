@@ -570,7 +570,8 @@ jobs:
           mkdir -p /tmp/dengjen-go-verify
           cd /tmp/dengjen-go-verify
           go mod init verify
-          go get "${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_MODULE_PATH}@${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_VERSION}"
+          go mod edit -require="${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_MODULE_PATH}@${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_VERSION}"
+          go mod download "${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_MODULE_PATH}@${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_VERSION}"
 
           # The fetched manifest must be the one the assemble job wrote, and every bundled
           # library must match it, so a swapped or truncated native library fails the release.
