@@ -104,7 +104,7 @@ jobs:
         with: *build-wheels-args
       - name: Check wheel metadata
         run: |
-          python3 -m pip install --quiet twine==6.1.0
+          python3 -m pip install --quiet --only-binary :all: twine==6.1.0
           python3 -m twine check --strict crates/frontends/python/dist/*
       - name: Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
