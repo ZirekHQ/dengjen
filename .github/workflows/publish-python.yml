@@ -102,6 +102,10 @@ jobs:
         if: steps.build-wheels-3.outcome == 'failure'
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with: *build-wheels-args
+      - name: Check wheel metadata
+        run: |
+          python3 -m pip install --quiet --only-binary :all: twine==6.1.0
+          python3 -m twine check --strict crates/frontends/python/dist/*
       - name: Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
