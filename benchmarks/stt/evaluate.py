@@ -86,7 +86,11 @@ def hf_whisper_transcriber(spec):
     from transformers import pipeline
 
     asr = pipeline("automatic-speech-recognition", model=spec["id"], device=-1)
-    return lambda audio: asr({"raw": audio, "sampling_rate": SAMPLE_RATE})["text"]
+    return lambda audio: asr(
+        {"raw": audio, "sampling_rate": SAMPLE_RATE},
+        chunk_length_s=30,
+        generate_kwargs={"max_new_tokens": 128},
+    )["text"]
 
 
 def sherpa_ctc_transcriber(spec):
@@ -160,7 +164,7 @@ def main():
         except Exception as error:  # one broken model must not stop the sweep
             results.append({"model": spec["id"], "error": f"{type(error).__name__}: {error}"})
         print(json.dumps(results[-1], ensure_ascii=False), flush=True)
-    Path(args.out).write_text(json.dumps(results, indent=2, ensure_ascii=False))
+        Path(args.out).write_text(json.dumps(results, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
