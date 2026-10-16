@@ -7,6 +7,7 @@ import argparse
 import csv
 import io
 import json
+import sys
 import re
 import tarfile
 import time
@@ -168,6 +169,8 @@ def main():
             results.append({"model": spec["id"], "error": f"{type(error).__name__}: {error}"})
         print(json.dumps(results[-1], ensure_ascii=False), flush=True)
         Path(args.out).write_text(json.dumps(results, indent=2, ensure_ascii=False))
+    if not any("wer" in r for r in results):
+        sys.exit("no model produced a score")
 
 
 if __name__ == "__main__":
