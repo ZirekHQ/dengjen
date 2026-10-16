@@ -51,7 +51,9 @@ jobs:
         if: always()
         run: |
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
+          import json, os
+          if not os.path.exists("results.json"):
+              raise SystemExit("No results.json: the scoring step failed before writing results.")
           rows = json.load(open("results.json"))
           print("| Model | WER % | CER % | Size MB | RTF (CPU) | Clips |")
           print("|---|---|---|---|---|---|")
@@ -66,3 +68,4 @@ jobs:
         with:
           name: stt-benchmark-${{ matrix.os }}-${{ matrix.test_set }}
           path: results.json
+          if-no-files-found: ignore

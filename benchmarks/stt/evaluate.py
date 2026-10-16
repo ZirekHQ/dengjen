@@ -121,11 +121,19 @@ BACKENDS = {
 def download_size_mb(spec):
     from huggingface_hub import HfApi
 
-    info = HfApi().model_info(spec["id"], files_metadata=True)
-    weights = [s.size or 0 for s in info.siblings if s.rfilename.endswith((".safetensors", ".onnx"))]
+    sizes = {f.rfilename: f.size or 0 for f in HfApi().model_info(spec["id"], files_metadata=True).siblings}
     if "model_file" in spec:
-        weights = [s.size or 0 for s in info.siblings if s.rfilename == spec["model_file"]]
-    return round(sum(weights) / 1e6, 1)
+        names = [spec["model_file"]]
+    else:
+        names = [n for n in sizes if n.endswith(".safetensors")] or [n for n in sizes if n.endswith(".bin")]
+    return round(sum(sizes.get(n, 0) for n in names) / 1e6, 1)
+
+
+def size_or_none(spec):
+    try:
+        return download_size_mb(spec)
+    except Exception:  # size is informational; keep the measured scores
+        return None
 
 
 def score(spec, clips, test_set):
@@ -141,7 +149,7 @@ def score(spec, clips, test_set):
         "model": spec["id"],
         "wer": round(100 * jiwer.wer(references, hypotheses), 2),
         "cer": round(100 * jiwer.cer(references, hypotheses), 2),
-        "size_mb": download_size_mb(spec),
+        "size_mb": size_or_none(spec),
         "rtf_cpu": round(elapsed / seconds, 3),
         "clips": len(clips),
         "set": test_set,

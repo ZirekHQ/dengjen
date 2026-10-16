@@ -4,6 +4,7 @@ librosa==1.0.0
 numpy==2.5.4
 pyarrow==26.0.0
 sherpa-onnx==1.13.8
+sherpa-onnx-core==1.13.8
 soundfile==0.14.0
 torch==2.14.1
 transformers==5.19.0
