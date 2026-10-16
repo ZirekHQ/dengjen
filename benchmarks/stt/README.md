@@ -3,12 +3,13 @@
 Scores existing Hugging Face Kurmanji speech-to-text models by WER and CER on CPU.
 
 ```sh
-pip install -r benchmarks/stt/requirements.txt
+pip install --require-hashes -r benchmarks/stt/requirements.txt
 python benchmarks/stt/evaluate.py --set cv --limit 300 --out results.json
 ```
 
 `--set` is `cv` (Common Voice 22, `kmr` test split) or `kobani` (FLEURS-style
 [northern-kurdish-fleurs](https://huggingface.co/datasets/aranemini/northern-kurdish-fleurs) test split).
+`requirements.txt` is the hashed lock of `requirements.in` (`uv pip compile --universal --generate-hashes`).
 `--only <substring>` filters models; `models.json` lists them. The `STT benchmark` workflow runs both
 sets on ubuntu and macOS via `workflow_dispatch`.
 

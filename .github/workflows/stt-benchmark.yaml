@@ -40,7 +40,7 @@ jobs:
           key: hf-stt-${{ runner.os }}-${{ hashFiles('benchmarks/stt/models.json') }}
       - name: Install dependencies
         run: |
-          python -m pip install --only-binary :all: -r benchmarks/stt/requirements.txt
+          python -m pip install --require-hashes --only-binary :all: -r benchmarks/stt/requirements.txt
       - name: Score the models
         timeout-minutes: 180
         env:

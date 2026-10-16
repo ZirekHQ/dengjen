@@ -155,9 +155,12 @@ def main():
     parser.add_argument("--only", help="substring filter on the model id")
     parser.add_argument("--out", default="results.json")
     args = parser.parse_args()
+    if args.limit < 1:
+        parser.error("--limit must be at least 1")
     specs = [m for m in json.load(open(args.models)) if not args.only or args.only in m["id"]]
     clips = TEST_SETS[args.test_set](args.limit)
     results = []
+    Path(args.out).write_text("[]")
     for spec in specs:
         try:
             results.append(score(spec, clips, args.test_set))
