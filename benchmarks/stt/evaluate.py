@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Scores Kurmanji speech-to-text models on the Common Voice kmr or FLEURS-Kobani test split.
+"""Scores Kurmanji speech-to-text models on the first N clips of the Common Voice kmr or Kobani test split.
 
-Reports WER, CER, parameter-free download size and CPU real-time factor per model.
+Reports WER, CER, weight download size (MB) and CPU real-time factor per model.
 """
 import argparse
 import csv

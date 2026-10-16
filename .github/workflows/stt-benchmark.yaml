@@ -1,9 +1,6 @@
 name: STT benchmark
 
 on:
-  push:
-    branches: [feat/NOJIRA_stt_benchmark]
-    paths: [benchmarks/stt/**, .github/workflows/stt-benchmark.yaml]
   workflow_dispatch:
     inputs:
       limit:
