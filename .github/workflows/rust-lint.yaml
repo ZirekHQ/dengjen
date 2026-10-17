@@ -36,6 +36,8 @@ jobs:
       # channel + clippy/rustfmt components come from rust-toolchain.toml
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - run: cargo install clippy-sarif sarif-fmt --locked
       - name: cargo clippy
         # SonarCloud has no Rust analyzer, so nothing else uploads SARIF for these crates --
@@ -70,6 +72,8 @@ jobs:
       # channel comes from rust-toolchain.toml
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       # cargo-semver-checks builds each baseline from the registry or a git rev without our
       # Cargo.lock, so a release whose manifests allow ort ^2.0.0-rc.13 resolves rc.14 and no
       # longer compiles. Build the latest tag from a worktree with ort pinned instead.
@@ -181,6 +185,8 @@ jobs:
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - name: cargo check (MSRV, default features)
         run: cargo check --workspace --locked
       - name: cargo check (MSRV, all features)
@@ -205,6 +211,8 @@ jobs:
           toolchain: nightly
           components: rust-src
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - name: locate espeak-ng-data directory
         run: |
           data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
@@ -246,6 +254,8 @@ jobs:
           toolchain: nightly
           components: rust-src
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - run: cargo install cargo-fuzz --locked
       - name: cargo fuzz build (map_phonemes_to_ids)
         working-directory: crates/dengjen/models/piper
@@ -276,6 +286,8 @@ jobs:
           apt-packages: clang libclang-dev llvm-dev cmake protobuf-compiler
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - name: cargo bench (audio-ops)
         working-directory: crates/audio/ops
         run: |
@@ -312,6 +324,8 @@ jobs:
         with:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
           tool: cargo-llvm-cov
@@ -368,6 +382,8 @@ jobs:
         with:
           apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - name: locate espeak-ng-data directory
         run: |
           data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
@@ -429,6 +445,8 @@ jobs:
         with:
           apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - name: locate espeak-ng-data directory
         run: |
           data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
@@ -524,6 +542,8 @@ jobs:
           apt-packages: clang libclang-dev llvm-dev cmake protobuf-compiler
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
@@ -567,6 +587,8 @@ jobs:
           apt-packages: clang libclang-dev llvm-dev cmake protobuf-compiler
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27'
