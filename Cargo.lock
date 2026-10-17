@@ -1787,6 +1787,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "libdengjen-stt"
+version = "3.0.0"
+dependencies = [
+ "cbindgen",
+ "dengjen-stt",
+ "ffi-support",
+ "tempfile",
+ "workspace-hack",
+]
+
+[[package]]
 name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

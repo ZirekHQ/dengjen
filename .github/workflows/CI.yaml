@@ -268,10 +268,10 @@ jobs:
           echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
       - name: cargo test (workspace, excluding dengjen-espeak-phonemizer, dengjen-tts, and dengjen-tts-kokoro)
         run: cargo test --workspace --exclude dengjen-espeak-phonemizer --exclude dengjen-tts --exclude dengjen-tts-kokoro --no-fail-fast
-      # libdengjen's build script rewrites libdengjen.h from cbindgen.toml; fail if that differs
-      # from the committed copy.
-      - name: libdengjen.h matches the committed header
-        run: git diff --exit-code -- crates/frontends/capi/libdengjen.h
+      # The C API build scripts rewrite their headers from cbindgen.toml; fail if one differs from
+      # the committed copy.
+      - name: C headers match the committed copies
+        run: git diff --exit-code -- crates/frontends/capi/libdengjen.h crates/frontends/capi-stt/libdengjen_stt.h
       - name: cargo test (dengjen-espeak-phonemizer, single-threaded)
         run: cargo test -p dengjen-espeak-phonemizer -- --test-threads=1
       - name: cargo test (dengjen-tts-piper, hebrew and pinyin features enabled)
