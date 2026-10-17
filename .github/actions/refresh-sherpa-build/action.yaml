@@ -3,7 +3,7 @@ description: Drops the cached sherpa-onnx-sys build output so its prebuilt libra
 runs:
   using: composite
   steps:
-    # rust-cache prunes target/sherpa-onnx-prebuilt but keeps the build script's cached output, so the
-    # restored link path dangles.
+    # rust-cache prunes the files inside target/sherpa-onnx-prebuilt but keeps the directory and the
+    # build script's cached output, so the build script neither re-downloads nor finds the libraries.
     - shell: bash
-      run: rm -rf target/*/build/sherpa-onnx-sys-* target/*/*/build/sherpa-onnx-sys-*
+      run: rm -rf target/sherpa-onnx-prebuilt target/*/build/sherpa-onnx-sys-* target/*/*/build/sherpa-onnx-sys-*
