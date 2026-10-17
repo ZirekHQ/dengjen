@@ -17,6 +17,10 @@ use std::path::{Path, PathBuf};
 pub const MODEL_FILE: &str = "model.int8.onnx";
 pub const TOKENS_FILE: &str = "tokens.txt";
 
+const MODEL_RATE: i64 = 16_000;
+// sherpa-onnx#4042: shorter streams abort the process instead of returning an error.
+const MIN_MODEL_SAMPLES: i64 = 400;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum SttError {
     MissingModelFile(PathBuf),
@@ -67,11 +71,18 @@ fn require_file(dir: &Path, name: &str) -> Result<String, SttError> {
 }
 
 fn validate(samples: &[f32], sample_rate: i32) -> Result<(), SttError> {
-    match (samples.is_empty(), sample_rate > 0) {
-        (true, _) => Err(SttError::InvalidAudio("no samples")),
-        (_, false) => Err(SttError::InvalidAudio("sample rate must be positive")),
-        _ => Ok(()),
+    if samples.is_empty() {
+        return Err(SttError::InvalidAudio("no samples"));
     }
+    if sample_rate <= 0 {
+        return Err(SttError::InvalidAudio("sample rate must be positive"));
+    }
+    let at_model_rate =
+        i64::try_from(samples.len()).unwrap_or(i64::MAX) * MODEL_RATE / i64::from(sample_rate);
+    if at_model_rate < MIN_MODEL_SAMPLES {
+        return Err(SttError::InvalidAudio("shorter than 25 ms"));
+    }
+    Ok(())
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -164,6 +175,15 @@ mod tests {
             Err(SttError::InvalidAudio("no samples"))
         );
         assert!(validate(&[0.0], 0).is_err());
+    }
+
+    #[test]
+    fn audio_under_25_ms_is_rejected_at_any_rate() {
+        let short = SttError::InvalidAudio("shorter than 25 ms");
+        assert_eq!(validate(&[0.0; 399], 16_000), Err(short));
+        assert_eq!(validate(&[0.0; 400], 16_000), Ok(()));
+        assert!(validate(&[0.0; 1_000], 48_000).is_err());
+        assert_eq!(validate(&[0.0; 1_200], 48_000), Ok(()));
     }
 
     const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
