@@ -248,7 +248,7 @@ val nativeArtifactsDir: Directory =
 // The native libraries ship once per native change as their own artifact, one classifier jar per
 // platform, so a binding-only release uploads a few KB. natives.fingerprint is regenerated with
 // scripts/natives-fingerprint.sh --update; bump nativesVersion whenever it changes.
-val nativesVersion = "1.0.6"
+val nativesVersion = "1.0.7"
 val nativesArtifactId = "dengjen-tts-natives"
 val nativesFingerprint: String = file("natives.fingerprint").readText().trim()
 
