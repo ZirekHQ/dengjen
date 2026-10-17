@@ -29,6 +29,13 @@
       "enabled": false
     },
     {
+      "description": "onnxruntime and torch publish no Python 3.15 wheels, which the Rust lint and STT benchmark jobs install",
+      "matchDepNames": [
+        "python"
+      ],
+      "allowedVersions": "<3.15"
+    },
+    {
       "description": "jgit is pinned to the 5.x line for the Gradle buildscript classpath",
       "matchPackageNames": [
         "org.eclipse.jgit:org.eclipse.jgit"
