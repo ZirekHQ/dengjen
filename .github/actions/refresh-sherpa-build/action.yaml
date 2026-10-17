@@ -1,0 +1,9 @@
+name: Refresh the sherpa-onnx-sys build script
+description: Drops the cached sherpa-onnx-sys build output so its prebuilt libraries are downloaded again.
+runs:
+  using: composite
+  steps:
+    # rust-cache prunes target/sherpa-onnx-prebuilt but keeps the build script's cached output, so the
+    # restored link path dangles.
+    - shell: bash
+      run: rm -rf target/*/build/sherpa-onnx-sys-* target/*/*/build/sherpa-onnx-sys-*
