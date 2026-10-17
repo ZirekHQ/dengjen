@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
     "crates/core",
+    "crates/stt",
     "crates/dengjen/core",
     "crates/dengjen/synth",
     "crates/dengjen/models/piper",
