@@ -71,15 +71,18 @@ fn require_file(dir: &Path, name: &str) -> Result<String, SttError> {
 }
 
 fn validate(samples: &[f32], sample_rate: i32) -> Result<(), SttError> {
-    if samples.is_empty() {
+    validate_len(samples.len(), sample_rate)
+}
+
+fn validate_len(len: usize, sample_rate: i32) -> Result<(), SttError> {
+    let len = i32::try_from(len).map_err(|_| SttError::InvalidAudio("too many samples"))?;
+    if len == 0 {
         return Err(SttError::InvalidAudio("no samples"));
     }
     if sample_rate <= 0 {
         return Err(SttError::InvalidAudio("sample rate must be positive"));
     }
-    let at_model_rate =
-        i64::try_from(samples.len()).unwrap_or(i64::MAX) * MODEL_RATE / i64::from(sample_rate);
-    if at_model_rate < MIN_MODEL_SAMPLES {
+    if i64::from(len) * MODEL_RATE / i64::from(sample_rate) < MIN_MODEL_SAMPLES {
         return Err(SttError::InvalidAudio("shorter than 25 ms"));
     }
     Ok(())
@@ -175,6 +178,16 @@ mod tests {
             Err(SttError::InvalidAudio("no samples"))
         );
         assert!(validate(&[0.0], 0).is_err());
+    }
+
+    #[test]
+    fn sample_counts_beyond_the_native_i32_limit_are_rejected() {
+        let limit = usize::try_from(i32::MAX).unwrap();
+        assert_eq!(validate_len(limit, 16_000), Ok(()));
+        assert_eq!(
+            validate_len(limit + 1, 16_000),
+            Err(SttError::InvalidAudio("too many samples"))
+        );
     }
 
     #[test]
