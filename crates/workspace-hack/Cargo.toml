@@ -23,6 +23,7 @@ either = { version = "1", features = ["use_std"] }
 fastrand = { version = "2" }
 futures-core = { version = "0.3" }
 futures-sink = { version = "0.3" }
+getrandom = { version = "0.3", default-features = false, features = ["std", "wasm_js"] }
 http = { version = "1" }
 httparse = { version = "1" }
 indexmap = { version = "2" }
@@ -33,6 +34,7 @@ ndarray = { version = "0.17" }
 nom = { version = "7" }
 num-traits = { version = "0.2", default-features = false, features = ["i128", "std"] }
 once_cell = { version = "1" }
+percent-encoding = { version = "2" }
 phf_shared = { version = "0.13", default-features = false, features = ["std"] }
 ppv-lite86 = { version = "0.2", default-features = false, features = ["simd", "std"] }
 prost = { version = "0.14" }
@@ -46,21 +48,26 @@ serde_core = { version = "1", features = ["alloc"] }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
 tracing = { version = "0.1" }
 tracing-core = { version = "0.1" }
+typenum = { version = "1", default-features = false, features = ["const-generics"] }
 
 [build-dependencies]
 aho-corasick = { version = "1" }
+cc = { version = "1", default-features = false, features = ["parallel"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "std", "suggestions", "usage", "wrap_help"] }
 either = { version = "1", features = ["use_std"] }
 fastrand = { version = "2" }
+getrandom = { version = "0.3", default-features = false, features = ["std", "wasm_js"] }
 http = { version = "1" }
 httparse = { version = "1" }
 indexmap = { version = "2" }
 libc = { version = "0.2" }
 log = { version = "0.4", default-features = false, features = ["std"] }
+lzma-rs = { version = "0.3", default-features = false, features = ["stream"] }
 memchr = { version = "2" }
 nom = { version = "7" }
 once_cell = { version = "1" }
+percent-encoding = { version = "2" }
 phf_shared = { version = "0.13", default-features = false, features = ["std"] }
 prost = { version = "0.14" }
 quote = { version = "1" }
@@ -69,8 +76,11 @@ regex-automata = { version = "0.4", default-features = false, features = ["dfa-b
 regex-syntax = { version = "0.8" }
 serde = { version = "1", features = ["alloc", "derive"] }
 serde_core = { version = "1", features = ["alloc"] }
+smallvec = { version = "1", default-features = false, features = ["const_new"] }
 syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
-syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "fold", "full", "visit-mut"] }
+syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
+typenum = { version = "1", default-features = false, features = ["const-generics"] }
+zeroize = { version = "1", features = ["zeroize_derive"] }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
