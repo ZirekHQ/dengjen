@@ -170,6 +170,8 @@ pub extern "C" fn libdengjenSttAbiVersion() -> u32 {
 /// # Safety
 /// `model_dir` and `expected_sha256` must be null or NUL-terminated strings; `config` must be
 /// null or point to an `SttConfig` whose `struct_size` is truthful.
+/// `out_error` must be non-null, aligned, initialized, writable and not accessed by anything else
+/// during the call.
 #[no_mangle]
 #[allow(non_snake_case)]
 pub unsafe extern "C" fn libdengjenSttLoad(
@@ -194,6 +196,8 @@ pub unsafe extern "C" fn libdengjenSttLoad(
 /// # Safety
 /// `recognizer` must be null or a live handle from [`libdengjenSttLoad`] that is not unloaded
 /// during the call; `samples` must be null or point to `len` readable floats.
+/// `out_error` must be non-null, aligned, initialized, writable and not accessed by anything else
+/// during the call.
 #[no_mangle]
 #[allow(non_snake_case)]
 pub unsafe extern "C" fn libdengjenSttRecognize(

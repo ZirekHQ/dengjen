@@ -10,7 +10,8 @@ ExternError err = {0};
 DengjenRecognizer *r = libdengjenSttLoad(model_dir, NULL, expected_sha256, &err);
 if (!r) { /* inspect err.code, then libdengjenSttFreeString(err.message) */ }
 char *text = libdengjenSttRecognize(r, samples, n, 16000, &err);
-libdengjenSttFreeString(text);
+if (text) libdengjenSttFreeString(text);
+else { /* inspect err.code, then libdengjenSttFreeString(err.message) */ }
 libdengjenSttUnload(r);
 ```
 

@@ -3,6 +3,7 @@ cpp_compat = true
 line_endings = "LF"
 usize_is_size_t = true
 include_version = true
+include_guard = "LIBDENGJEN_STT_H"
 documentation = false
 
 [parse]

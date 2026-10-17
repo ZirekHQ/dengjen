@@ -1,3 +1,6 @@
+#ifndef LIBDENGJEN_STT_H
+#define LIBDENGJEN_STT_H
+
 /* Generated with cbindgen:0.29.4 */
 
 #include <stdarg.h>
@@ -67,3 +70,5 @@ void libdengjenSttUnload(struct DengjenRecognizer *recognizer);
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
+
+#endif  /* LIBDENGJEN_STT_H */
