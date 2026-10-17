@@ -1,0 +1,27 @@
+[package]
+name = "libdengjen-stt"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "C API bindings for the dengjen-stt speech recognizer"
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "libdengjen_stt"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+dengjen-stt.workspace = true
+ffi-support = "0.4.4"
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[build-dependencies]
+cbindgen = "0.29.4"

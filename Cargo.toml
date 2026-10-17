@@ -12,6 +12,7 @@ members = [
     "crates/frontends/grpc",
     "crates/frontends/python",
     "crates/frontends/capi",
+    "crates/frontends/capi-stt",
     "crates/frontends/cli",
     "crates/text/espeak-phonemizer",
     "crates/text/hebrew-phonemizer",
@@ -46,6 +47,7 @@ dengjen-tts-melotts = { path = "crates/dengjen/models/melotts", version = "3.0.0
 dengjen-espeak-phonemizer = { path = "crates/text/espeak-phonemizer", version = "3.0.0" }
 dengjen-hebrew-phonemizer = { path = "crates/text/hebrew-phonemizer", version = "3.0.0" }
 dengjen-pinyin-phonemizer = { path = "crates/text/pinyin-phonemizer", version = "3.0.0" }
+dengjen-stt = { path = "crates/stt", version = "3.0.0" }
 dengjen-audio-ops = { path = "crates/audio/ops", version = "3.0.0" }
 tracing = "0.1"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
