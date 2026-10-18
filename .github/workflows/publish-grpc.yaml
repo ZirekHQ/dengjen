@@ -69,105 +69,60 @@ jobs:
             exit 1
           fi
 
-  build-windows:
+  release:
     needs: check
     if: needs.check.outputs.skip != 'true'
-    runs-on: windows-2022
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       id-token: write
       attestations: write
-    env:
-      CMAKE_GENERATOR: Ninja
     steps:
-      - name: install-clang
-        run: choco install llvm -y --no-progress
-      - name: install-protoc
-        # dengjen-tts-grpc's build.rs shells out to protoc (tonic-build/prost-build); unlike libdengjen, it compiles a .proto.
-        run: choco install protoc -y --no-progress
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
-      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          arch: x64
-      # channel comes from rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
-        with:
-          targets: x86_64-pc-windows-msvc
-      - name: cargo build (release)
-        run: cargo build --release --locked -p dengjen-tts-grpc --features japanese --target x86_64-pc-windows-msvc
-      - name: assert no unbundled runtime dependency
-        # Same check as publish-go.yaml's build-windows job: ort's copy-dylibs feature can drop a
-        # companion ONNX Runtime DLL next to the build output instead of statically linking it -- the
-        # release archive below must include it too, or dengjen-nvda's vendored binary fails to start.
-        shell: bash
-        env:
-          OUT_DIR: target/x86_64-pc-windows-msvc/release
-        run: |
-          set -euo pipefail
-          exe="${OUT_DIR}/dengjen-tts-grpc.exe"
-          deps="$(llvm-objdump -p "$exe" | sed -n 's/^[[:space:]]*DLL Name:[[:space:]]*//p')"
-          echo "Imported DLLs of ${exe}:"
-          echo "$deps"
-          rc=0
-          while IFS= read -r dep; do
-            case "$dep" in
-              *onnxruntime*|*ONNXRUNTIME*)
-                if [[ ! -e "${OUT_DIR}/${dep}" ]]; then
-                  echo "::error::${exe} imports ${dep}, which is not produced alongside it and would not be bundled" >&2
-                  rc=1
-                fi
-                ;;
-            esac
-          done <<< "$deps"
-          exit "$rc"
+          pattern: natives-*
+          path: natives
       - name: extract target version
         id: version
-        shell: bash
         env:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          tag="${RELEASE_TAG}"
-          version="${tag#grpc-release-}"
+          version="${RELEASE_TAG#grpc-release-}"
           if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Tag '${tag}' does not carry a valid vX.Y.Z suffix" >&2
+            echo "Tag '${RELEASE_TAG}' does not carry a valid vX.Y.Z suffix" >&2
             exit 1
           fi
-          # Catches a tag drifted from the workspace version it's meant to name -- otherwise this
-          # workflow happily mislabels the release asset. dengjen-tts-grpc's own Cargo.toml has no
-          # literal version (it's `version.workspace = true`), so this reads the root Cargo.toml instead.
+          # dengjen-tts-grpc's own Cargo.toml has no literal version (it's `version.workspace = true`),
+          # so this reads the root Cargo.toml instead.
           crate_version="$(awk '/^\[workspace\.package\]/{f=1;next} /^\[/{f=0} f && /^version = /{gsub(/version = "|"/,""); print; exit}' Cargo.toml)"
           if [[ "$version" != "v${crate_version}" ]]; then
             echo "Tag version '${version}' does not match workspace package version 'v${crate_version}'" >&2
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-      - name: package release asset
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          New-Item -ItemType Directory -Force -Path release | Out-Null
-          Copy-Item target/x86_64-pc-windows-msvc/release/dengjen-tts-grpc.exe release/
-          Get-ChildItem target/x86_64-pc-windows-msvc/release/*onnxruntime* -ErrorAction SilentlyContinue |
-            Copy-Item -Destination release/
-          Copy-Item NOTICE release/
-          $zipName = "dengjen-tts-grpc-$env:STEPS_VERSION_OUTPUTS_VERSION-windows-x64.zip"
-          Compress-Archive -Path release/* -DestinationPath $zipName
-          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
-        id: package
+      - name: package release assets
         env:
-          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
-      - name: attest the release asset's build provenance
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for name in linux-x64 macos-arm64; do
+            chmod +x "natives/natives-${name}/dengjen-tts-grpc"
+            tar -C "natives/natives-${name}" -czf "dist/dengjen-tts-grpc-${VERSION}-${name}.tar.gz" .
+          done
+          (cd natives/natives-windows-x64 && zip -qr "../../dist/dengjen-tts-grpc-${VERSION}-windows-x64.zip" .)
+          ls -l dist
+      - name: attest the release assets' build provenance
         if: inputs.dry_run != true
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: ${{ steps.package.outputs.zip_name }}
+          subject-path: dist/*
       - name: create release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.tag }}
@@ -175,14 +130,14 @@ jobs:
           # gh release create defaults an unset --target to the repo's default branch, not the
           # commit checked out -- pin it explicitly instead.
           RELEASE_SHA: ${{ github.sha }}
-          ZIP_NAME: ${{ steps.package.outputs.zip_name }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          if ($env:DRY_RUN -eq "true") {
-            Write-Host "DRY RUN -- would create GitHub release $env:RELEASE_TAG with asset $env:ZIP_NAME targeting $env:RELEASE_SHA, skipping"
-          } else {
-            gh release create $env:RELEASE_TAG $env:ZIP_NAME `
-              --target $env:RELEASE_SHA `
-              --title "dengjen-tts-grpc $env:RELEASE_VERSION" `
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "DRY RUN -- would create GitHub release ${RELEASE_TAG} with $(ls dist | wc -l) assets targeting ${RELEASE_SHA}, skipping"
+          else
+            gh release create "$RELEASE_TAG" dist/* \
+              --target "$RELEASE_SHA" \
+              --title "dengjen-tts-grpc ${RELEASE_VERSION}" \
               --notes ""
-          }
+          fi

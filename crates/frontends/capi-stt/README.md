@@ -25,4 +25,4 @@ libdengjenSttUnload(r);
 - `libdengjenSttAbiVersion()` returns `STT_ABI_VERSION`.
 - `libdengjen_stt.h` and `libdengjen.h` both define `ExternError`; include only one per translation
   unit.
-- Linking is shared: ship the shared sherpa-onnx and ONNX Runtime libraries beside this one.
+- Linking is shared. The gRPC release archives ship this library with `libsherpa-onnx-c-api` and an ONNX Runtime in one directory that resolves its own dependencies; keep those files together.

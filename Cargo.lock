@@ -994,6 +994,7 @@ name = "dengjen-tts-python"
 version = "3.0.0"
 dependencies = [
  "dengjen-espeak-phonemizer",
+ "dengjen-stt",
  "dengjen-tashkeel",
  "dengjen-tts",
  "dengjen-tts-core",

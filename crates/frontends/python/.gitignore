@@ -1,2 +1,4 @@
 python/pydengjen/espeak-ng-data
 output.wav
+python/pydengjen/*sherpa-onnx-c-api*
+python/pydengjen/*onnxruntime*

@@ -20,6 +20,7 @@ ort-dylib = ["ort/load-dynamic"]
 tashkeel = ["dep:dengjen-tashkeel", "dengjen-tts-piper/tashkeel"]
 espeak = ["dep:dengjen-espeak-phonemizer", "dengjen-tts-piper/espeak", "dengjen-tts-kokoro/espeak", "dengjen-tts-melotts/espeak"]
 japanese = ["dengjen-tts-kokoro/japanese"]
+stt = ["dep:dengjen-stt"]
 hebrew = ["dengjen-tts-piper/hebrew"]
 pinyin = ["dengjen-tts-piper/pinyin", "dengjen-tts-melotts/pinyin"]
 
@@ -30,6 +31,7 @@ directml = ["dengjen-tts-piper/directml", "dengjen-tts-kokoro/directml", "dengje
 
 [dependencies]
 dengjen-espeak-phonemizer = { workspace = true, optional = true }
+dengjen-stt = { workspace = true, optional = true }
 dengjen-tts-core.workspace = true
 dengjen-tts.workspace = true
 

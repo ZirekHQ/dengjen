@@ -34,7 +34,7 @@ jobs:
       # channel comes from rust-toolchain.toml
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
 
-      # Requires crates.io Trusted Publishing configured for all 13 crates, targeting BOTH
+      # Requires crates.io Trusted Publishing configured for every published crate, targeting BOTH
       # release.yaml and prepare-release.yaml (crates.io matches the JWT's top-level triggering
       # workflow, not this reusable file, even though id-token: write lives here).
 
@@ -55,7 +55,7 @@ jobs:
             fi
           done
           if [ "$matched" != true ]; then
-            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen-tts or ZirekHQ/dengjen. crates.io Trusted Publishing for all 13 crates must target both release.yaml and prepare-release.yaml -- if either workflow was renamed, update crates.io's config and this check together." >&2
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen-tts or ZirekHQ/dengjen. crates.io Trusted Publishing for every published crate must target both release.yaml and prepare-release.yaml -- if either workflow was renamed, update crates.io's config and this check together." >&2
             exit 1
           fi
       - name: Authenticate with crates.io
@@ -79,13 +79,14 @@ jobs:
 
       # publish-crate-if-needed.sh skips a crate crates.io already has (a curl lookup, no token
       # needed) before CARGO_REGISTRY_TOKEN is read -- see the script's own comment for why.
-      - name: publish tier 1 (dengjen-audio-ops, dengjen-core)
+      - name: publish tier 1 (dengjen-audio-ops, dengjen-core, dengjen-stt)
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           bash .github/scripts/publish-crate-if-needed.sh dengjen-audio-ops "$VERSION"
           bash .github/scripts/publish-crate-if-needed.sh dengjen-core "$VERSION"
+          bash .github/scripts/publish-crate-if-needed.sh dengjen-stt "$VERSION"
       - name: wait for tier 1 to index
         if: env.DRY_RUN != 'true'
         env:
@@ -93,6 +94,7 @@ jobs:
         run: |
           bash .github/scripts/wait-for-crate.sh dengjen-audio-ops "$VERSION"
           bash .github/scripts/wait-for-crate.sh dengjen-core "$VERSION"
+          bash .github/scripts/wait-for-crate.sh dengjen-stt "$VERSION"
 
       - name: publish tier 2 (dengjen-tts-core)
         env:

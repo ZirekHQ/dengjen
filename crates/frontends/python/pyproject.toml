@@ -23,4 +23,8 @@ Issues = "https://github.com/ZirekHQ/dengjen/issues"
 features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "pydengjen.pydengjen"
-include = [{ path = "python/pydengjen/espeak-ng-data/**/*", format = "wheel" }]
+include = [
+    { path = "python/pydengjen/espeak-ng-data/**/*", format = "wheel" },
+    { path = "python/pydengjen/*sherpa-onnx-c-api*", format = "wheel" },
+    { path = "python/pydengjen/*onnxruntime*", format = "wheel" },
+]

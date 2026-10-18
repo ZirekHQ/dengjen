@@ -40,11 +40,41 @@ jobs:
       # steps below produce real numbers instead of leaving sonar.coverage at 0% (channel comes
       # from rust-toolchain.toml).
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - uses: ./.github/actions/refresh-sherpa-build # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
 
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '25'
+      # The Java and Go recognizer tests need the assembled STT natives and a real model; without
+      # them every Recognizer line reads as uncovered and new_coverage fails.
+      - name: Build and assemble the STT natives
+        run: |
+          set -euo pipefail
+          cargo build --release --locked -p libdengjen-stt
+          stage="$RUNNER_TEMP/stt-stage"
+          mkdir -p "$stage"
+          cp -L target/release/liblibdengjen_stt.so "$stage/"
+          cp -P target/sherpa-onnx-prebuilt/*/lib/* "$stage/"
+          layout="$(bash scripts/ort-gate.sh "$stage/libonnxruntime.so" 27)"
+          bash scripts/assemble-natives.sh linux "$layout" "$stage" "$RUNNER_TEMP/stt-native"
+          echo "DENGJEN_STT_NATIVE_DIR=$RUNNER_TEMP/stt-native" >> "$GITHUB_ENV"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/stt-model
+          key: stt-model-${{ hashFiles('.github/stt-smoke-model.json') }}
+      - name: Fetch the recognition model
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --only-binary :all: huggingface_hub==0.34.4
+          python3 - <<'PY'
+          import json, os
+          from huggingface_hub import snapshot_download
+          spec = json.load(open(".github/stt-smoke-model.json"))
+          path = snapshot_download(spec["repo"], allow_patterns=spec["files"], local_dir=os.environ["RUNNER_TEMP"] + "/stt-model")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"DENGJEN_STT_MODEL_DIR={path}\nDENGJEN_STT_MODEL_SHA256={spec['sha256']}\n")
+          PY
       - name: Java bindings coverage
         working-directory: bindings/java
         run: make coverage

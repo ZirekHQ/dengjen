@@ -91,3 +91,24 @@ if there's any chance it might panic.
 - This is a thin wrapper: `Speak`'s callback shape mirrors the C API
   closely rather than offering a fully idiomatic Go redesign (channels,
   `context.Context`-driven cancellation).
+
+## Speech recognition
+
+The `stt` package wraps `libdengjen-stt`. It is a separate package so text-to-speech users never
+link sherpa-onnx; the published module ships its libraries for linux/amd64, windows/amd64 and
+darwin/arm64 (not linux/arm64).
+
+```go
+r, err := stt.Load(modelDir, modelSHA256, 2)
+if err != nil {
+	return err
+}
+defer r.Close()
+text, err := r.Recognize(samples, 16000) // mono float32 in [-1, 1]
+if errors.Is(err, stt.ErrInvalidAudio) {
+	// empty buffer or a zero sample rate
+}
+```
+
+On Windows, put `stt/lib/windows_amd64` on `PATH` next to your executable's DLLs.
+

@@ -61,6 +61,44 @@ jobs:
           echo "wrote ${size} bytes"
           [ "$size" -gt 44 ]
 
+  natives-from-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: validate version
+        run: |
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "::error::invalid version '$VERSION'" >&2; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: download and unpack the gRPC release archive
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "grpc-release-v${VERSION}" --repo "$GITHUB_REPOSITORY" \
+            --pattern "dengjen-tts-grpc-v${VERSION}-linux-x64.tar.gz" --dir "$RUNNER_TEMP"
+          tar -C "$RUNNER_TEMP/release" -xzf "$RUNNER_TEMP/dengjen-tts-grpc-v${VERSION}-linux-x64.tar.gz"
+      - name: fetch the smoke model
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --only-binary :all: huggingface_hub==0.34.4
+          python3 - <<'PY'
+          import json, os
+          from huggingface_hub import snapshot_download
+          spec = json.load(open(".github/stt-smoke-model.json"))
+          path = snapshot_download(spec["repo"], allow_patterns=spec["files"], local_dir=os.environ["RUNNER_TEMP"] + "/stt-model")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"DENGJEN_STT_MODEL_DIR={path}\nDENGJEN_STT_MODEL_SHA256={spec['sha256']}\n")
+          PY
+      - name: smoke the unpacked release from a clean directory
+        run: bash scripts/smoke-natives.sh "$RUNNER_TEMP/release" --recognize
+
   wheel-from-pypi:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -99,4 +137,5 @@ jobs:
           assert chunks, "no audio chunks"
           assert len(chunks[0].get_wave_bytes()) > 44
           print(f"{len(chunks)} chunks")
+          assert hasattr(pydengjen, "Recognizer"), "the Linux x86_64 wheel lost its speech recognizer"
           PY

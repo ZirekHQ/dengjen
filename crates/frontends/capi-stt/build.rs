@@ -5,6 +5,7 @@ use std::path::Path;
 const HEADER_OUTPUT: &str = "libdengjen_stt.h";
 
 fn main() {
+    emit_runtime_search_path();
     println!("cargo:rerun-if-changed=./src/lib.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
 
@@ -34,4 +35,13 @@ fn in_workspace_tree(crate_dir: &Path) -> bool {
         .nth(2)
         .and_then(Path::file_name)
         .is_some_and(|name| name == "crates")
+}
+
+// sherpa-onnx-sys's own rpath applies only to its own targets, not to this cdylib.
+fn emit_runtime_search_path() {
+    match env::var("CARGO_CFG_TARGET_OS").as_deref() {
+        Ok("linux") => println!("cargo:rustc-cdylib-link-arg=-Wl,-rpath,$ORIGIN"),
+        Ok("macos") => println!("cargo:rustc-cdylib-link-arg=-Wl,-rpath,@loader_path"),
+        _ => {}
+    }
 }
