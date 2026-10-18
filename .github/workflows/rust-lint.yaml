@@ -555,6 +555,18 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: scripts/natives-fingerprint.sh --check-bump "origin/${BASE_REF}"
+      - name: Check the STT natives fingerprint
+        # A change to crates/stt, libdengjen-stt or the sherpa-onnx pin must refresh
+        # bindings/java/stt-natives.fingerprint and bump sttNativesVersion.
+        env:
+          NATIVES_KIND: stt
+        run: scripts/natives-fingerprint.sh --check
+      - name: Check sttNativesVersion was bumped with the fingerprint
+        if: github.event_name == 'pull_request'
+        env:
+          NATIVES_KIND: stt
+          BASE_REF: ${{ github.base_ref }}
+        run: scripts/natives-fingerprint.sh --check-bump "origin/${BASE_REF}"
       - name: make test
         working-directory: bindings/java
         env:
@@ -587,6 +599,9 @@ jobs:
       - name: make vet
         working-directory: bindings/go
         run: make vet
+      - name: make test-stt
+        working-directory: bindings/go
+        run: make test-stt
       - name: make fmt-check
         working-directory: bindings/go
         run: make fmt-check

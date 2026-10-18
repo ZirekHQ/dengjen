@@ -7,6 +7,9 @@ os.environ.setdefault(
     os.path.abspath(os.path.dirname(__file__))
 )
 
+if hasattr(os, "add_dll_directory"):
+    os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)))
+
 from .pydengjen import *
 
 __doc__ = pydengjen.__doc__

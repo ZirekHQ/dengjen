@@ -46,6 +46,25 @@ try (Voice voice = Voice.load("/path/to/voice/config.json")) {
 }
 ```
 
+## Speech recognition
+
+`Recognizer` wraps `libdengjen-stt`. Add the natives for your platform next to the bindings:
+
+```kotlin
+runtimeOnly("io.github.zirekhq:dengjen-stt-natives:<version>:linux-x86_64")
+```
+
+```java
+try (Recognizer recognizer = Recognizer.load(modelDir, modelSha256, 2)) {
+  String text = recognizer.recognize(samples, 16_000);
+}
+```
+
+`samples` are mono floats in [-1, 1]. Failures throw `SttException` with an `SttErrorCode`. Set
+`-Ddengjen.stt.native.dir=<dir>` to load a directory you built yourself instead of the classpath
+jar. On Windows, `onnxruntime.dll` must be the only ONNX Runtime loaded in the JVM, so combine
+this with the text-to-speech bindings only when both use the same ONNX Runtime version.
+
 ## Callback safety
 
 The handler passed to `speak` must not throw and must return promptly — an

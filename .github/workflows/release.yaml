@@ -114,10 +114,12 @@ jobs:
             exit 1
           fi
 
+  # Runs before anything is published, so a natives failure stops the whole release instead of
+  # leaving crates.io ahead of Maven Central, PyPI and the GitHub releases.
   crates:
     name: crates.io
-    needs: tag-and-release
-    if: "!cancelled() && needs.tag-and-release.result == 'success'"
+    needs: [tag-and-release, natives]
+    if: "!cancelled() && needs.tag-and-release.result == 'success' && needs.natives.result == 'success'"
     permissions:
       contents: read
       id-token: write
@@ -125,10 +127,18 @@ jobs:
     with:
       dry_run: ${{ inputs.dry_run == true }}
 
-  java:
-    name: Maven Central (Java bindings)
+  natives:
+    name: Assemble desktop natives
     needs: tag-and-release
     if: "!cancelled() && needs.tag-and-release.result == 'success'"
+    permissions:
+      contents: read
+    uses: ./.github/workflows/assemble-natives.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+
+  java:
+    name: Maven Central (Java bindings)
+    needs: [tag-and-release, natives]
+    if: "!cancelled() && needs.tag-and-release.result == 'success' && needs.natives.result == 'success'"
     permissions:
       contents: write
     uses: ./.github/workflows/publish-java.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
@@ -146,8 +156,8 @@ jobs:
 
   go:
     name: dengjen-tts-go mirror
-    needs: tag-and-release
-    if: "!cancelled() && needs.tag-and-release.result == 'success'"
+    needs: [tag-and-release, natives]
+    if: "!cancelled() && needs.tag-and-release.result == 'success' && needs.natives.result == 'success'"
     permissions:
       contents: read
     uses: ./.github/workflows/publish-go.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
@@ -160,8 +170,8 @@ jobs:
 
   grpc:
     name: gRPC server GitHub Release
-    needs: tag-and-release
-    if: "!cancelled() && needs.tag-and-release.result == 'success'"
+    needs: [tag-and-release, natives]
+    if: "!cancelled() && needs.tag-and-release.result == 'success' && needs.natives.result == 'success'"
     permissions:
       contents: write
       id-token: write
@@ -173,8 +183,8 @@ jobs:
 
   python:
     name: Python wheels
-    needs: tag-and-release
-    if: "!cancelled() && needs.tag-and-release.result == 'success'"
+    needs: [tag-and-release, natives]
+    if: "!cancelled() && needs.tag-and-release.result == 'success' && needs.natives.result == 'success'"
     permissions:
       contents: read
     uses: ./.github/workflows/publish-python.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
@@ -208,10 +218,11 @@ jobs:
   # the override path publishes to PyPI from prepare-release.yaml, after this workflow returns.
   smoke:
     name: Post-publish smoke
-    needs: [tag-and-release, crates, pypi]
+    needs: [tag-and-release, crates, pypi, grpc]
     if: >-
       !cancelled() && inputs.dry_run != true &&
-      needs.crates.result == 'success' && needs.pypi.result == 'success'
+      needs.crates.result == 'success' && needs.pypi.result == 'success' &&
+      needs.grpc.result == 'success'
     permissions:
       contents: read
     uses: ./.github/workflows/post-publish-smoke.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support

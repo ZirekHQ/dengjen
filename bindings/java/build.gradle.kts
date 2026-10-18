@@ -174,6 +174,20 @@ listOf("test", "integrationTest", "e2e").forEach { suiteName ->
 
 
 
+// Forwards the STT test inputs from the environment: the natives directory, and a model for the
+// recognition cases, which skip when unset.
+listOf("test", "integrationTest").forEach { suiteName ->
+    tasks.named<Test>(suiteName) {
+        mapOf(
+            "DENGJEN_STT_NATIVE_DIR" to "dengjen.stt.native.dir",
+            "DENGJEN_STT_MODEL_DIR" to "dengjen.stt.model.dir",
+            "DENGJEN_STT_MODEL_SHA256" to "dengjen.stt.model.sha256",
+        ).forEach { (variable, property) ->
+            System.getenv(variable)?.let { systemProperty(property, it) }
+        }
+    }
+}
+
 tasks.jacocoTestReport {
     dependsOn(tasks.test, testing.suites.named("integrationTest"), testing.suites.named("e2e"))
     executionData(fileTree(layout.buildDirectory.dir("jacoco")).include("*.exec"))
@@ -325,12 +339,110 @@ publishing {
     }
 }
 
+// The speech recognition libraries ship as their own artifact: sherpa-onnx and its ONNX Runtime are
+// large, so text-to-speech users never download them. The assembled native
+// directories (scripts/assemble-natives.sh) are staged under stt-native-artifacts/<classifier>.
+val sttNativesVersion = "1.0.0"
+val sttNativesArtifactId = "dengjen-stt-natives"
+val sttNativesFingerprint: String = file("stt-natives.fingerprint").readText().trim()
+val sttNativeClassifiers = listOf("linux-x86_64", "windows-x64", "macos-aarch64")
+val sttNativeArtifactsDir: Directory =
+    layout.projectDirectory.dir((findProperty("sttNativeArtifactsDir") as String?) ?: "stt-native-artifacts")
+val sttLibraryPatterns = listOf("*dengjen_stt*", "*sherpa-onnx-c-api*", "*onnxruntime*")
+
+val skipSttNativesPublish = providers.gradleProperty("skipSttNativesPublish").map(String::toBoolean).orElse(false)
+
+fun isSttLibrary(name: String): Boolean =
+    name.contains("dengjen_stt") || name.contains("sherpa-onnx-c-api") || name.contains("onnxruntime")
+
+val sttNativeClassifierJars =
+    sttNativeClassifiers.associateWith { classifier ->
+        val sourceDir = sttNativeArtifactsDir.dir(classifier)
+        val manifest = layout.buildDirectory.file("stt-manifest/$classifier/MANIFEST")
+        val manifestTask =
+            tasks.register("sttManifest-$classifier") {
+                outputs.file(manifest)
+                onlyIf { sourceDir.asFile.exists() }
+                doLast {
+                    val libraries = sourceDir.asFile.listFiles().orEmpty().map { it.name }.filter(::isSttLibrary).sorted()
+                    check(libraries.any { it.contains("dengjen_stt") }) {
+                        "no libdengjen_stt library in $sourceDir, found $libraries"
+                    }
+                    manifest.get().asFile.also { it.parentFile.mkdirs() }.writeText(libraries.joinToString("\n") + "\n")
+                }
+            }
+        tasks.register<Jar>("sttNativeJar-$classifier") {
+            archiveBaseName.set(sttNativesArtifactId)
+            archiveVersion.set(sttNativesVersion)
+            archiveClassifier.set(classifier)
+            from(sourceDir) {
+                into("natives/$classifier")
+                include(sttLibraryPatterns)
+            }
+            from(manifestTask) { into("natives/$classifier") }
+            onlyIf { !skipSttNativesPublish.get() && (sourceDir.asFile.exists() || publishRequested) }
+            doFirst {
+                check(manifest.get().asFile.exists()) { "no STT natives staged in $sourceDir" }
+            }
+        }
+    }
+
+val sttNativesAuxiliaryJars =
+    listOf("sources", "javadoc").map { kind ->
+        tasks.register<Jar>("sttNatives${kind.replaceFirstChar { it.uppercase() }}Jar") {
+            archiveBaseName.set(sttNativesArtifactId)
+            archiveVersion.set(sttNativesVersion)
+            archiveClassifier.set(kind)
+            from(resources.text.fromString("$sttNativesArtifactId ships binaries only; see https://github.com/ZirekHQ/dengjen.\n")) {
+                rename { "README.txt" }
+            }
+        }
+    }
+
+publishing {
+    publications {
+        create<MavenPublication>("sttNatives") {
+            artifactId = sttNativesArtifactId
+            version = sttNativesVersion
+            sttNativeClassifierJars.values.forEach { jarTask -> artifact(jarTask) }
+            sttNativesAuxiliaryJars.forEach { jarTask -> artifact(jarTask) }
+            pom {
+                name.set("dengjen-stt-natives")
+                description.set("Native libdengjen-stt, sherpa-onnx and ONNX Runtime libraries (one classifier per platform) for the dengjen-tts Java bindings.")
+                url.set("https://github.com/ZirekHQ/dengjen")
+                licenses {
+                    license {
+                        name.set("GPL-3.0-or-later")
+                        url.set("https://www.gnu.org/licenses/gpl-3.0.txt")
+                        distribution.set("repo")
+                    }
+                }
+                scm {
+                    connection.set("scm:git:https://github.com/ZirekHQ/dengjen.git")
+                    developerConnection.set("scm:git:git@github.com:ZirekHQ/dengjen.git")
+                    url.set("https://github.com/ZirekHQ/dengjen.git")
+                }
+                developers {
+                    developer {
+                        id.set("austek")
+                        name.set("Ali Ustek")
+                    }
+                }
+                // The release workflow compares this with stt-natives.fingerprint to catch a missed version bump.
+                properties.put("dengjen.stt.natives.fingerprint", sttNativesFingerprint)
+            }
+        }
+    }
+}
+
 tasks.withType<PublishToMavenRepository>().configureEach {
     onlyIf { !(publication.name == "natives" && skipNativesPublish.get()) }
+    onlyIf { !(publication.name == "sttNatives" && skipSttNativesPublish.get()) }
 }
 
 tasks.withType<PublishToMavenLocal>().configureEach {
     onlyIf { !(publication.name == "natives" && skipNativesPublish.get()) }
+    onlyIf { !(publication.name == "sttNatives" && skipSttNativesPublish.get()) }
 }
 
 configure<org.jreleaser.gradle.plugin.JReleaserExtension> {

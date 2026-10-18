@@ -27,6 +27,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[cfg(feature = "stt")]
+mod stt;
+
 #[cfg(feature = "tashkeel")]
 static LIBTASHKEEL_ENGINE: Lazy<DengjenTashkeelResult<TashkeelInferenceEngine>> =
     Lazy::new(|| create_inference_engine(None));
@@ -837,6 +840,12 @@ fn pydengjen(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     #[cfg(feature = "espeak")]
     m.add_function(wrap_pyfunction!(phonemize_text, m)?)?;
+
+    #[cfg(feature = "stt")]
+    {
+        m.add_class::<stt::Recognizer>()?;
+        m.add("SttError", m.py().get_type::<stt::SttError>())?;
+    }
 
     Ok(())
 }

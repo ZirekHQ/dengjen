@@ -27,6 +27,7 @@ jobs:
         platform:
           - runner: ubuntu-latest
             target: x86_64
+            maturin_features: --features stt
           - runner: ubuntu-latest
             target: aarch64
     steps:
@@ -48,7 +49,7 @@ jobs:
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with: &build-wheels-args
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist ${{ matrix.platform.maturin_features }}
           working-directory: ./crates/frontends/python
           sccache: false
           manylinux: 2_28
@@ -127,6 +128,7 @@ jobs:
         platform:
           - runner: windows-2022
             target: x64
+            maturin_features: --features stt
     steps:
       - name: install-clang
         run: choco install llvm
@@ -141,11 +143,18 @@ jobs:
         with:
           python-version: "3.14"
           architecture: ${{ matrix.platform.target }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: natives-windows-x64
+          path: natives
+      - name: Stage the speech recognition libraries
+        shell: bash
+        run: bash scripts/stage-python-stt-libs.sh natives
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist ${{ matrix.platform.maturin_features }}
           working-directory: ./crates/frontends/python
           sccache: false
           # Pinned so Renovate (see renovate.json) can bump it deliberately,
@@ -159,7 +168,7 @@ jobs:
         shell: bash
         run: |
           python -m zipfile -e crates/frontends/python/dist/*.whl smoke
-          PYTHONPATH=smoke python -c "import pydengjen"
+          PYTHONPATH=smoke python -c "import pydengjen; assert hasattr(pydengjen, 'Recognizer')"
           test -f smoke/pydengjen/espeak-ng-data/phontab
       - name: Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -178,6 +187,7 @@ jobs:
         platform:
           - runner: macos-latest
             target: aarch64
+            maturin_features: --features stt
     steps:
       - name: install libclang
         run: |
@@ -190,11 +200,18 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: 3.x
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: natives-macos-arm64
+          path: natives
+      - name: Stage the speech recognition libraries
+        shell: bash
+        run: bash scripts/stage-python-stt-libs.sh natives
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist ${{ matrix.platform.maturin_features }}
           working-directory: ./crates/frontends/python
           sccache: false
           # Pinned so Renovate (see renovate.json) can bump it deliberately,

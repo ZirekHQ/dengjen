@@ -1,0 +1,139 @@
+name: Assemble natives
+
+# Builds the gRPC server and libdengjen-stt per desktop OS, picks the ONNX Runtime layout, smokes
+# the assembled directory from a clean copy and uploads it as natives-<name>. Every release
+# artifact (gRPC archives, Java and Go natives, Python wheels) copies from these directories.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assemble:
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { name: linux-x64, os: linux, runner: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+          - { name: windows-x64, os: windows, runner: windows-2022, target: x86_64-pc-windows-msvc }
+          - { name: macos-arm64, os: macos, runner: macos-latest, target: aarch64-apple-darwin }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        timeout-minutes: 15
+        with:
+          apt-packages: ${{ matrix.platform.os == 'linux' && 'llvm llvm-dev llvm-runtime libclang-dev cmake protobuf-compiler patchelf' || '' }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Set CMAKE_GENERATOR for Windows
+        if: matrix.platform.os == 'windows'
+        shell: bash
+        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+      - if: matrix.platform.os == 'windows'
+        run: choco install llvm protoc -y --no-progress
+      - if: matrix.platform.os == 'windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - if: matrix.platform.os == 'macos'
+        run: |
+          brew install llvm protobuf
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "$GITHUB_ENV"
+      # toolchain input omitted: channel comes from rust-toolchain.toml
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.platform.target }}
+      - name: Build the server and libdengjen-stt
+        run: >-
+          cargo build --release --locked --target ${{ matrix.platform.target }}
+          -p dengjen-tts-grpc --features dengjen-tts-grpc/japanese,dengjen-tts-grpc/stt
+          -p libdengjen-stt
+      # ort's copy-dylibs can write its own onnxruntime beside sherpa's, so the gate and the
+      # assembly read sherpa-onnx-sys's untouched download, never the shared target directory.
+      - name: Stage the build outputs with sherpa-onnx's own libraries
+        id: stage
+        shell: bash
+        env:
+          OUT: target/${{ matrix.platform.target }}/release
+          NAME: ${{ matrix.platform.name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          prebuilt=(target/sherpa-onnx-prebuilt/*/ target/*/sherpa-onnx-prebuilt/*/)
+          if [ "${#prebuilt[@]}" -ne 1 ]; then
+            echo "::error::expected one sherpa-onnx-prebuilt directory, found: ${prebuilt[*]:-none}" >&2
+            exit 1
+          fi
+          stage="$RUNNER_TEMP/stage"
+          mkdir -p "$stage"
+          cp -L "$OUT"/lib*dengjen_stt.* "$OUT"/*dengjen_stt.dll "$OUT"/dengjen-tts-grpc "$OUT"/dengjen-tts-grpc.exe "$stage/" 2>/dev/null || true
+          cp -P "${prebuilt[0]}"lib/* "${prebuilt[0]}"bin/* "$stage/" 2>/dev/null || true
+          runtimes=("$stage"/libonnxruntime.so* "$stage"/libonnxruntime*.dylib "$stage"/onnxruntime.dll)
+          runtime="${runtimes[0]:?no ONNX Runtime in the sherpa-onnx download}"
+          echo "sherpa runtime: $runtime"
+          layout="$(bash scripts/ort-gate.sh "$runtime" 27)"
+          echo "layout=$layout" >> "$GITHUB_OUTPUT"
+          echo "stage=$stage" >> "$GITHUB_OUTPUT"
+          echo "::notice::ONNX Runtime layout on $NAME: $layout"
+      - name: Assemble
+        shell: bash
+        env:
+          NAME: ${{ matrix.platform.name }}
+          OS: ${{ matrix.platform.os }}
+          LAYOUT: ${{ steps.stage.outputs.layout }}
+          STAGE: ${{ steps.stage.outputs.stage }}
+        run: |
+          set -euo pipefail
+          out="native/$NAME"
+          bash scripts/assemble-natives.sh "$OS" "$LAYOUT" "$STAGE" "$out"
+          printf '%s\n' "$LAYOUT" > "$out/LAYOUT"
+          cp NOTICE "$out/"
+      - name: Audit imported libraries
+        shell: bash
+        env:
+          NAME: ${{ matrix.platform.name }}
+          OS: ${{ matrix.platform.os }}
+        run: bash scripts/check-imported-libs.sh "$OS" "native/$NAME"
+      - name: Fetch the smoke model (Linux only)
+        if: matrix.platform.os == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --only-binary :all: huggingface_hub==0.34.4
+          python3 - <<'PY'
+          import json, os
+          from huggingface_hub import snapshot_download
+          spec = json.load(open(".github/stt-smoke-model.json"))
+          path = snapshot_download(spec["repo"], allow_patterns=spec["files"], local_dir=os.environ["RUNNER_TEMP"] + "/stt-model")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"DENGJEN_STT_MODEL_DIR={path}\nDENGJEN_STT_MODEL_SHA256={spec['sha256']}\n")
+          PY
+      - name: Smoke the packaged directory from a clean copy
+        shell: bash
+        env:
+          NAME: ${{ matrix.platform.name }}
+          OS: ${{ matrix.platform.os }}
+        run: |
+          set -euo pipefail
+          clean="$RUNNER_TEMP/clean"
+          mkdir -p "$clean"
+          cp -r "native/$NAME/." "$clean/"
+          if [ "$OS" = linux ]; then
+            bash scripts/smoke-natives.sh "$clean" --recognize
+          else
+            bash scripts/smoke-natives.sh "$clean"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: natives-${{ matrix.platform.name }}
+          path: native/${{ matrix.platform.name }}
+          if-no-files-found: error

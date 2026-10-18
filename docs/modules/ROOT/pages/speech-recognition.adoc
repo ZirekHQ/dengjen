@@ -1,0 +1,76 @@
+= Speech recognition
+:description: Run the offline recognizer from the gRPC server, Java, Python, Go and C.
+
+The recognizer is an offline CTC model on sherpa-onnx. Every binding needs a model directory holding `model.int8.onnx` and `tokens.txt`, plus the SHA-256 of `model.int8.onnx`. A mismatched checksum refuses to load, because sherpa-onnx aborts the process on a corrupt model.
+
+== Release archives
+
+The gRPC release carries the server, `libdengjen-stt`, `libsherpa-onnx-c-api` and an ONNX Runtime in one flat directory:
+
+[cols="1,2"]
+|===
+|Platform |Archive
+
+|Linux x64
+|`dengjen-tts-grpc-vX.Y.Z-linux-x64.tar.gz`
+
+|macOS arm64
+|`dengjen-tts-grpc-vX.Y.Z-macos-arm64.tar.gz`
+
+|Windows x64
+|`dengjen-tts-grpc-vX.Y.Z-windows-x64.zip`
+|===
+
+The libraries resolve each other from their own directory (`$ORIGIN` on Linux, `@loader_path` on macOS, the executable's directory on Windows), so unpack the archive anywhere and keep its files together. A `LAYOUT` file records whether the release shares one ONNX Runtime (`shared`) or renames the sherpa-onnx copy (`isolated`, Linux and macOS only). Windows releases require `shared`.
+
+NOTE: The Linux archive needs glibc 2.38 or newer (Ubuntu 24.04, Debian 13), because the prebuilt sherpa-onnx libraries link against it.
+
+NOTE: Since this release `dengjen-tts-grpc.exe` links `sherpa-onnx-c-api.dll`, so a Windows consumer that copies only the executable and its ONNX Runtime DLL must copy every file in the archive.
+
+== gRPC
+
+Set `DENGJEN_GRPC_STT_MODEL_DIR` and `DENGJEN_GRPC_STT_MODEL_SHA256` before starting the server; see xref:start-grpc.adoc[gRPC server].
+
+== Java
+
+[source,kotlin]
+----
+runtimeOnly("io.github.zirekhq:dengjen-stt-natives:<version>:linux-x86_64")
+----
+
+[source,java]
+----
+try (Recognizer recognizer = Recognizer.load(modelDir, modelSha256, 2)) {
+  String text = recognizer.recognize(samples, 16_000);
+}
+----
+
+== Python
+
+[source,python]
+----
+import pydengjen
+
+with pydengjen.Recognizer(model_dir, model_sha256) as recognizer:
+    text = recognizer.recognize(samples, 16000)
+----
+
+The Linux x86_64, Windows x64 and macOS arm64 wheels include the recognizer.
+
+== Go
+
+[source,go]
+----
+r, err := stt.Load(modelDir, modelSHA256, 2)
+if err != nil {
+	return err
+}
+defer r.Close()
+text, err := r.Recognize(samples, 16000)
+----
+
+The `stt` package is separate from the text-to-speech package, so text-to-speech users never link sherpa-onnx. It supports linux/amd64, windows/amd64 and darwin/arm64.
+
+== C
+
+See link:https://github.com/ZirekHQ/dengjen/tree/main/crates/frontends/capi-stt[`libdengjen-stt`] for the header and calling contract.

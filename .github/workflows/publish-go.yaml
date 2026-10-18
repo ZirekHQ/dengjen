@@ -353,7 +353,24 @@ jobs:
             fi
           done
 
-          (cd "$dst" && sha256sum lib/*/* include/libdengjen.h > SHA256SUMS)
+          # Speech recognition lives in its own package so text-to-speech users never link sherpa-onnx.
+          # linux/arm64 cannot import the package.
+          mkdir -p "$dst/stt/lib/linux_amd64" "$dst/stt/lib/windows_amd64" "$dst/stt/lib/darwin_arm64" "$dst/stt/include"
+          cp -P artifacts/natives-linux-x64/lib*dengjen_stt.so artifacts/natives-linux-x64/libsherpa-onnx-c-api.so artifacts/natives-linux-x64/libonnxruntime*.so* "$dst/stt/lib/linux_amd64/"
+          cp artifacts/natives-windows-x64/*dengjen_stt.dll artifacts/natives-windows-x64/sherpa-onnx-c-api.dll artifacts/natives-windows-x64/onnxruntime*.dll "$dst/stt/lib/windows_amd64/"
+          cp -P artifacts/natives-macos-arm64/lib*dengjen_stt.dylib artifacts/natives-macos-arm64/libsherpa-onnx-c-api.dylib artifacts/natives-macos-arm64/libonnxruntime*.dylib "$dst/stt/lib/darwin_arm64/"
+          cp dengjen-tts/crates/frontends/capi-stt/libdengjen_stt.h "$dst/stt/include/"
+          for expected in stt/lib/linux_amd64/liblibdengjen_stt.so \
+                          stt/lib/windows_amd64/libdengjen_stt.dll \
+                          stt/lib/darwin_arm64/liblibdengjen_stt.dylib \
+                          stt/include/libdengjen_stt.h; do
+            if [[ ! -f "$dst/$expected" ]]; then
+              echo "Missing expected release file: $expected" >&2
+              exit 1
+            fi
+          done
+
+          (cd "$dst" && sha256sum lib/*/* include/libdengjen.h stt/lib/*/* stt/include/libdengjen_stt.h > SHA256SUMS)
           echo "sums_digest=$(sha256sum "$dst/SHA256SUMS" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
           cp -r dengjen-tts/deps/dev/espeak-ng-data "$dst/espeak-ng-data"
@@ -391,6 +408,34 @@ jobs:
           gen_cgo linux   arm64 lib/linux_arm64   libdengjen "-Wl,-rpath,\${SRCDIR}/lib/linux_arm64"   cgo_linux_arm64.go
           gen_cgo darwin  arm64 lib/darwin_arm64  libdengjen "-Wl,-rpath,\${SRCDIR}/lib/darwin_arm64"  cgo_darwin_arm64.go
           gen_cgo windows amd64 lib/windows_amd64 libdengjen ""                                        cgo_windows_amd64.go
+
+          for f in doc.go error.go recognizer.go; do
+            cp "dengjen-tts/bindings/go/stt/$f" "$dst/stt/$f"
+          done
+          sed -i '/^#cgo /d' "$dst/stt/recognizer.go"
+          for f in error.go recognizer.go; do
+            { printf '%s\n\n' '//go:build (linux && amd64) || (darwin && arm64) || (windows && amd64)'; cat "$dst/stt/$f"; } > "$dst/stt/$f.tmp"
+            mv "$dst/stt/$f.tmp" "$dst/stt/$f"
+          done
+
+          gen_stt_cgo() {
+            goos="$1"; goarch="$2"; libdir="$3"; extra_ldflags="$4"; outfile="$5"
+            cat > "$dst/stt/$outfile" <<EOF
+          //go:build ${goos} && ${goarch}
+
+          package stt
+
+          /*
+          #cgo CFLAGS: -I\${SRCDIR}/include
+          #cgo LDFLAGS: -L\${SRCDIR}/${libdir} -llibdengjen_stt${extra_ldflags:+ $extra_ldflags}
+          */
+          import "C"
+          EOF
+          }
+
+          gen_stt_cgo linux   amd64 lib/linux_amd64   "-Wl,-rpath,\${SRCDIR}/lib/linux_amd64"   cgo_linux_amd64.go
+          gen_stt_cgo darwin  arm64 lib/darwin_arm64  "-Wl,-rpath,\${SRCDIR}/lib/darwin_arm64"  cgo_darwin_arm64.go
+          gen_stt_cgo windows amd64 lib/windows_amd64 ""                                         cgo_windows_amd64.go
 
           cat > "$dst/espeak_dir.go" <<'EOF'
           package dengjen
@@ -605,6 +650,27 @@ jobs:
           	}
           }
           EOF
+          if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+            export PATH="${mod_dir}/stt/lib/windows_amd64:${PATH}"
+          fi
+          if [[ "${RUNNER_OS:-}-$(uname -m)" != "Linux-aarch64" ]]; then
+            cat > stt_test.go <<EOF
+          package main
+
+          import (
+          	"errors"
+          	"testing"
+
+          	"${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_MODULE_PATH}/stt"
+          )
+
+          func TestSttLinksAndChecksTheABI(t *testing.T) {
+          	if _, err := stt.Load("/definitely/not/here", "0000000000000000000000000000000000000000000000000000000000000000", 1); !errors.Is(err, stt.ErrUnreadableModelFile) {
+          		t.Fatalf("want ErrUnreadableModelFile, got %v", err)
+          	}
+          }
+          EOF
+          fi
           go test ./...
 
   rollback-on-failure:

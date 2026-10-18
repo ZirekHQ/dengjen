@@ -225,7 +225,7 @@ fails with `UNIMPLEMENTED: Streaming synthesis is not supported for this model`.
 `SynthesisRequest.synthesis_mode` picks `MODE_LAZY`, `MODE_PARALLEL` or `MODE_BATCHED`. See
 xref:streaming.adoc[Streaming synthesis and the gRPC frontend] for how the modes differ.
 
-To enable `Recognize`, set `DENGJEN_GRPC_STT_MODEL_DIR` and `DENGJEN_GRPC_STT_MODEL_SHA256` together. The server exits at startup if the checksum does not match.
+The release archives for Linux, macOS and Windows include the recognizer libraries; see xref:speech-recognition.adoc[Speech recognition]. To enable `Recognize`, set `DENGJEN_GRPC_STT_MODEL_DIR` and `DENGJEN_GRPC_STT_MODEL_SHA256` together. The server exits at startup if the checksum does not match.
 
 [source,python]
 ----

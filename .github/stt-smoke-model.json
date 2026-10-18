@@ -1,0 +1,1 @@
+{"repo": "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12", "files": ["model.int8.onnx", "tokens.txt"], "sha256": "e7c4e54ee4c4c47829cc6667d5d00ed8ea7bef1dcfeef0fce766f77752a2726c"}
