@@ -217,13 +217,25 @@ fails with `UNIMPLEMENTED: Streaming synthesis is not supported for this model`.
 
 |`SynthesizeUtteranceRealtime`
 |Streams `RealtimeAudioChunk` messages of PCM windows for voices that support streaming.
+
+|`Recognize`
+|Takes `pcm_s16le` (mono 16-bit little-endian PCM) and `sample_rate`, and returns the transcript `text`. Available in builds with the `stt` feature and a configured model.
 |===
 
 `SynthesisRequest.synthesis_mode` picks `MODE_LAZY`, `MODE_PARALLEL` or `MODE_BATCHED`. See
 xref:streaming.adoc[Streaming synthesis and the gRPC frontend] for how the modes differ.
+
+To enable `Recognize`, set `DENGJEN_GRPC_STT_MODEL_DIR` and `DENGJEN_GRPC_STT_MODEL_SHA256` together. The server exits at startup if the checksum does not match.
+
+[source,python]
+----
+include::example$grpc/client.py[tag=recognize]
+----
 
 == Errors
 
 An RPC that names a voice that is not loaded returns `NotFound`, and so does `LoadVoice` with a manifest
 path that does not exist. For the first case, see the example in
 xref:streaming.adoc[Streaming synthesis and the gRPC frontend].
+
+`Recognize` returns `InvalidArgument` for empty audio, audio shorter than 25 ms, an odd byte count or a sample rate that is zero or above `i32::MAX`. It returns `FailedPrecondition` when no model is configured, `ResourceExhausted` while all recognition slots (`DENGJEN_GRPC_MAX_CONCURRENT_RECOGNITION`) are busy, and `Internal` when decoding fails.

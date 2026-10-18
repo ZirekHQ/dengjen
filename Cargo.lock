@@ -919,6 +919,7 @@ name = "dengjen-tts-grpc"
 version = "3.0.0"
 dependencies = [
  "async-stream",
+ "dengjen-stt",
  "dengjen-tts",
  "dengjen-tts-core",
  "dengjen-tts-kokoro",
@@ -927,6 +928,7 @@ dependencies = [
  "log",
  "ort",
  "prost",
+ "tempfile",
  "tokio",
  "tokio-stream",
  "tonic",

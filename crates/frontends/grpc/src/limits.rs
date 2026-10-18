@@ -3,11 +3,13 @@
 pub(crate) const MAX_VOICES_VAR: &str = "DENGJEN_GRPC_MAX_VOICES";
 pub(crate) const MAX_TEXT_BYTES_VAR: &str = "DENGJEN_GRPC_MAX_TEXT_BYTES";
 pub(crate) const MAX_CONCURRENT_SYNTHESIS_VAR: &str = "DENGJEN_GRPC_MAX_CONCURRENT_SYNTHESIS";
+pub(crate) const MAX_CONCURRENT_RECOGNITION_VAR: &str = "DENGJEN_GRPC_MAX_CONCURRENT_RECOGNITION";
 pub(crate) const MAX_MESSAGE_BYTES_VAR: &str = "DENGJEN_GRPC_MAX_MESSAGE_BYTES";
 
 const DEFAULT_MAX_VOICES: usize = 16;
 const DEFAULT_MAX_TEXT_BYTES: usize = 64 * 1024;
 const DEFAULT_MAX_CONCURRENT_SYNTHESIS: usize = 4;
+const DEFAULT_MAX_CONCURRENT_RECOGNITION: usize = 1;
 const DEFAULT_MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,6 +17,7 @@ pub(crate) struct Limits {
     pub max_voices: usize,
     pub max_text_bytes: usize,
     pub max_concurrent_synthesis: usize,
+    pub max_concurrent_recognition: usize,
     pub max_message_bytes: usize,
 }
 
@@ -24,6 +27,7 @@ impl Default for Limits {
             max_voices: DEFAULT_MAX_VOICES,
             max_text_bytes: DEFAULT_MAX_TEXT_BYTES,
             max_concurrent_synthesis: DEFAULT_MAX_CONCURRENT_SYNTHESIS,
+            max_concurrent_recognition: DEFAULT_MAX_CONCURRENT_RECOGNITION,
             max_message_bytes: DEFAULT_MAX_MESSAGE_BYTES,
         }
     }
@@ -47,6 +51,11 @@ impl Limits {
                 &lookup,
                 MAX_CONCURRENT_SYNTHESIS_VAR,
                 defaults.max_concurrent_synthesis,
+            ),
+            max_concurrent_recognition: positive_or(
+                &lookup,
+                MAX_CONCURRENT_RECOGNITION_VAR,
+                defaults.max_concurrent_recognition,
             ),
             max_message_bytes: positive_or(
                 &lookup,
@@ -105,5 +114,26 @@ mod tests {
             (MAX_MESSAGE_BYTES_VAR, "-4"),
         ]));
         assert_eq!(limits, Limits::default());
+    }
+
+    #[test]
+    fn recognition_cap_defaults_to_one() {
+        assert_eq!(Limits::default().max_concurrent_recognition, 1);
+    }
+
+    #[test]
+    fn recognition_cap_reads_its_own_variable() {
+        let limits = Limits::from_lookup(lookup_from(&[(MAX_CONCURRENT_RECOGNITION_VAR, "3")]));
+        assert_eq!(limits.max_concurrent_recognition, 3);
+        assert_eq!(
+            limits.max_concurrent_synthesis,
+            Limits::default().max_concurrent_synthesis
+        );
+    }
+
+    #[test]
+    fn zero_recognition_cap_falls_back_to_the_default() {
+        let limits = Limits::from_lookup(lookup_from(&[(MAX_CONCURRENT_RECOGNITION_VAR, "0")]));
+        assert_eq!(limits.max_concurrent_recognition, 1);
     }
 }
