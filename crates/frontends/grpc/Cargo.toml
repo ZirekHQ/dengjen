@@ -22,6 +22,7 @@ cuda = ["dengjen-tts-piper/cuda", "dengjen-tts-kokoro/cuda", "dengjen-tts-melott
 coreml = ["dengjen-tts-piper/coreml", "dengjen-tts-kokoro/coreml", "dengjen-tts-melotts/coreml"]
 directml = ["dengjen-tts-piper/directml", "dengjen-tts-kokoro/directml", "dengjen-tts-melotts/directml"]
 ort-dylib = ["ort/load-dynamic"]
+stt = ["dep:dengjen-stt"]
 
 [dependencies]
 async-stream = "0.3.5"
@@ -31,6 +32,7 @@ dengjen-tts.workspace = true
 dengjen-tts-piper.workspace = true
 dengjen-tts-kokoro.workspace = true
 dengjen-tts-melotts.workspace = true
+dengjen-stt = { workspace = true, optional = true }
 prost = "0.14.0"
 tokio = { version = "1.41.1", features = ["macros", "rt-multi-thread", "sync"] }
 tokio-stream = "0.1.16"
@@ -47,6 +49,9 @@ features = ["fmt", "env-filter"]
 version = "=2.0.0-rc.13"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]
+
+[dev-dependencies]
+tempfile = "3"
 
 [build-dependencies]
 tonic-prost-build = "0.14.0"

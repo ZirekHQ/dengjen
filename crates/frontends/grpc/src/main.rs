@@ -13,6 +13,7 @@ use dengjen_tts_core::{
     DengjenError, DengjenModel, DengjenResult, SynthesisConfig,
 };
 mod limits;
+mod recognition;
 
 use grpc::dengjen_grpc_server::{DengjenGrpc, DengjenGrpcServer};
 use std::collections::HashMap;
@@ -28,6 +29,7 @@ use tonic::{Request, Response, Status};
 use xxhash_rust::xxh3::xxh3_64;
 
 use limits::Limits;
+use recognition::{pcm_s16le_to_f32, RecognitionError, Transcriber};
 
 const DEFAULT_DENGJEN_GRPC_SERVER_PORT: u16 = 49314;
 
@@ -44,6 +46,8 @@ enum DengjenGrpcError {
     VoiceNotFound(String),
     InvalidArgument(String),
     ResourceExhausted(String),
+    FailedPrecondition(String),
+    Unimplemented(String),
 }
 
 impl std::error::Error for DengjenGrpcError {}
@@ -54,7 +58,9 @@ impl std::fmt::Display for DengjenGrpcError {
             Self::DengjenError(e) => write!(f, "{}", e),
             Self::VoiceNotFound(msg)
             | Self::InvalidArgument(msg)
-            | Self::ResourceExhausted(msg) => write!(f, "{}", msg),
+            | Self::ResourceExhausted(msg)
+            | Self::FailedPrecondition(msg)
+            | Self::Unimplemented(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -62,6 +68,17 @@ impl std::fmt::Display for DengjenGrpcError {
 impl From<DengjenError> for DengjenGrpcError {
     fn from(err: DengjenError) -> Self {
         Self::DengjenError(err)
+    }
+}
+
+impl From<RecognitionError> for DengjenGrpcError {
+    fn from(err: RecognitionError) -> Self {
+        match err {
+            RecognitionError::InvalidAudio(msg) => Self::InvalidArgument(msg),
+            RecognitionError::Failed => Self::DengjenError(DengjenError::InferenceError(
+                "Recognition failed".to_string(),
+            )),
+        }
     }
 }
 
@@ -84,6 +101,8 @@ impl From<DengjenGrpcError> for Status {
             DengjenGrpcError::VoiceNotFound(msg) => Status::not_found(msg),
             DengjenGrpcError::InvalidArgument(msg) => Status::invalid_argument(msg),
             DengjenGrpcError::ResourceExhausted(msg) => Status::resource_exhausted(msg),
+            DengjenGrpcError::FailedPrecondition(msg) => Status::failed_precondition(msg),
+            DengjenGrpcError::Unimplemented(msg) => Status::unimplemented(msg),
         }
     }
 }
@@ -108,12 +127,17 @@ impl Voice {
 }
 
 /// Registry of loaded voices, keyed by voice key.
-struct DengjenGrpcService(RwLock<HashMap<String, Voice>>, Capacity);
+struct DengjenGrpcService(
+    RwLock<HashMap<String, Voice>>,
+    Capacity,
+    Option<Arc<dyn Transcriber>>,
+);
 
 /// Server-wide caps plus the semaphore that enforces the concurrency cap.
 struct Capacity {
     limits: Limits,
     synthesis: Arc<Semaphore>,
+    recognition: Arc<Semaphore>,
 }
 
 impl DengjenGrpcService {
@@ -124,7 +148,46 @@ impl DengjenGrpcService {
 
     fn with_limits(limits: Limits) -> Self {
         let synthesis = Arc::new(Semaphore::new(limits.max_concurrent_synthesis));
-        Self(RwLock::new(HashMap::new()), Capacity { limits, synthesis })
+        let recognition = Arc::new(Semaphore::new(limits.max_concurrent_recognition));
+        Self(
+            RwLock::new(HashMap::new()),
+            Capacity {
+                limits,
+                synthesis,
+                recognition,
+            },
+            None,
+        )
+    }
+
+    fn with_transcriber(mut self, transcriber: Option<Arc<dyn Transcriber>>) -> Self {
+        self.2 = transcriber;
+        self
+    }
+
+    fn transcriber(&self) -> DengjenGrpcResult<Arc<dyn Transcriber>> {
+        self.2.clone().ok_or_else(|| {
+            if cfg!(feature = "stt") {
+                DengjenGrpcError::FailedPrecondition(
+                    "No speech recognition model is configured".to_string(),
+                )
+            } else {
+                DengjenGrpcError::Unimplemented(
+                    "This build does not include speech recognition".to_string(),
+                )
+            }
+        })
+    }
+
+    fn acquire_recognition_permit(&self) -> DengjenGrpcResult<OwnedSemaphorePermit> {
+        Arc::clone(&self.1.recognition)
+            .try_acquire_owned()
+            .map_err(|_| {
+                DengjenGrpcError::ResourceExhausted(format!(
+                    "Too many concurrent recognitions; the limit is {}",
+                    self.1.limits.max_concurrent_recognition
+                ))
+            })
     }
 
     fn check_text_size(&self, text: &str) -> DengjenGrpcResult<()> {
@@ -705,6 +768,27 @@ impl DengjenGrpc for DengjenGrpcService {
 
     type SynthesizeUtteranceRealtimeStream =
         ReceiverStream<Result<grpc::RealtimeAudioChunk, Status>>;
+    async fn recognize(
+        &self,
+        request: Request<grpc::RecognizeRequest>,
+    ) -> Result<Response<grpc::RecognizeResponse>, Status> {
+        let req = request.into_inner();
+        let transcriber = self.transcriber()?;
+        let sample_rate = i32::try_from(req.sample_rate).map_err(|_| {
+            DengjenGrpcError::InvalidArgument("Sample rate is out of range".to_string())
+        })?;
+        let permit = self.acquire_recognition_permit()?;
+        let text = run_blocking(move || {
+            let _permit = permit;
+            let samples = pcm_s16le_to_f32(&req.pcm_s16le)?;
+            transcriber
+                .transcribe(&samples, sample_rate)
+                .map_err(DengjenGrpcError::from)
+        })
+        .await?;
+        Ok(Response::new(grpc::RecognizeResponse { text }))
+    }
+
     async fn synthesize_utterance_realtime(
         &self,
         request: Request<grpc::SynthesisRequest>,
@@ -794,6 +878,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log::error!("Could not initialize onnxruntime environment");
     }
 
+    let transcriber =
+        recognition::load_transcriber(recognition::stt_config_from_lookup(|name| {
+            std::env::var(name).ok()
+        })?)?;
+
     let addr = SocketAddr::new(
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         resolve_listen_port(),
@@ -806,7 +895,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let limits = Limits::from_env();
     log::info!("Dengjen GRPC limits: {limits:?}");
-    let server = DengjenGrpcServer::new(DengjenGrpcService::with_limits(limits))
+    let service = DengjenGrpcService::with_limits(limits).with_transcriber(transcriber);
+    let server = DengjenGrpcServer::new(service)
         .max_decoding_message_size(limits.max_message_bytes)
         .max_encoding_message_size(limits.max_message_bytes);
     Server::builder()
@@ -2026,5 +2116,195 @@ mod synth_options_tests {
             result.is_ok(),
             "SetSynthesisOptions on a configless backend must no-op, not error: {result:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod recognize_rpc_tests {
+    use super::*;
+    use recognition::{RecognitionError, Transcriber};
+
+    struct FakeTranscriber(Result<String, RecognitionError>);
+
+    impl Transcriber for FakeTranscriber {
+        fn transcribe(&self, _: &[f32], _: i32) -> Result<String, RecognitionError> {
+            self.0.clone()
+        }
+    }
+
+    struct EchoShape;
+
+    impl Transcriber for EchoShape {
+        fn transcribe(&self, samples: &[f32], rate: i32) -> Result<String, RecognitionError> {
+            Ok(format!("{}:{rate}", samples.len()))
+        }
+    }
+
+    fn service_with(transcriber: impl Transcriber + 'static, limits: Limits) -> DengjenGrpcService {
+        DengjenGrpcService::with_limits(limits).with_transcriber(Some(Arc::new(transcriber)))
+    }
+
+    fn request(pcm: Vec<u8>, sample_rate: u32) -> Request<grpc::RecognizeRequest> {
+        Request::new(grpc::RecognizeRequest {
+            pcm_s16le: pcm,
+            sample_rate,
+        })
+    }
+
+    #[tokio::test]
+    async fn recognize_returns_the_transcript() {
+        let service = service_with(FakeTranscriber(Ok("silav".to_string())), Limits::default());
+        let reply = service
+            .recognize(request(vec![0; 4], 16_000))
+            .await
+            .unwrap();
+        assert_eq!(reply.into_inner().text, "silav");
+    }
+
+    #[tokio::test]
+    async fn recognize_passes_decoded_sample_count_and_rate_through() {
+        let service = service_with(EchoShape, Limits::default());
+        let reply = service
+            .recognize(request(vec![0; 8], 44_100))
+            .await
+            .unwrap();
+        assert_eq!(reply.into_inner().text, "4:44100");
+    }
+
+    #[tokio::test]
+    async fn recognize_rejects_an_odd_byte_count() {
+        let service = service_with(EchoShape, Limits::default());
+        let status = service
+            .recognize(request(vec![0; 3], 16_000))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn recognize_rejects_a_sample_rate_above_i32_max() {
+        let service = service_with(EchoShape, Limits::default());
+        let status = service
+            .recognize(request(vec![0; 4], u32::MAX))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn recognize_maps_invalid_audio_to_invalid_argument_and_keeps_the_reason() {
+        let reason = RecognitionError::InvalidAudio("shorter than 25 ms".to_string());
+        let service = service_with(FakeTranscriber(Err(reason)), Limits::default());
+        let status = service
+            .recognize(request(vec![0; 4], 16_000))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert_eq!(status.message(), "shorter than 25 ms");
+    }
+
+    #[tokio::test]
+    async fn recognize_maps_a_decode_failure_to_internal() {
+        let service = service_with(
+            FakeTranscriber(Err(RecognitionError::Failed)),
+            Limits::default(),
+        );
+        let status = service
+            .recognize(request(vec![0; 4], 16_000))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::Internal);
+    }
+
+    #[tokio::test]
+    async fn recognize_is_rejected_when_no_recognition_slot_is_free() {
+        let service = service_with(
+            EchoShape,
+            Limits {
+                max_concurrent_recognition: 1,
+                ..Limits::default()
+            },
+        );
+        let _held = service.acquire_recognition_permit().unwrap();
+        let status = service
+            .recognize(request(vec![0; 4], 16_000))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[tokio::test]
+    async fn recognize_frees_its_slot_after_a_decode_error() {
+        let service = service_with(
+            FakeTranscriber(Err(RecognitionError::Failed)),
+            Limits {
+                max_concurrent_recognition: 1,
+                ..Limits::default()
+            },
+        );
+        for _ in 0..2 {
+            let status = service
+                .recognize(request(vec![0; 4], 16_000))
+                .await
+                .unwrap_err();
+            assert_eq!(status.code(), tonic::Code::Internal);
+        }
+    }
+
+    #[tokio::test]
+    async fn recognize_takes_a_slot_before_decoding_the_audio() {
+        let service = service_with(
+            EchoShape,
+            Limits {
+                max_concurrent_recognition: 1,
+                ..Limits::default()
+            },
+        );
+        let _held = service.acquire_recognition_permit().unwrap();
+        let status = service
+            .recognize(request(vec![0; 3], 16_000))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[tokio::test]
+    async fn recognize_does_not_use_synthesis_slots() {
+        let service = service_with(
+            EchoShape,
+            Limits {
+                max_concurrent_synthesis: 1,
+                ..Limits::default()
+            },
+        );
+        let _held = service.acquire_synthesis_permit().unwrap();
+        assert!(service.recognize(request(vec![0; 4], 16_000)).await.is_ok());
+    }
+
+    #[cfg(feature = "stt")]
+    #[tokio::test]
+    async fn recognize_without_a_configured_model_is_a_failed_precondition() {
+        let status = DengjenGrpcService::new()
+            .recognize(request(vec![0; 4], 16_000))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::FailedPrecondition);
+    }
+
+    #[cfg(not(feature = "stt"))]
+    #[tokio::test]
+    async fn recognize_in_a_build_without_stt_is_unimplemented() {
+        let status = DengjenGrpcService::new()
+            .recognize(request(vec![0; 4], 16_000))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::Unimplemented);
+    }
+
+    #[test]
+    fn recognition_failures_never_expose_detail_in_the_status_message() {
+        let status: Status = DengjenGrpcError::from(RecognitionError::Failed).into();
+        assert_eq!(status.code(), tonic::Code::Internal);
+        assert!(!status.message().contains('/'));
     }
 }

@@ -44,6 +44,13 @@ def synthesize_realtime(stub, voice_key, text):
 # end::realtime[]
 
 
+# tag::recognize[]
+def recognize(stub, pcm_s16le, sample_rate):
+    request = pb.RecognizeRequest(pcm_s16le=pcm_s16le, sample_rate=sample_rate)
+    return stub.Recognize(request).text
+# end::recognize[]
+
+
 def write_pcm(path, pcm, audio):
     with wave.open(path, "wb") as out:
         out.setnchannels(audio.num_channels)
