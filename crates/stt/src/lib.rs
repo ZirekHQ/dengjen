@@ -4,6 +4,8 @@
     deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
 )]
 
+pub mod catalogue;
+
 use sha2::{Digest, Sha256};
 use sherpa_onnx::{
     OfflineModelConfig, OfflineOmnilingualAsrCtcModelConfig, OfflineRecognizer,
@@ -107,14 +109,22 @@ fn sha256_hex(path: &Path) -> std::io::Result<String> {
     }
 }
 
-/// Checks that `model_dir`'s [`MODEL_FILE`] hashes to `expected_sha256` (hex, case-insensitive).
-pub fn verify_model(model_dir: &Path, expected_sha256: &str) -> Result<(), SttError> {
-    let path = model_dir.join(MODEL_FILE);
+fn verify_file(path: PathBuf, expected_sha256: &str) -> Result<(), SttError> {
     let actual = sha256_hex(&path).map_err(|_| SttError::Unreadable(path.clone()))?;
     actual
         .eq_ignore_ascii_case(expected_sha256.trim())
         .then_some(())
         .ok_or(SttError::ChecksumMismatch(path))
+}
+
+/// Checks that `model_dir`'s [`MODEL_FILE`] hashes to `expected_sha256` (hex, case-insensitive).
+pub fn verify_model(model_dir: &Path, expected_sha256: &str) -> Result<(), SttError> {
+    verify_file(model_dir.join(MODEL_FILE), expected_sha256)
+}
+
+/// Checks that `model_dir`'s [`TOKENS_FILE`] hashes to `expected_sha256` (hex, case-insensitive).
+pub fn verify_tokens(model_dir: &Path, expected_sha256: &str) -> Result<(), SttError> {
+    verify_file(model_dir.join(TOKENS_FILE), expected_sha256)
 }
 
 impl Recognizer {
@@ -228,6 +238,27 @@ mod tests {
         assert_eq!(
             verify_model(dir.path(), EMPTY_SHA256),
             Err(SttError::Unreadable(dir.path().join(MODEL_FILE)))
+        );
+    }
+
+    #[test]
+    fn verify_tokens_checks_the_tokens_file_only() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(TOKENS_FILE), b"").unwrap();
+        std::fs::write(dir.path().join(MODEL_FILE), b"x").unwrap();
+        assert_eq!(verify_tokens(dir.path(), EMPTY_SHA256), Ok(()));
+        assert_eq!(
+            verify_model(dir.path(), EMPTY_SHA256),
+            Err(SttError::ChecksumMismatch(dir.path().join(MODEL_FILE)))
+        );
+    }
+
+    #[test]
+    fn verify_tokens_reports_a_missing_file_as_unreadable() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            verify_tokens(dir.path(), EMPTY_SHA256),
+            Err(SttError::Unreadable(dir.path().join(TOKENS_FILE)))
         );
     }
 }
