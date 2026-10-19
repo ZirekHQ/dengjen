@@ -65,9 +65,10 @@ fn similar_length(left: usize, right: usize) -> bool {
 // The recognizer need not be exact; two distinctive words show it heard the phrase.
 fn heard_phrase(transcript: &str) -> bool {
     let lowered = transcript.to_lowercase();
+    let heard: Vec<&str> = lowered.split(|c: char| !c.is_alphabetic()).collect();
     ["quick", "brown", "fox", "jumps", "lazy", "dog"]
         .iter()
-        .filter(|word| lowered.contains(*word))
+        .filter(|word| heard.contains(*word))
         .count()
         >= 2
 }
