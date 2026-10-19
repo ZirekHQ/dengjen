@@ -3,10 +3,6 @@ name: STT and ort coexistence
 # A red leg means ort and sherpa-onnx cannot share a process on that OS.
 on:
   workflow_dispatch:
-  # Temporary: a dispatchable workflow must exist on main first. Remove this push trigger before merge.
-  push:
-    branches: [feat/409_ort_sherpa_coexist]
-    paths: [.github/workflows/stt-ort-coexist.yaml, crates/frontends/grpc/tests/coexist.rs]
 
 permissions:
   contents: read
