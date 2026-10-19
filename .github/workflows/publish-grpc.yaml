@@ -36,15 +36,9 @@ jobs:
         run: |
           set -euo pipefail
           actual_path="${WORKFLOW_REF%@*}"
-          matched=false
-          for repo in ZirekHQ/dengjen-tts ZirekHQ/dengjen; do
-            if [ "$WORKFLOW_REF" = "${repo}/.github/workflows/release.yaml@refs/heads/main" ] \
-              || [ "$actual_path" = "${repo}/.github/workflows/prepare-release.yaml" ]; then
-              matched=true
-            fi
-          done
-          if [ "$matched" != true ]; then
-            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen-tts or ZirekHQ/dengjen -- refusing to run outside release.yaml's main-branch flow or prepare-release.yaml's override path" >&2
+          if [ "$WORKFLOW_REF" != "ZirekHQ/dengjen/.github/workflows/release.yaml@refs/heads/main" ] \
+            && [ "$actual_path" != "ZirekHQ/dengjen/.github/workflows/prepare-release.yaml" ]; then
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen -- refusing to run outside release.yaml's main-branch flow or prepare-release.yaml's override path" >&2
             exit 1
           fi
       - name: Check whether this version already has a GitHub Release
