@@ -104,7 +104,7 @@ jobs:
           DENGJEN_COEXIST_ORDER: ort-first
         run: cargo test --locked -p dengjen-tts-grpc --features stt --test coexist -- --nocapture
       - name: Run sherpa-onnx first, then ort
-        if: always()
+        if: ${{ !cancelled() }}
         env:
           DENGJEN_COEXIST_ORDER: sherpa-first
         run: cargo test --locked -p dengjen-tts-grpc --features stt --test coexist -- --nocapture
