@@ -1,8 +1,6 @@
 name: STT and ort coexistence
 
-# Runs a Piper voice (ort) and the sherpa-onnx recognizer (dengjen-stt) in one process on each
-# desktop OS the natives ship for. A red leg means the two cannot share a process there, and STT
-# has to move out of process behind gRPC.
+# A red leg means ort and sherpa-onnx cannot share a process on that OS.
 on:
   workflow_dispatch:
   # Temporary: a dispatchable workflow must exist on main first. Remove this push trigger before merge.
@@ -101,7 +99,9 @@ jobs:
           prebuilt=(target/sherpa-onnx-prebuilt/*/ target/*/sherpa-onnx-prebuilt/*/)
           [ "${#prebuilt[@]}" -eq 1 ] || { echo "::error::expected one sherpa-onnx-prebuilt directory" >&2; exit 1; }
           cp "${prebuilt[0]}"lib/*.dll "${prebuilt[0]}"bin/*.dll target/debug/deps/ 2>/dev/null || true
-          ls target/debug/deps/*.dll
+          for dll in onnxruntime.dll sherpa-onnx-c-api.dll; do
+            [ -f "target/debug/deps/$dll" ] || { echo "::error::$dll missing beside the test binary" >&2; exit 1; }
+          done
       # Each order runs in its own process, because the first library to load a runtime wins.
       - name: Run ort first, then sherpa-onnx
         env:

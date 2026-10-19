@@ -1,7 +1,7 @@
-//! Proves `ort` (through a Piper voice) and sherpa-onnx (through `dengjen_stt`) run in one process.
+//! Checks that `ort` (through a Piper voice) and sherpa-onnx (through `dengjen_stt`) coexist in one process.
 //!
 //! Needs `DENGJEN_COEXIST_VOICE_CONFIG` (a Piper `model.onnx.json`) and `DENGJEN_STT_MODEL_DIR`.
-//! Self-skips without them unless `DENGJEN_REQUIRE_COEXIST=1`, which the manual workflow sets.
+//! Self-skips without them unless `DENGJEN_REQUIRE_COEXIST` is set, which the manual workflow does.
 #![cfg(feature = "stt")]
 
 use dengjen_stt::{Recognizer, RecognizerConfig};
@@ -57,9 +57,19 @@ impl Voice {
     }
 }
 
-// Piper adds noise per run, so equal text yields lengths within a few percent, not identical.
+// Piper adds noise per run, so compare lengths with a tolerance, not equality.
 fn similar_length(left: usize, right: usize) -> bool {
     left.abs_diff(right) * 5 <= left.max(right)
+}
+
+// The recognizer need not be exact; two distinctive words show it heard the phrase.
+fn heard_phrase(transcript: &str) -> bool {
+    let lowered = transcript.to_lowercase();
+    ["quick", "brown", "fox", "jumps", "lazy", "dog"]
+        .iter()
+        .filter(|word| lowered.contains(*word))
+        .count()
+        >= 2
 }
 
 #[test]
@@ -95,9 +105,10 @@ fn ort_and_sherpa_onnx_share_a_process() {
     let transcript = recognizer
         .recognize(&spoken, voice.sample_rate)
         .expect("transcribe the synthesized audio");
+    eprintln!("transcript: {transcript}");
     assert!(
-        !transcript.trim().is_empty(),
-        "sherpa-onnx returned no text"
+        heard_phrase(&transcript),
+        "sherpa-onnx did not hear the phrase: {transcript:?}"
     );
 
     eprintln!("synthesizing again");
@@ -124,6 +135,6 @@ fn ort_and_sherpa_onnx_share_a_process() {
             .expect("recognition thread")
             .expect("concurrent recognition");
         assert!(similar_length(synthesized.len(), spoken.len()));
-        assert!(!text.trim().is_empty());
+        assert!(heard_phrase(&text), "concurrent transcript: {text:?}");
     });
 }
