@@ -1,0 +1,110 @@
+name: STT and ort coexistence
+
+# A red leg means ort and sherpa-onnx cannot share a process on that OS.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coexist:
+    name: coexist (${{ matrix.platform.name }})
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { name: linux-x64, os: linux, runner: ubuntu-24.04 }
+          - { name: windows-x64, os: windows, runner: windows-2022 }
+          - { name: macos-arm64, os: macos, runner: macos-latest }
+    env:
+      DENGJEN_REQUIRE_COEXIST: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        timeout-minutes: 15
+        with:
+          apt-packages: ${{ matrix.platform.os == 'linux' && 'llvm llvm-dev llvm-runtime libclang-dev cmake protobuf-compiler espeak-ng' || '' }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Set CMAKE_GENERATOR for Windows
+        if: matrix.platform.os == 'windows'
+        shell: bash
+        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+      - if: matrix.platform.os == 'windows'
+        run: choco install llvm protoc -y --no-progress
+      - if: matrix.platform.os == 'windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - if: matrix.platform.os == 'macos'
+        run: |
+          brew install llvm protobuf coreutils espeak-ng
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$(brew --prefix espeak-ng)/share" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "$GITHUB_ENV"
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - name: Locate the espeak-ng data (Linux)
+        if: matrix.platform.os == 'linux'
+        shell: bash
+        run: |
+          data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
+      - name: Point Windows at the committed espeak-ng data
+        if: matrix.platform.os == 'windows'
+        shell: bash
+        run: echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$GITHUB_WORKSPACE/deps/dev" >> "$GITHUB_ENV"
+      - name: Fetch the Piper voice
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json . piper-std
+          echo "DENGJEN_COEXIST_VOICE_CONFIG=$GITHUB_WORKSPACE/crates/dengjen/synth/models/std/model.onnx.json" >> "$GITHUB_ENV"
+      - name: Fetch the recognition model
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --only-binary :all: huggingface_hub==0.34.4
+          python3 - <<'PY'
+          import json, os
+          from huggingface_hub import snapshot_download
+          spec = json.load(open(".github/stt-smoke-model.json"))
+          path = snapshot_download(spec["repo"], allow_patterns=spec["files"], local_dir=os.environ["RUNNER_TEMP"] + "/stt-model")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"DENGJEN_STT_MODEL_DIR={path}\n")
+          PY
+      # No `shell: bash`: Git's link.exe would shadow the MSVC linker on Windows.
+      # Windows searches System32 before PATH, and System32 holds an old onnxruntime.dll that crashes
+      # sherpa-onnx. The shipped archive puts sherpa-onnx's DLLs beside the executable, so do the same.
+      - name: Build the test binary (Windows)
+        if: matrix.platform.os == 'windows'
+        run: cargo test --locked -p dengjen-tts-grpc --features stt --test coexist --no-run
+      - name: Put sherpa-onnx's DLLs beside the test binary (Windows)
+        if: matrix.platform.os == 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          prebuilt=(target/sherpa-onnx-prebuilt/*/ target/*/sherpa-onnx-prebuilt/*/)
+          [ "${#prebuilt[@]}" -eq 1 ] || { echo "::error::expected one sherpa-onnx-prebuilt directory" >&2; exit 1; }
+          cp "${prebuilt[0]}"lib/*.dll "${prebuilt[0]}"bin/*.dll target/debug/deps/ 2>/dev/null || true
+          for dll in onnxruntime.dll sherpa-onnx-c-api.dll; do
+            [ -f "target/debug/deps/$dll" ] || { echo "::error::$dll missing beside the test binary" >&2; exit 1; }
+          done
+      # Each order runs in its own process, because the first library to load a runtime wins.
+      - name: Run ort first, then sherpa-onnx
+        env:
+          DENGJEN_COEXIST_ORDER: ort-first
+        run: cargo test --locked -p dengjen-tts-grpc --features stt --test coexist -- --nocapture
+      - name: Run sherpa-onnx first, then ort
+        if: ${{ !cancelled() }}
+        env:
+          DENGJEN_COEXIST_ORDER: sherpa-first
+        run: cargo test --locked -p dengjen-tts-grpc --features stt --test coexist -- --nocapture
