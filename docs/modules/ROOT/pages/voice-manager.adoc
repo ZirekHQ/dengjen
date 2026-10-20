@@ -61,3 +61,8 @@ A successful fetch caches the catalogue under `<voices_dir>/.catalogue`. Load it
 `load_cached_catalogue` (`libdengjenVoicesLoadCachedCatalogue`), or load a bundled snapshot with
 `Catalogue::from_slice`. A failed fetch is reported to the caller and never replaced by the cache
 automatically.
+
+== Command line
+
+`dengjen voices list|install|remove|refresh` wraps this crate; `dengjen speak <voice-key>` synthesizes
+with an installed voice. See xref:usage.adoc#_managing_voices[Managing voices].

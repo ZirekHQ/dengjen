@@ -7,7 +7,6 @@ description = "Voice catalogue, resumable verified download, install and removal
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
-publish = false
 
 [lints]
 workspace = true

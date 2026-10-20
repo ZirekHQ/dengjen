@@ -34,3 +34,15 @@ export DENGJEN_ESPEAKNG_DATA_DIRECTORY=/path/to/directory/containing/espeak-ng-d
 
 On Windows you also need `espeak-ng.dll` on your `PATH` — see xref:testing.adoc[Testing] for the
 exact variable to set.
+
+== Debian and Ubuntu package
+
+Release pages attach `dengjen_<version>_amd64.deb` and `dengjen_<version>_arm64.deb`:
+
+[source,sh]
+----
+sudo apt install ./dengjen_<version>_amd64.deb
+dengjen --help
+----
+
+The package installs `dengjen` and depends on `espeak-ng-data`.

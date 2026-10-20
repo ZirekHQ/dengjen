@@ -59,6 +59,7 @@ fn cli_synthesizes_a_wav_from_a_synthetic_kokoro_voice_when_espeak_data_is_avail
     let output_path = dir.join("output.wav");
 
     let output = Command::new(env!("CARGO_BIN_EXE_dengjen"))
+        .arg("speak")
         .arg(dir.join("config.json"))
         .arg("-f")
         .arg(&input_path)

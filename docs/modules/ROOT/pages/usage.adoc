@@ -24,11 +24,16 @@ French, Japanese, Korean) or `{"type": "pinyin", "model_dir": "<g2pW model direc
 
 == CLI
 
-Synthesize text from a file to a WAV file, using the `dengjen` CLI (crate `dengjen-tts-cli`):
+Synthesize text from a file to a WAV file, using the `dengjen` CLI (crate `dengjen-tts-cli`).
+The `speak` argument is a model config path or the key of an installed voice (see
+<<_managing_voices,Managing voices>>).
+
+NOTE: Synthesis moved to the `speak` subcommand. `dengjen <config>` no longer works; use
+`dengjen speak <config>`.
 
 [source,sh]
 ----
-cargo run --release -p dengjen-tts-cli -- voices/en_US-lessac-medium.onnx.json \
+cargo run --release -p dengjen-tts-cli -- speak voices/en_US-lessac-medium.onnx.json \
     -f input.txt \
     -o output.wav
 ----
@@ -37,10 +42,10 @@ Or send a single request as JSON on stdin and capture the WAV bytes written to s
 
 [source,sh]
 ----
-echo '{"text": "Hello world"}' | cargo run --release -p dengjen-tts-cli -- voices/en_US-lessac-medium.onnx.json > output.wav
+echo '{"text": "Hello world"}' | cargo run --release -p dengjen-tts-cli -- speak voices/en_US-lessac-medium.onnx.json > output.wav
 ----
 
-Run `dengjen --help` (or `cargo run --release -p dengjen-tts-cli -- --help`) for the full list
+Run `dengjen speak --help` (or `cargo run --release -p dengjen-tts-cli -- speak --help`) for the full list
 of options. The main ones:
 
 * `--mode lazy|parallel|batched|realtime` selects the synthesis mode (default `lazy`).
@@ -55,3 +60,25 @@ of options. The main ones:
 * `--length-scale`, `--noise-scale` and `--noise-w` override inference knobs: `--noise-w` is Piper's, while `--length-scale` and `--noise-scale` also apply to MeloTTS.
   `--param KEY=VALUE` (repeatable) sets a named backend parameter to a number, such as MeloTTS's
   `noise_scale_w` (an unrecognized key may be silently ignored); a named flag wins over a conflicting `--param`.
+
+== Managing voices
+
+`dengjen voices` lists, installs and removes Piper voices from the catalogue. Voices live in
+`~/.local/share/dengjen/voices` (the platform data directory elsewhere).
+
+[source,sh]
+----
+dengjen voices                        # same as `dengjen voices list`
+dengjen voices list --lang ku --json  # JSON array on stdout
+dengjen voices list --installed       # works offline
+dengjen voices install ku_TR-berfin_renas-medium
+dengjen speak ku_TR-berfin_renas-medium -f input.txt -o output.wav
+dengjen voices remove ku_TR-berfin_renas-medium
+dengjen voices refresh                # re-download the catalogue, print the voice count
+----
+
+Results go to stdout, with installed voices marked (`installed` in the table, `"installed": true` in JSON); progress and errors go to stderr. Exit codes: `0` success, `1` error, `2`
+another install or removal of the same voice is running. Override the locations with
+`--voices-dir`, `--catalogue-url` and `--files-base-url` (accepted before or after the subcommand; `speak` also takes `--voices-dir`), or the `DENGJEN_VOICES_DIR`,
+`DENGJEN_CATALOGUE_URL` and `DENGJEN_FILES_BASE_URL` environment variables. Ctrl-C stops an
+install; running it again resumes the download.

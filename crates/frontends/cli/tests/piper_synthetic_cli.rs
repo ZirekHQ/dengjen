@@ -98,7 +98,7 @@ fn run_cli(
     extra_args: &[&str],
 ) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_dengjen"));
-    cmd.arg(config_path).arg("-f").arg(input_path);
+    cmd.arg("speak").arg(config_path).arg("-f").arg(input_path);
     if let Some(output_path) = output_path {
         cmd.arg("-o").arg(output_path);
     }
@@ -246,6 +246,7 @@ fn cli_synthesizes_from_a_stdin_json_request_and_exits_cleanly_on_eof() {
     let config_path = write_streaming_config(&dir);
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_dengjen"))
+        .arg("speak")
         .arg(&config_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -56,7 +56,7 @@ jobs:
         run: |
           voice="$RUNNER_TEMP/voices/crates/dengjen/synth/models/std"
           printf 'Release smoke test.' > "$RUNNER_TEMP/in.txt"
-          "$RUNNER_TEMP/cli/bin/dengjen" "$voice/model.onnx.json" -f "$RUNNER_TEMP/in.txt" -o "$RUNNER_TEMP/out.wav"
+          "$RUNNER_TEMP/cli/bin/dengjen" speak "$voice/model.onnx.json" -f "$RUNNER_TEMP/in.txt" -o "$RUNNER_TEMP/out.wav"
           size="$(stat -c %s "$RUNNER_TEMP/out.wav")"
           echo "wrote ${size} bytes"
           [ "$size" -gt 44 ]

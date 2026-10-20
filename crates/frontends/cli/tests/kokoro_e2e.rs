@@ -20,6 +20,7 @@ fn cli_synthesizes_from_a_real_kokoro_voice() {
     let output_path = dir.join("output.wav");
 
     let output = Command::new(env!("CARGO_BIN_EXE_dengjen"))
+        .arg("speak")
         .arg(&config_path)
         .arg("-f")
         .arg(&input_path)
