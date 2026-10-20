@@ -31,7 +31,7 @@ tracing = { workspace = true }
 workspace-hack = { version = "0.1", path = "../../../workspace-hack" }
 
 [dependencies.ort]
-version = "=2.0.0-rc.13"
+version = "=2.0.0-rc.14"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]
 

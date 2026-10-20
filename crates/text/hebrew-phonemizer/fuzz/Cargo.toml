@@ -14,7 +14,7 @@ arbitrary = { version = "1", features = ["derive"] }
 libfuzzer-sys = "0.4"
 
 [dependencies.ort]
-version = "=2.0.0-rc.13"
+version = "=2.0.0-rc.14"
 default-features = false
 
 [dependencies.dengjen-hebrew-phonemizer]
