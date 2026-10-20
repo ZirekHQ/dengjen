@@ -45,6 +45,7 @@ fn cli_loads_a_melotts_voice_without_panicking() {
     let output_path = dir.join("output.wav");
 
     let output = Command::new(env!("CARGO_BIN_EXE_dengjen"))
+        .arg("speak")
         .arg(dir.join("config.json"))
         .arg("-f")
         .arg(&input_path)

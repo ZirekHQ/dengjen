@@ -33,8 +33,11 @@ dengjen-tts-core = { workspace = true, features = ["ort-providers"] }
 dengjen-tts-piper.workspace = true
 dengjen-tts-kokoro.workspace = true
 dengjen-tts-melotts.workspace = true
+dengjen-voices.workspace = true
 anyhow = "1.0.79"
 log = "0.4.18"
+ctrlc = "3"
+dirs = "6"
 serde = { version = "1.0.160", features = ["derive"] }
 serde_json = "1.0.89"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
@@ -54,3 +57,21 @@ features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "cop
 
 [dev-dependencies]
 dengjen-espeak-phonemizer.workspace = true
+sha2 = "0.11"
+tempfile = "3"
+
+[package.metadata.deb]
+name = "dengjen"
+section = "sound"
+priority = "optional"
+depends = "$auto, espeak-ng-data"
+maintainer = "austek <13117393+austek@users.noreply.github.com>"
+extended-description = "Command-line speech synthesis and voice manager."
+maintainer-scripts = "debian"
+assets = [
+    ["target/release/dengjen", "usr/lib/dengjen/dengjen", "755"],
+    ["README.md", "usr/share/doc/dengjen/README.md", "644"],
+    ["target/man/dengjen.1.gz", "usr/share/man/man1/dengjen.1.gz", "644"],
+    ["target/man/dengjen-speak.1.gz", "usr/share/man/man1/dengjen-speak.1.gz", "644"],
+    ["target/man/dengjen-voices.1.gz", "usr/share/man/man1/dengjen-voices.1.gz", "644"],
+]
