@@ -1,0 +1,24 @@
+language = "C"
+cpp_compat = true
+line_endings = "LF"
+usize_is_size_t = true
+include_version = true
+include_guard = "LIBDENGJEN_VOICES_H"
+documentation = false
+header = """
+/*
+ * Library-wide contracts.
+ * - Every call taking an ExternError* needs a zero-initialized struct. On failure code != 0 and
+ *   message must be released with libdengjenVoicesFreeString.
+ * - Strings returned by the library are released with libdengjenVoicesFreeString.
+ * - Do not call libdengjenVoicesClose while another call on the same handle is in flight.
+ * - Install and fetch calls block; call them from a worker thread. The progress callback runs on
+ *   the calling thread.
+ * - libdengjenVoicesCancel affects only installs already running on that handle, is safe from any
+ *   thread (including the progress callback), and is not remembered for installs that start later.
+ *   It does not interrupt an install after its last data chunk has been read.
+ */"""
+
+[parse]
+parse_deps = true
+include = ["ffi-support"]

@@ -1,0 +1,63 @@
+= Voice manager
+
+The `dengjen-voices` crate and the `libdengjen-voices` C API find, download, verify, install and
+remove voices on every platform with one implementation.
+
+== Catalogue and mirrors
+
+The catalogue is a JSON file in the `rhasspy/piper-voices` `voices.json` shape. Two settings
+locate it:
+
+[cols="1,3"]
+|===
+| `catalogue_url` | The catalogue file, for example `https://huggingface.co/rhasspy/piper-voices/raw/main/voices.json`.
+| `files_base_url` | The prefix the per-file paths in the catalogue are appended to.
+|===
+
+To use a mirror or a regional CDN, change both settings. No code change is needed.
+
+URLs must be `https`, except `http` to `localhost`, `127.0.0.1` or `::1` for testing.
+
+The HTTP client honours the usual proxy environment variables (`ALL_PROXY`, `HTTPS_PROXY`,
+`HTTP_PROXY` and `NO_PROXY`). It follows up to five `https` redirects, including to other hosts, so
+a CDN behind the configured URL works; the digests still gate every file. Plain `http` loopback URLs
+never follow redirects.
+
+== Verification
+
+Every file is checked against the catalogue digest before the voice is installed: `sha256_digest`
+when present, otherwise `md5_digest`. MD5 detects corruption but not tampering, so use a catalogue
+with SHA-256 digests for mirrors you do not control. A file that is larger than the catalogue size
+or fails its digest is discarded and the install fails; nothing is installed. A download that ends
+early is kept and resumed by the next install.
+
+== Interrupted installs
+
+A cancelled or interrupted install keeps its partial and already verified files under
+`<voices_dir>/.staging/<model_type>/<key>`. The next install of the same voice resumes them with an HTTP `Range`
+request and falls back to a full download when the server ignores or rejects the range. Partial
+files are keyed by the catalogue digest, so a catalogue update never resumes bytes from an older
+file. In the C API, `libdengjenVoicesCancel` stops the installs in flight on a handle.
+
+== Replacing and removing
+
+An install replaces an existing copy atomically: the old copy moves to
+`<voices_dir>/.old/<model_type>/<key>` and is deleted once the new one is in place; a failed replace
+restores it. `remove` parks the voice in `<voices_dir>/.trash/<model_type>/<key>` before deleting it.
+Both take a per-voice lock, so a concurrent call for the same voice fails with `VOICES_ERR_BUSY`.
+
+A backup stranded by a crash during a replace is restored by the next install or removal of that
+voice. `installed()` does not recover it, so until then the voice reads as not installed.
+
+== Working directories
+
+The staging, lock, backup and trash directories (`.staging`, `.locks`, `.old`, `.trash`) are
+namespaced by model type under `voices_dir`, so several model types can share one `voices_dir`
+without colliding. The catalogue cache under `.catalogue` is shared and keyed by URL.
+
+== Offline use
+
+A successful fetch caches the catalogue under `<voices_dir>/.catalogue`. Load it with
+`load_cached_catalogue` (`libdengjenVoicesLoadCachedCatalogue`), or load a bundled snapshot with
+`Catalogue::from_slice`. A failed fetch is reported to the caller and never replaced by the cache
+automatically.
