@@ -15,7 +15,7 @@ mod synthesis_config;
 
 pub use config_path::resolve_within;
 #[cfg(feature = "ort-providers")]
-pub use dengjen_core::execution_providers;
+pub use dengjen_core::{environment, execution_providers, install_environment, session_builder};
 pub use dengjen_core::{
     lock_ignoring_poison, panic_message, read_ignoring_poison, write_ignoring_poison,
     CancellationToken,

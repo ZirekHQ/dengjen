@@ -20,7 +20,7 @@ directml = ["ort-providers", "ort/directml"]
 workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dependencies.ort]
-version = "=2.0.0-rc.13"
+version = "=2.0.0-rc.15"
 default-features = false
-features = ["std"]
+features = ["std", "api-22"]
 optional = true

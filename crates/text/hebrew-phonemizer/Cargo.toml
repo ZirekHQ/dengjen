@@ -11,12 +11,12 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
-dengjen-tts-core.workspace = true
+dengjen-tts-core = { workspace = true, features = ["ort-providers"] }
 ndarray = "0.17"
 unicode-normalization = "0.1"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [dependencies.ort]
-version = "=2.0.0-rc.13"
+version = "=2.0.0-rc.15"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]

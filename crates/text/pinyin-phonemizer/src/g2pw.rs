@@ -94,7 +94,7 @@ pub(crate) fn create_g2pw_engine(
     tokenizer_path: &Path,
     config: G2pwConfig,
 ) -> DengjenResult<G2pwEngine> {
-    let session = Session::builder()
+    let session = dengjen_tts_core::session_builder()
         .map_err(session_init_error)?
         .commit_from_file(onnx_model_path)
         .map_err(session_init_error)?;

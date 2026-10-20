@@ -14,7 +14,7 @@ mod ort_providers;
 pub use cancellation::CancellationToken;
 pub use confined_path::{resolve_within, PathEscapesBase};
 #[cfg(feature = "ort-providers")]
-pub use ort_providers::execution_providers;
+pub use ort_providers::{environment, execution_providers, install_environment, session_builder};
 
 /// Returns the guard even when a previous holder panicked; callers must
 /// tolerate whatever state that holder left behind.

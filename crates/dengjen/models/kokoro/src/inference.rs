@@ -59,9 +59,7 @@ pub struct KokoroModel {
 
 impl KokoroModel {
     pub fn from_config(config: KokoroVoiceConfig) -> DengjenResult<Self> {
-        let session = Session::builder()
-            .map_err(|e| DengjenError::FailedToLoadResource(e.to_string()))?
-            .with_execution_providers(dengjen_tts_core::execution_providers())
+        let session = dengjen_tts_core::session_builder()
             .map_err(|e| DengjenError::FailedToLoadResource(e.to_string()))?
             .commit_from_file(&config.model_path)
             .map_err(|e| {

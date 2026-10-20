@@ -851,12 +851,13 @@ fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn init_ort_environment() -> bool {
-    let cpu_provider = ort::execution_providers::CPU::default().build();
-    ort::init()
+fn init_ort_environment() -> ort::Result<()> {
+    let cpu_provider = ort::ep::CPU::default().build();
+    let environment = ort::init()
         .with_name("dengjen")
         .with_execution_providers([cpu_provider])
-        .commit()
+        .build()?;
+    dengjen_tts_core::install_environment(environment)
 }
 
 fn resolve_listen_port() -> u16 {
@@ -874,8 +875,8 @@ fn listening_announcement(port: u16) -> String {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging()?;
 
-    if !init_ort_environment() {
-        log::error!("Could not initialize onnxruntime environment");
+    if let Err(error) = init_ort_environment() {
+        log::error!("Could not initialize onnxruntime environment: {error}");
     }
 
     let transcriber =

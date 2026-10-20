@@ -56,7 +56,7 @@ fn merge_diacritics(
 pub struct NakdimonEngine(Mutex<Session>);
 
 pub fn create_nakdimon_engine(model_path: &Path) -> DengjenResult<NakdimonEngine> {
-    let session = Session::builder()
+    let session = dengjen_tts_core::session_builder()
         .map_err(session_init_error)?
         .commit_from_file(model_path)
         .map_err(session_init_error)?;
