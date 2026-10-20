@@ -1,11 +1,12 @@
 use crate::error::{VoiceError, VoiceResult};
+use crate::idle::IdleTimeout;
 use std::io::Read;
 use std::time::Duration;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-// ureq anchors the body deadline to this timeout, so it also bounds how long a download may keep a
-// gap above one second.
-const RESPONSE_TIMEOUT: Duration = Duration::from_secs(3600);
+// ureq 3.4.1+ treats the body timeout as a total budget, so it only bounds the helper thread behind
+// IdleTimeout; resumed installs make a download cut at this limit cheap to continue.
+const TOTAL_TIMEOUT: Duration = Duration::from_secs(3600);
 const STALL_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_REDIRECTS: u32 = 5;
 
@@ -61,15 +62,15 @@ pub(crate) fn content_range_total(value: &str) -> Option<u64> {
         .ok()
 }
 
-fn agent(https_only: bool, max_redirects: u32, stall: Duration) -> ureq::Agent {
+fn agent(https_only: bool, max_redirects: u32) -> ureq::Agent {
     ureq::Agent::new_with_config(
         ureq::Agent::config_builder()
             .https_only(https_only)
             .http_status_as_error(false)
             .max_redirects(max_redirects)
             .timeout_connect(Some(CONNECT_TIMEOUT))
-            .timeout_recv_response(Some(RESPONSE_TIMEOUT))
-            .timeout_recv_body(Some(stall))
+            .timeout_recv_response(Some(TOTAL_TIMEOUT))
+            .timeout_recv_body(Some(TOTAL_TIMEOUT))
             .build(),
     )
 }
@@ -77,6 +78,7 @@ fn agent(https_only: bool, max_redirects: u32, stall: Duration) -> ureq::Agent {
 pub struct UreqTransport {
     secure: ureq::Agent,
     loopback: ureq::Agent,
+    stall: Duration,
 }
 
 impl UreqTransport {
@@ -87,8 +89,9 @@ impl UreqTransport {
     /// Fails a body read that waits longer than `stall` for the next bytes.
     pub fn with_stall_timeout(stall: Duration) -> Self {
         Self {
-            secure: agent(true, MAX_REDIRECTS, stall),
-            loopback: agent(false, 0, stall),
+            secure: agent(true, MAX_REDIRECTS),
+            loopback: agent(false, 0),
+            stall,
         }
     }
 
@@ -128,7 +131,10 @@ impl Transport for UreqTransport {
         Ok(Response {
             status: response.status().as_u16(),
             content_range_total: total,
-            body: Box::new(response.into_body().into_reader()),
+            body: Box::new(IdleTimeout::new(
+                response.into_body().into_reader(),
+                self.stall,
+            )),
         })
     }
 }

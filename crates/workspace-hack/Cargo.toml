@@ -23,7 +23,7 @@ either = { version = "1", features = ["use_std"] }
 fastrand = { version = "2" }
 futures-core = { version = "0.3" }
 futures-sink = { version = "0.3" }
-getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std", "wasm_js"] }
+getrandom = { version = "0.3", default-features = false, features = ["std", "wasm_js"] }
 http = { version = "1" }
 httparse = { version = "1" }
 indexmap = { version = "2" }
@@ -56,7 +56,7 @@ clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "std", "suggestions", "usage", "wrap_help"] }
 either = { version = "1", features = ["use_std"] }
 fastrand = { version = "2" }
-getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std", "wasm_js"] }
+getrandom = { version = "0.3", default-features = false, features = ["std", "wasm_js"] }
 http = { version = "1" }
 httparse = { version = "1" }
 indexmap = { version = "2" }
@@ -85,12 +85,10 @@ zeroize = { version = "1", features = ["zeroize_derive"] }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
-getrandom-9fbad63c4bcf4a8f = { package = "getrandom", version = "0.4", default-features = false, features = ["std", "sys_rng"] }
 rustix = { version = "1", features = ["fs", "termios"] }
 
 [target.x86_64-unknown-linux-gnu.build-dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
-getrandom-9fbad63c4bcf4a8f = { package = "getrandom", version = "0.4", default-features = false, features = ["std", "sys_rng"] }
 rustix = { version = "1", features = ["fs", "termios"] }
 
 ### END HAKARI SECTION

@@ -42,6 +42,6 @@ Working state lives in `.staging/`, `.locks/`, `.old/` and `.trash/`, each names
   digest is rejected as a whole.
 - `UreqTransport` honours `ALL_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, follows up to
   five `https` redirects (also to other hosts; digests still gate every file) and fails a body read
-  that stalls for 30 seconds (`UreqTransport::with_stall_timeout` changes that); total download time
-  is unlimited.
+  that stalls for 30 seconds (`UreqTransport::with_stall_timeout` changes that); one request is
+  cut after an hour, and the next install resumes it.
 - The C API is `libdengjen-voices` (`crates/frontends/capi-voices`).
