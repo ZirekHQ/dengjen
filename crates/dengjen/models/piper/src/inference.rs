@@ -28,9 +28,7 @@ where
 }
 
 pub(crate) fn create_inference_session(model_path: &Path) -> Result<Session, ort::Error> {
-    Session::builder()?
-        .with_execution_providers(dengjen_tts_core::execution_providers())?
-        .commit_from_file(model_path)
+    dengjen_tts_core::session_builder()?.commit_from_file(model_path)
 }
 
 pub(crate) fn session_init_error(cause: ort::Error) -> DengjenError {

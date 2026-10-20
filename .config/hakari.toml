@@ -29,6 +29,6 @@ platforms = [
 # Cargo's semver "*" (the default) never matches a pre-release like ort's 2.0.0-rc.N.
 [final-excludes]
 third-party = [
-    { name = "ort", version = "2.0.0-rc.13" },
-    { name = "ort-sys", version = "2.0.0-rc.13" },
+    { name = "ort", version = "2.0.0-rc.15" },
+    { name = "ort-sys", version = "2.0.0-rc.15" },
 ]

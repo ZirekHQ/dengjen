@@ -613,22 +613,15 @@ mod synthesis_processing_tests {
 fn init_ort_environment() -> anyhow::Result<()> {
     let providers = [
         #[cfg(feature = "cuda")]
-        ort::execution_providers::CUDA::default().build(),
-        ort::execution_providers::CPU::default().build(),
+        ort::ep::CUDA::default().build(),
+        ort::ep::CPU::default().build(),
     ];
-    let ok = ort::init()
+    let environment = ort::init()
         .with_name("dengjen")
         .with_execution_providers(providers)
-        .commit();
-    ort_commit_result(ok)
-}
-
-fn ort_commit_result(committed: bool) -> anyhow::Result<()> {
-    if committed {
-        Ok(())
-    } else {
-        Err(anyhow::anyhow!("Failed to initialize onnxruntime"))
-    }
+        .build()?;
+    dengjen_tts_core::install_environment(environment)?;
+    Ok(())
 }
 
 fn load_voice(
@@ -938,11 +931,5 @@ mod tests {
             enumerate_output_path(PathBuf::from("/"), 1),
             PathBuf::from("/")
         );
-    }
-
-    #[test]
-    fn ort_commit_result_reports_failure_as_an_error() {
-        assert!(ort_commit_result(true).is_ok());
-        assert!(ort_commit_result(false).is_err());
     }
 }

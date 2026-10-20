@@ -832,23 +832,23 @@ fn init_ort_environment() -> DengjenResult<()> {
 fn commit_ort_environment() -> Result<(), String> {
     #[cfg(target_os = "android")]
     let execution_providers = vec![
-        ort::execution_providers::NNAPI::default().build(),
-        ort::execution_providers::CPU::default().build(),
+        ort::ep::NNAPI::default().build(),
+        ort::ep::CPU::default().build(),
     ];
     #[cfg(target_os = "ios")]
     let execution_providers = vec![
-        ort::execution_providers::CoreML::default().build(),
-        ort::execution_providers::CPU::default().build(),
+        ort::ep::CoreML::default().build(),
+        ort::ep::CPU::default().build(),
     ];
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let execution_providers = vec![ort::execution_providers::CPU::default().build()];
+    let execution_providers = vec![ort::ep::CPU::default().build()];
 
-    let committed = ort_environment_builder()?
+    let environment = ort_environment_builder()?
         .with_name("dengjen")
         .with_execution_providers(execution_providers)
-        .commit();
-
-    committed_or_error(committed)
+        .build()
+        .map_err(|error| error.to_string())?;
+    dengjen_tts_core::install_environment(environment).map_err(|error| error.to_string())
 }
 
 #[cfg(feature = "ort-dylib")]
@@ -902,14 +902,6 @@ fn set_ort_dylib_path(path: Option<String>) -> DengjenFFIResult<()> {
             "the onnxruntime path is already set",
         )
     })
-}
-
-fn committed_or_error(committed: bool) -> Result<(), String> {
-    if committed {
-        Ok(())
-    } else {
-        Err("Failed to initialize onnxruntime".to_string())
-    }
 }
 
 fn load_voice(config_path: &std::path::Path) -> DengjenResult<Arc<dyn DengjenModel + Send + Sync>> {
@@ -1931,12 +1923,6 @@ mod abi_struct_tests {
         assert_eq!(piper_config.length_scale, 1.2);
         assert_eq!(piper_config.noise_scale, 0.5);
         assert_eq!(piper_config.noise_w, 0.9);
-    }
-
-    #[test]
-    fn committed_or_error_reports_a_failed_commit_as_an_error() {
-        assert!(committed_or_error(true).is_ok());
-        assert!(committed_or_error(false).is_err());
     }
 
     #[test]

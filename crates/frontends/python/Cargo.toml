@@ -45,7 +45,7 @@ once_cell = "1.18.0"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [dependencies.dengjen-tashkeel]
-version = "3.0.0"
+version = "3.0.2"
 default-features = false
 features = ["ort-static", "rayon"]
 optional = true
@@ -55,7 +55,7 @@ version = "0.29.1"
 features = ["extension-module", "abi3-py39"]
 
 [dependencies.ort]
-version = "=2.0.0-rc.14"
+version = "=2.0.0-rc.15"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]
 

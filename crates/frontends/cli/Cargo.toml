@@ -29,6 +29,7 @@ ort-dylib = ["ort/load-dynamic"]
 
 [dependencies]
 dengjen-tts.workspace = true
+dengjen-tts-core = { workspace = true, features = ["ort-providers"] }
 dengjen-tts-piper.workspace = true
 dengjen-tts-kokoro.workspace = true
 dengjen-tts-melotts.workspace = true
@@ -47,7 +48,7 @@ version = "4.3.2"
 features = ["derive",]
 
 [dependencies.ort]
-version = "=2.0.0-rc.14"
+version = "=2.0.0-rc.15"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]
 

@@ -68,12 +68,25 @@ pub(crate) fn phonemize_dispatch(
 }
 
 #[cfg(feature = "tashkeel")]
+fn share_ort_environment() -> DengjenResult<()> {
+    static SHARED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+    SHARED
+        .get_or_init(|| {
+            let environment = dengjen_tts_core::environment().map_err(|e| e.to_string())?;
+            dengjen_tashkeel::install_environment(environment.clone()).map_err(|e| e.to_string())
+        })
+        .clone()
+        .map_err(DengjenError::InferenceError)
+}
+
+#[cfg(feature = "tashkeel")]
 pub(crate) fn create_tashkeel_engine(
     config: &ModelConfig,
 ) -> DengjenResult<Option<TashkeelEngine>> {
     if !should_diacritize(&config.espeak.voice) {
         return Ok(None);
     }
+    share_ort_environment()?;
     dengjen_tashkeel::create_inference_engine(None)
         .map(Some)
         .map_err(|msg| {
