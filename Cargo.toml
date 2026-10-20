@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "crates/core",
     "crates/stt",
+    "crates/voices",
     "crates/dengjen/core",
     "crates/dengjen/synth",
     "crates/dengjen/models/piper",
@@ -13,6 +14,7 @@ members = [
     "crates/frontends/python",
     "crates/frontends/capi",
     "crates/frontends/capi-stt",
+    "crates/frontends/capi-voices",
     "crates/frontends/cli",
     "crates/text/espeak-phonemizer",
     "crates/text/hebrew-phonemizer",
@@ -48,6 +50,7 @@ dengjen-espeak-phonemizer = { path = "crates/text/espeak-phonemizer", version = 
 dengjen-hebrew-phonemizer = { path = "crates/text/hebrew-phonemizer", version = "3.0.0" }
 dengjen-pinyin-phonemizer = { path = "crates/text/pinyin-phonemizer", version = "3.0.0" }
 dengjen-stt = { path = "crates/stt", version = "3.0.0" }
+dengjen-voices = { path = "crates/voices", version = "3.0.0" }
 dengjen-audio-ops = { path = "crates/audio/ops", version = "3.0.0" }
 tracing = "0.1"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
