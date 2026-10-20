@@ -7,6 +7,7 @@
 pub mod catalogue;
 pub mod digest;
 pub mod error;
+pub(crate) mod idle;
 pub mod manager;
 pub(crate) mod store;
 pub mod transport;
