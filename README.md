@@ -32,18 +32,18 @@ The Hebrew and pinyin phonemizers are opt-in Cargo features (`hebrew`, `pinyin`)
 
 ## Documentation
 
-The documentation lives at <https://zirekhq.github.io/dengjen-tts/next/index.html>:
+The documentation lives at <https://zirekhq.github.io/dengjen/next/index.html>:
 
-- [Overview and crate list](https://zirekhq.github.io/dengjen-tts/next/index.html)
-- [Get started with the gRPC server](https://zirekhq.github.io/dengjen-tts/next/start-grpc.html)
-- [Get started with Python](https://zirekhq.github.io/dengjen-tts/next/start-python.html)
-- [Build from source](https://zirekhq.github.io/dengjen-tts/next/installation.html): the workspace build and the eSpeak-ng data directory
-- [Usage](https://zirekhq.github.io/dengjen-tts/next/usage.html): synthesize from the command line
-- [Choosing and tuning a model backend](https://zirekhq.github.io/dengjen-tts/next/voices.html)
-- [Streaming synthesis and the gRPC frontend](https://zirekhq.github.io/dengjen-tts/next/streaming.html)
-- [Phonemizer language coverage](https://zirekhq.github.io/dengjen-tts/next/phonemizers.html)
-- [Architecture](https://zirekhq.github.io/dengjen-tts/next/architecture.html)
-- [Testing](https://zirekhq.github.io/dengjen-tts/next/testing.html)
+- [Overview and crate list](https://zirekhq.github.io/dengjen/next/index.html)
+- [Get started with the gRPC server](https://zirekhq.github.io/dengjen/next/start-grpc.html)
+- [Get started with Python](https://zirekhq.github.io/dengjen/next/start-python.html)
+- [Build from source](https://zirekhq.github.io/dengjen/next/installation.html): the workspace build and the eSpeak-ng data directory
+- [Usage](https://zirekhq.github.io/dengjen/next/usage.html): synthesize from the command line
+- [Choosing and tuning a model backend](https://zirekhq.github.io/dengjen/next/voices.html)
+- [Streaming synthesis and the gRPC frontend](https://zirekhq.github.io/dengjen/next/streaming.html)
+- [Phonemizer language coverage](https://zirekhq.github.io/dengjen/next/phonemizers.html)
+- [Architecture](https://zirekhq.github.io/dengjen/next/architecture.html)
+- [Testing](https://zirekhq.github.io/dengjen/next/testing.html)
 
 To contribute, see [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 

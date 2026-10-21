@@ -24,7 +24,7 @@ make test    # builds libdengjen in release mode, then runs `go test ./...`
 ## Usage
 
 ```go
-import dengjen "github.com/ZirekHQ/dengjen-tts/bindings/go"
+import dengjen "github.com/ZirekHQ/dengjen/bindings/go"
 
 voice, err := dengjen.LoadVoice("/path/to/voice/config.json")
 if err != nil {
