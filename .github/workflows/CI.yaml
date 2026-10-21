@@ -310,6 +310,7 @@ jobs:
           persist-credentials: false
       - run: bash scripts/test-ort-gate.sh
       - run: bash scripts/test-assemble-natives.sh
+      - run: bash scripts/test-bump-natives-versions.sh
 
   # The three-OS natives build is slow, so a pull request runs it only when something it packages
   # or the scripts it runs changed; pushes to main and manual runs always do.

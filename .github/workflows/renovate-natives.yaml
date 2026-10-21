@@ -1,0 +1,64 @@
+name: Refresh natives on Renovate PRs
+
+# Renovate runs as the hosted app and cannot run post-upgrade commands, so a dependency PR that
+# changes Cargo.lock leaves the workspace-hack crate and the Java natives fingerprints stale.
+on:
+  pull_request:
+    paths:
+      - Cargo.lock
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate-natives-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    if: >-
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-hakari
+      - name: Regenerate workspace-hack and the natives fingerprints
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          cargo hakari generate
+          scripts/bump-natives-versions.sh "origin/$BASE_REF"
+      # Minted only now, so no write credential exists while the PR head's code runs. GITHUB_TOKEN
+      # pushes do not start workflows; an app token lets CI run on the pushed commit.
+      - name: Create the app token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.NATIVES_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NATIVES_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - name: Push the refresh to the Renovate branch
+        env:
+          TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Nothing to refresh."
+            exit 0
+          fi
+          git config user.name "dengjen-natives-bot"
+          git config user.email "natives-bot@users.noreply.github.com"
+          git commit -am "chore(deps): refresh the workspace-hack crate and the natives fingerprints NOJIRA"
+          git push "https://x-access-token:${TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${BRANCH}"
