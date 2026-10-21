@@ -4,4 +4,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "dengjen-android"
-include(":core", ":tts")
+include(":core", ":tts", ":stt")

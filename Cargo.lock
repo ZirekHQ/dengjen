@@ -831,6 +831,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dengjen-capi-jni-stt"
+version = "3.0.0"
+dependencies = [
+ "cc",
+ "dengjen-capi-jni-common",
+ "ffi-support",
+ "jni",
+ "libdengjen-stt",
+ "workspace-hack",
+]
+
+[[package]]
 name = "dengjen-capi-jni-tts"
 version = "3.0.0"
 dependencies = [
