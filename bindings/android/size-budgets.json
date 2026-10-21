@@ -1,0 +1,27 @@
+{
+  "core": {
+    "aar": 20500000,
+    "entries": {
+      "jni/arm64-v8a/libonnxruntime.so": 25600000,
+      "jni/x86_64/libonnxruntime.so": 29400000,
+      "jni/arm64-v8a/libc++_shared.so": 1500000,
+      "jni/x86_64/libc++_shared.so": 1450000
+    }
+  },
+  "tts": {
+    "aar": 13800000,
+    "entries": {
+      "jni/arm64-v8a/libdengjen_tts_jni.so": 10100000,
+      "jni/x86_64/libdengjen_tts_jni.so": 10600000
+    }
+  },
+  "stt": {
+    "aar": 5200000,
+    "entries": {
+      "jni/arm64-v8a/libsherpa-onnx-c-api.so": 5150000,
+      "jni/x86_64/libsherpa-onnx-c-api.so": 5700000,
+      "jni/arm64-v8a/libdengjen_stt_jni.so": 580000,
+      "jni/x86_64/libdengjen_stt_jni.so": 640000
+    }
+  }
+}

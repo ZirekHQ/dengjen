@@ -11,8 +11,11 @@ cargo ndk -t arm64-v8a -t x86_64 -o "$out" build $flag -p dengjen-capi-jni-tts -
 rm -f "$out"/*/liblibdengjen.so
 # The JNI libraries link libc++_shared.so; core owns it so sibling modules do not collide on the file.
 sysroot="$(echo "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/sysroot/usr/lib)"
+strip="$(echo "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-strip)"
 for pair in arm64-v8a:aarch64-linux-android x86_64:x86_64-linux-android; do
-  install -D "$sysroot/${pair#*:}/libc++_shared.so" "$here/core/src/main/jniLibs/${pair%%:*}/libc++_shared.so"
+  dest="$here/core/src/main/jniLibs/${pair%%:*}/libc++_shared.so"
+  install -D "$sysroot/${pair#*:}/libc++_shared.so" "$dest"
+  "$strip" --strip-unneeded "$dest"
 done
 
 # The prebuilt libonnxruntime.so needs libc symbols from API 24 (__write_chk), which cargo-ndk's default platform lacks.

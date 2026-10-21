@@ -1,0 +1,62 @@
+name: Build Android AARs
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "vX.Y.Z being released"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # github.workflow_ref stays bound to the top-level caller through nested workflow_call hops.
+      - name: verify this workflow was only reached through release.yaml or prepare-release.yaml
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          actual_path="${WORKFLOW_REF%@*}"
+          if [ "$WORKFLOW_REF" != "ZirekHQ/dengjen/.github/workflows/release.yaml@refs/heads/main" ] \
+            && [ "$actual_path" != "ZirekHQ/dengjen/.github/workflows/prepare-release.yaml" ]; then
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen -- refusing to run outside release.yaml's main-branch flow or prepare-release.yaml's override path" >&2
+            exit 1
+          fi
+
+  build:
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/build-android-aars # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+      - name: Check the size budgets
+        run: bindings/android/scripts/check-sizes.sh aars
+      - name: Name the AARs after the version and checksum them
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          mkdir -p out
+          for module in core tts stt; do
+            cp "aars/$module-release.aar" "out/dengjen-android-$module-$version.aar"
+          done
+          (cd out && sha256sum ./*.aar > SHA256SUMS-android.txt)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-aars
+          path: out/*
+          if-no-files-found: error
