@@ -1,0 +1,39 @@
+name: Build the Android release AARs
+description: Builds the release JNI libraries and the core, tts and stt AARs, and stages them in aars/.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      with:
+        distribution: temurin
+        java-version: "17"
+    - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+    # rust-toolchain.toml pins the toolchain, so the targets must be added to that one.
+    - name: Add Android targets to the pinned toolchain
+      shell: bash
+      run: rustup target add aarch64-linux-android x86_64-linux-android
+    - id: ndk
+      uses: ./.github/actions/setup-android-ndk # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    - name: Install cargo-ndk
+      shell: bash
+      run: cargo install cargo-ndk --locked
+    - name: Build the native libraries
+      shell: bash
+      env:
+        ANDROID_NDK_HOME: ${{ steps.ndk.outputs.home }}
+      run: |
+        set -euo pipefail
+        bindings/android/scripts/fetch-ort.sh
+        bindings/android/scripts/build-jni.sh release
+    - name: Assemble the AARs
+      shell: bash
+      working-directory: bindings/android
+      run: ./gradlew --console=plain :core:assembleRelease :tts:assembleRelease :stt:assembleRelease
+    - name: Stage the AARs
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p aars
+        for module in core tts stt; do
+          cp "bindings/android/$module/build/outputs/aar/$module-release.aar" "aars/$module-release.aar"
+        done

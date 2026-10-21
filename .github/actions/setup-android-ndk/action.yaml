@@ -1,0 +1,17 @@
+name: Set up the pinned Android NDK
+description: Installs NDK r27c, so the shipped native libraries do not depend on the runner image's NDK.
+outputs:
+  home:
+    description: Path of the installed NDK.
+    value: ${{ steps.install.outputs.home }}
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      run: |
+        set -euo pipefail
+        version=27.2.12479018
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$version" >/dev/null
+        echo "home=$ANDROID_HOME/ndk/$version" >> "$GITHUB_OUTPUT"

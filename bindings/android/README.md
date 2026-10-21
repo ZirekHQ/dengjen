@@ -10,7 +10,7 @@ Supported ABIs: `arm64-v8a`, `x86_64`. minSdk 27.
 
 ## Building and testing
 
-Prerequisites: JDK 17, Android SDK (platform 35), a recent NDK with `ANDROID_NDK_HOME` set, `cargo-ndk`, and the Rust targets `aarch64-linux-android` and `x86_64-linux-android`.
+Prerequisites: JDK 17, Android SDK (platform 35), NDK r27c (the version CI pins) with `ANDROID_NDK_HOME` set, `cargo-ndk`, and the Rust targets `aarch64-linux-android` and `x86_64-linux-android`.
 
 ```bash
 scripts/fetch-ort.sh        # ONNX Runtime from the pinned sherpa-onnx release
@@ -51,3 +51,7 @@ try (Recognizer recognizer = Recognizer.load("/path/to/model-dir", modelSha256, 
 ```
 
 A C++ exception thrown inside sherpa-onnx surfaces as a `DengjenException` instead of aborting the process.
+
+## Releases
+
+Each GitHub Release carries `dengjen-android-{core,tts,stt}-<version>.aar` and `SHA256SUMS-android.txt`, all with build-provenance attestations. `size-budgets.json` caps each AAR and its largest native libraries, in bytes: `aar` is the file size, each `entries` value is the uncompressed size of that file inside the AAR. CI enforces it on pull requests (the `sizes` job in `android.yaml`) and again before a release is published (`scripts/check-sizes.sh <dir>`, where `<dir>` holds Gradle's unrenamed `core-release.aar`, `tts-release.aar` and `stt-release.aar`). To raise a budget, edit the file and give the measured size in the pull request description.

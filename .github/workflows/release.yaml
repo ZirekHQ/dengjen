@@ -189,6 +189,16 @@ jobs:
       contents: read
     uses: ./.github/workflows/publish-deb.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
 
+  android:
+    name: Android AARs
+    needs: tag-and-release
+    if: "!cancelled() && needs.tag-and-release.result == 'success'"
+    permissions:
+      contents: read
+    uses: ./.github/workflows/publish-android.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    with:
+      tag: v${{ needs.tag-and-release.outputs.version }}
+
   python:
     name: Python wheels
     needs: [tag-and-release, natives]
@@ -244,13 +254,14 @@ jobs:
     name: Whole-repo GitHub Release
     # On the override path `pypi` is skipped (prepare-release.yaml publishes to PyPI after this
     # workflow returns), so only the wheel build gates the release there.
-    needs: [tag-and-release, crates, java, go, grpc, deb, python, pypi]
+    needs: [tag-and-release, crates, java, go, grpc, deb, android, python, pypi]
     if: >-
       !cancelled() && inputs.dry_run != true &&
       needs.tag-and-release.result == 'success' &&
       needs.crates.result == 'success' && needs.java.result == 'success' &&
       needs.go.result == 'success' && needs.grpc.result == 'success' &&
-      needs.deb.result == 'success' && needs.python.result == 'success' &&
+      needs.deb.result == 'success' && needs.android.result == 'success' &&
+      needs.python.result == 'success' &&
       (needs.pypi.result == 'success' ||
         (inputs.new_tag != '' && needs.pypi.result == 'skipped'))
     runs-on: ubuntu-latest
@@ -269,6 +280,10 @@ jobs:
           pattern: deb-*
           path: debs
           merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-aars
+          path: android
       # Scans every lockfile and manifest in the repo, fuzz crates and bindings included.
       - name: Generate the SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
@@ -288,6 +303,8 @@ jobs:
           subject-path: |
             dengjen-tts-*.cdx.json
             debs/*.deb
+            android/*.aar
+            android/SHA256SUMS-android.txt
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -327,7 +344,9 @@ jobs:
             --verify-tag \
             "${notes_args[@]}" \
             "dengjen-tts-${VERSION}.cdx.json" \
-            debs/*.deb
+            debs/*.deb \
+            android/*.aar \
+            android/SHA256SUMS-android.txt
 
   # A release created with GITHUB_TOKEN does not fire notify-docs.yaml's `release: published`
   # trigger, so the docs site is pinged by calling that workflow directly.
