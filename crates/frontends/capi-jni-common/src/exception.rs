@@ -21,6 +21,9 @@ pub fn throw(env: &mut Env, failure: &Failure) {
             let _ = env.throw(throwable);
         }
         Err(_) => {
+            if env.exception_check() {
+                env.exception_clear();
+            }
             let _ = env.throw_new(
                 jni_str!("java/lang/RuntimeException"),
                 JNIString::from(failure.message.as_str()),
