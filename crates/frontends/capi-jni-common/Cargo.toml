@@ -1,0 +1,16 @@
+[package]
+name = "dengjen-capi-jni-common"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "Shared JNI helpers for the dengjen Android bindings"
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+jni = "0.21.1"
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }

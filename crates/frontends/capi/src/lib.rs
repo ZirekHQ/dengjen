@@ -230,10 +230,10 @@ pub type DengjenFFIResult<T> = Result<T, DengjenFFIError>;
 
 #[repr(C)]
 pub struct SynthesisEvent {
-    event_type: i32,
-    error_ptr: *mut ExternError,
-    len: i64,
-    data: *mut u8,
+    pub event_type: i32,
+    pub error_ptr: *mut ExternError,
+    pub len: i64,
+    pub data: *mut u8,
 }
 
 impl SynthesisEvent {
@@ -277,9 +277,9 @@ impl SynthesisEvent {
 
 #[repr(C)]
 pub struct AudioInfo {
-    sample_rate: u32,
-    num_channels: u32,
-    sample_width: u32,
+    pub sample_rate: u32,
+    pub num_channels: u32,
+    pub sample_width: u32,
 }
 
 /// Parameters for [`libdengjenSpeak`] and [`libdengjenSpeakToFile`].
@@ -290,16 +290,16 @@ pub struct AudioInfo {
 #[derive(Clone)]
 #[repr(C)]
 pub struct SynthesisParams {
-    struct_size: u32,
-    mode: i32,
-    rate: u8,
-    volume: u8,
-    pitch: u8,
-    appended_silence_ms: u32,
-    callback: Option<extern "C" fn(SynthesisEvent, *mut c_void) -> u8>,
-    nonblocking: u8,
+    pub struct_size: u32,
+    pub mode: i32,
+    pub rate: u8,
+    pub volume: u8,
+    pub pitch: u8,
+    pub appended_silence_ms: u32,
+    pub callback: Option<extern "C" fn(SynthesisEvent, *mut c_void) -> u8>,
+    pub nonblocking: u8,
 
-    user_data: *mut c_void,
+    pub user_data: *mut c_void,
 }
 
 // SAFETY: `SynthesisParams` is moved by value across the SYNTHESIS_THREAD_POOL boundary in
@@ -830,7 +830,7 @@ fn init_ort_environment() -> DengjenResult<()> {
 }
 
 fn commit_ort_environment() -> Result<(), String> {
-    #[cfg(target_os = "android")]
+    #[cfg(all(target_os = "android", feature = "nnapi"))]
     let execution_providers = vec![
         ort::ep::NNAPI::default().build(),
         ort::ep::CPU::default().build(),
@@ -840,7 +840,7 @@ fn commit_ort_environment() -> Result<(), String> {
         ort::ep::CoreML::default().build(),
         ort::ep::CPU::default().build(),
     ];
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(not(any(all(target_os = "android", feature = "nnapi"), target_os = "ios")))]
     let execution_providers = vec![ort::ep::CPU::default().build()];
 
     let environment = ort_environment_builder()?

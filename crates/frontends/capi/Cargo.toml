@@ -12,7 +12,7 @@ workspace = true
 
 [lib]
 name = "libdengjen"
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = ["piper", "espeak"]
@@ -28,6 +28,7 @@ cuda = ["dengjen-tts-piper/cuda", "dengjen-tts-kokoro/cuda", "dengjen-tts-melott
 coreml = ["dengjen-tts-piper/coreml", "dengjen-tts-kokoro/coreml", "dengjen-tts-melotts/coreml"]
 directml = ["dengjen-tts-piper/directml", "dengjen-tts-kokoro/directml", "dengjen-tts-melotts/directml"]
 ort-dylib = ["ort/load-dynamic"]
+nnapi = []
 
 [dependencies]
 dengjen-tts-core = { workspace = true, features = ["ort-providers"] }

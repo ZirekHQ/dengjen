@@ -1,0 +1,29 @@
+[package]
+name = "dengjen-capi-jni-tts"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "JNI bindings for the dengjen TTS engine (Android)"
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "dengjen_tts_jni"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["ort-dylib"]
+ort-dylib = ["libdengjen/ort-dylib"]
+espeak = ["libdengjen/espeak"]
+self-test = []
+
+[dependencies]
+dengjen-capi-jni-common = { path = "../capi-jni-common" }
+ffi-support = "0.4.4"
+jni = "0.21.1"
+libdengjen = { path = "../capi", default-features = false, features = ["piper"] }
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
