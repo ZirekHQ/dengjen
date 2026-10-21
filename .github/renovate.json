@@ -73,17 +73,6 @@
         "jni"
       ],
       "allowedVersions": "<0.22"
-    },
-    {
-      "description": "AGP 9 and Gradle 9.6+ do not work together yet, and AGP 9 needs build script changes; hold the Android build tooling on 8.x",
-      "matchFileNames": [
-        "bindings/android/**"
-      ],
-      "allowedVersions": "<9",
-      "matchDepNames": [
-        "gradle",
-        "com.android.library"
-      ]
     }
   ]
 }
