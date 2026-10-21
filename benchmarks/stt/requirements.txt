@@ -340,8 +340,8 @@ cuda-bindings==13.4.4 ; python_full_version < '3.15' and sys_platform == 'linux'
 cuda-pathfinder==1.8.3 ; python_full_version < '3.15' and sys_platform == 'linux' \
     --hash=sha256:e29e59829c297a7a5233bd9cc71094fc5bddbd076951482670178f9eade39b1f
     # via cuda-bindings
-cuda-toolkit==13.4.2; sys_platform == 'linux' \
-    --hash=sha256:2e79d99df4f3c5b3102fa4a5a69eb4c37a06ebf06b9aef92c18078c26e8db004
+cuda-toolkit==13.4.3; sys_platform == 'linux' \
+    --hash=sha256:c56be2a9f538653ef5b1aa27787ed046ea08afa10bd55e95335a35fd196ac14e
     # via torch
 decorator==5.3.1 \
     --hash=sha256:4cbcdd55a6efadb9dbea26b858f4fb3264567b52d69ca0d25b721b553f60ea82 \
@@ -892,11 +892,11 @@ nvidia-curand==10.4.4.72; (platform_machine == 'aarch64' and sys_platform == 'li
     --hash=sha256:53bef256d4362eb3d70c9c048a8d31bcf003f9dcade17720c73d3a494a7dcaa3 \
     --hash=sha256:e0bce83e083ef25976ee74f59e8f067c15149a74538f1be6c2462e286e7c9c68
     # via cuda-toolkit
-nvidia-cusolver==12.3.4.7; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:225dd543c7b93ca22e62a35b5f4d8b4f9caa515733793925c05cdcf58da5cf02 \
-    --hash=sha256:4a38d88a1ea3f7b656e52001caf943b625822a89df3a8b63d895f56ef777b1a4 \
-    --hash=sha256:7ed56898cd98abe36d8727eaf1408622c67557f2acb3baca5a27e24e595a1ccb \
-    --hash=sha256:87891ab21de591da154070bd58d5fd3ab52ccaeb900f741a7ead0c8a859e44ac
+nvidia-cusolver==12.3.5.3; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:01f13254cfe9f99cf8d141fa4d00fbe55b235fd1509854017d766fd84442f46a \
+    --hash=sha256:23847639c1e487483c4846786f781b4f7736e2d499cd48dc34f18d5b537783c5 \
+    --hash=sha256:42528d8347ca73e0c5c081ac1c9a51561730f50e568d3d185e3938337fd8c646 \
+    --hash=sha256:43c33b50b5a8d254ad42ffe0300bbd56ba27a3303e9229be2cf298f3944ac47f
     # via cuda-toolkit
 nvidia-cusparse==12.8.6.72; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:013d3f83316431dd3338cf15141dd5420b24dffc6663fc083c053c8409fa3cb7 \
