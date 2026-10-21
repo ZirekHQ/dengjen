@@ -1,5 +1,5 @@
-name: dengjen-tts
-title: dengjen-tts
+name: dengjen
+title: dengjen
 version: true
 nav:
   - modules/ROOT/nav.adoc

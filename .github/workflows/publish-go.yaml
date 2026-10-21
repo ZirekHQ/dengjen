@@ -283,10 +283,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
-          path: dengjen-tts
+          path: dengjen
           persist-credentials: false
       # Local-action paths resolve off $GITHUB_WORKSPACE, not this step's own `path:`.
-      - uses: ./dengjen-tts/.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+      - uses: ./dengjen/.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
       - name: Create deploy App token
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -314,7 +314,7 @@ jobs:
             echo "Tag '${tag}' does not carry a valid vX.Y.Z suffix" >&2
             exit 1
           fi
-          module_path="$(bash dengjen-tts/scripts/go-module-path.sh "$version")"
+          module_path="$(bash dengjen/scripts/go-module-path.sh "$version")"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "module_path=${module_path}" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -353,7 +353,7 @@ jobs:
           cp -P artifacts/natives-linux-x64/lib*dengjen_stt.so artifacts/natives-linux-x64/libsherpa-onnx-c-api.so artifacts/natives-linux-x64/libonnxruntime*.so* "$dst/stt/lib/linux_amd64/"
           cp artifacts/natives-windows-x64/*dengjen_stt.dll artifacts/natives-windows-x64/sherpa-onnx-c-api.dll artifacts/natives-windows-x64/onnxruntime*.dll "$dst/stt/lib/windows_amd64/"
           cp -P artifacts/natives-macos-arm64/lib*dengjen_stt.dylib artifacts/natives-macos-arm64/libsherpa-onnx-c-api.dylib artifacts/natives-macos-arm64/libonnxruntime*.dylib "$dst/stt/lib/darwin_arm64/"
-          cp dengjen-tts/crates/frontends/capi-stt/libdengjen_stt.h "$dst/stt/include/"
+          cp dengjen/crates/frontends/capi-stt/libdengjen_stt.h "$dst/stt/include/"
           for expected in stt/lib/linux_amd64/liblibdengjen_stt.so \
                           stt/lib/windows_amd64/libdengjen_stt.dll \
                           stt/lib/darwin_arm64/liblibdengjen_stt.dylib \
@@ -367,10 +367,10 @@ jobs:
           (cd "$dst" && sha256sum lib/*/* include/libdengjen.h stt/lib/*/* stt/include/libdengjen_stt.h > SHA256SUMS)
           echo "sums_digest=$(sha256sum "$dst/SHA256SUMS" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
-          cp -r dengjen-tts/deps/dev/espeak-ng-data "$dst/espeak-ng-data"
+          cp -r dengjen/deps/dev/espeak-ng-data "$dst/espeak-ng-data"
 
           for f in callback.go error.go speak.go synthconfig.go voice.go; do
-            cp "dengjen-tts/bindings/go/$f" "$dst/$f"
+            cp "dengjen/bindings/go/$f" "$dst/$f"
           done
 
           cat > "$dst/doc.go" <<'EOF'
@@ -404,7 +404,7 @@ jobs:
           gen_cgo windows amd64 lib/windows_amd64 libdengjen ""                                        cgo_windows_amd64.go
 
           for f in doc.go error.go recognizer.go; do
-            cp "dengjen-tts/bindings/go/stt/$f" "$dst/stt/$f"
+            cp "dengjen/bindings/go/stt/$f" "$dst/stt/$f"
           done
           sed -i '/^#cgo /d' "$dst/stt/recognizer.go"
           for f in error.go recognizer.go; do
@@ -471,7 +471,7 @@ jobs:
           }
           EOF
 
-          cp dengjen-tts/LICENSE "$dst/LICENSE"
+          cp dengjen/LICENSE "$dst/LICENSE"
 
           cat > "$dst/NOTICE" <<EOF
           The binaries in this module were built from ZirekHQ/dengjen at
