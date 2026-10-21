@@ -64,5 +64,8 @@
       ],
       "enabled": false
     }
+  ],
+  "gitIgnoredAuthors": [
+    "natives-bot@users.noreply.github.com"
   ]
 }
