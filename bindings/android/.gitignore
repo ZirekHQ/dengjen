@@ -4,3 +4,4 @@ local.properties
 */src/main/jniLibs/
 */src/debug/jniLibs/
 voice/
+stt-model/

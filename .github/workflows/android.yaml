@@ -9,6 +9,7 @@ on:
       - "Cargo.lock"
       - ".github/scripts/fetch-manifest-fixtures.sh"
       - ".github/bench-fixtures.json"
+      - ".github/stt-smoke-model.json"
       - ".github/workflows/android.yaml"
   workflow_dispatch:
 
@@ -50,6 +51,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends espeak-ng-data
           cp -r /usr/lib/x86_64-linux-gnu/espeak-ng-data bindings/android/voice/
+      - name: Download the recognition model
+        run: |
+          python3 -m pip install --quiet --only-binary :all: huggingface_hub==0.34.4
+          python3 - <<'PY'
+          import hashlib, json
+          from huggingface_hub import snapshot_download
+          spec = json.load(open(".github/stt-smoke-model.json"))
+          snapshot_download(spec["repo"], allow_patterns=spec["files"], local_dir="bindings/android/stt-model")
+          digest = hashlib.sha256(open("bindings/android/stt-model/model.int8.onnx", "rb").read()).hexdigest()
+          if digest != spec["sha256"]:
+              raise SystemExit(f"model checksum {digest} does not match {spec['sha256']}")
+          PY
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -63,4 +76,6 @@ jobs:
           script: |
             adb shell mkdir -p /data/local/tmp/dengjen-voice
             adb push voice/. /data/local/tmp/dengjen-voice/
-            ./gradlew --console=plain :tts:connectedDebugAndroidTest
+            adb shell mkdir -p /data/local/tmp/dengjen-stt
+            adb push stt-model/model.int8.onnx stt-model/tokens.txt /data/local/tmp/dengjen-stt/
+            ./gradlew --console=plain :tts:connectedDebugAndroidTest :stt:connectedDebugAndroidTest

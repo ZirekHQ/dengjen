@@ -1,0 +1,2 @@
+-keep class io.github.zirekhq.dengjen.android.Recognizer { native <methods>; }
+-keep class io.github.zirekhq.dengjen.android.DengjenException { <init>(int, java.lang.String); }

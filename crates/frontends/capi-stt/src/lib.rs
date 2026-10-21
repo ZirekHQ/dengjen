@@ -38,8 +38,8 @@ define_string_destructor!(_internal_libdengjenSttFreeString);
 /// append fields and read them when `struct_size` covers them.
 #[repr(C)]
 pub struct SttConfig {
-    struct_size: u32,
-    num_threads: i32,
+    pub struct_size: u32,
+    pub num_threads: i32,
 }
 
 const STT_CONFIG_V1_SIZE: u32 =

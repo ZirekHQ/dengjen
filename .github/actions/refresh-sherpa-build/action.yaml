@@ -1,5 +1,5 @@
-name: Refresh the sherpa-onnx-sys build script
-description: Drops the cached sherpa-onnx-sys build output so its prebuilt libraries are downloaded again.
+name: Refresh the sherpa-onnx-sys and ort-sys build scripts
+description: Drops the cached build output of the crates that download prebuilt libraries, so the libraries are downloaded again.
 runs:
   using: composite
   steps:
@@ -7,3 +7,7 @@ runs:
     # build script's cached output, so the build script neither re-downloads nor finds the libraries.
     - shell: bash
       run: rm -rf target/sherpa-onnx-prebuilt target/*/build/sherpa-onnx-sys-* target/*/*/build/sherpa-onnx-sys-*
+    # ort-sys keeps its download in ~/.cache/ort.pyke.io, which rust-cache does not restore, so a cached
+    # build script output points at libraries that are no longer on the runner.
+    - shell: bash
+      run: rm -rf target/*/build/ort-sys-* target/*/*/build/ort-sys-*
