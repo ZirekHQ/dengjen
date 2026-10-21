@@ -15,6 +15,8 @@ members = [
     "crates/frontends/capi",
     "crates/frontends/capi-stt",
     "crates/frontends/capi-voices",
+    "crates/frontends/capi-jni-common",
+    "crates/frontends/capi-jni-tts",
     "crates/frontends/cli",
     "crates/text/espeak-phonemizer",
     "crates/text/hebrew-phonemizer",

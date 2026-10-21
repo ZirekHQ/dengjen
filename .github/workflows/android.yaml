@@ -1,0 +1,66 @@
+name: Android
+
+on:
+  pull_request:
+    paths:
+      - "bindings/android/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/scripts/fetch-manifest-fixtures.sh"
+      - ".github/bench-fixtures.json"
+      - ".github/workflows/android.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instrumented:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - name: Add Android targets to the pinned toolchain
+        run: rustup target add aarch64-linux-android x86_64-linux-android
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Build native libraries
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          bindings/android/scripts/fetch-ort.sh
+          bindings/android/scripts/build-jni.sh debug
+      - name: Download test voice and eSpeak data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json . piper-std
+          mkdir -p bindings/android/voice
+          cp crates/dengjen/synth/models/std/model.onnx crates/dengjen/synth/models/std/model.onnx.json bindings/android/voice/
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends espeak-ng-data
+          cp -r /usr/lib/x86_64-linux-gnu/espeak-ng-data bindings/android/voice/
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 30
+          arch: x86_64
+          working-directory: bindings/android
+          script: |
+            adb shell mkdir -p /data/local/tmp/dengjen-voice
+            adb push voice/. /data/local/tmp/dengjen-voice/
+            ./gradlew --console=plain :tts:connectedDebugAndroidTest

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(cd "$here/../.." && pwd)"
+profile="${1:-release}"
+features="ort-dylib"; out="$here/tts/src/main/jniLibs"; flag="--release"
+if [ "$profile" = debug ]; then features="ort-dylib,self-test"; out="$here/tts/src/debug/jniLibs"; flag=""; fi
+cd "$root"
+cargo ndk -t arm64-v8a -t x86_64 -o "$out" build $flag -p dengjen-capi-jni-tts --no-default-features --features "$features"
+# cargo-ndk also copies the libdengjen cdylib; the JNI library already embeds the engine.
+rm -f "$out"/*/liblibdengjen.so
+# libdengjen_tts_jni.so links libc++_shared.so; core owns it so sibling modules do not collide on the file.
+sysroot="$(echo "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/sysroot/usr/lib)"
+for pair in arm64-v8a:aarch64-linux-android x86_64:x86_64-linux-android; do
+  install -D "$sysroot/${pair#*:}/libc++_shared.so" "$here/core/src/main/jniLibs/${pair%%:*}/libc++_shared.so"
+done
