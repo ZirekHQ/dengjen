@@ -24,6 +24,6 @@ self-test = []
 [dependencies]
 dengjen-capi-jni-common = { path = "../capi-jni-common" }
 ffi-support = "0.4.4"
-jni = "0.21.1"
+jni = "0.22.0"
 libdengjen = { path = "../capi", default-features = false, features = ["piper"] }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
