@@ -5,7 +5,7 @@ use dengjen_capi_jni_common::guard::{jni_failure, Failure};
 use ffi_support::{ExternError, FfiStr};
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jintArray, jlong};
-use jni::JNIEnv;
+use jni::EnvUnowned;
 use libdengjen::{AudioInfo, DengjenVoice, SynthesisEvent, SynthesisParams};
 
 use crate::bridge::{trampoline, CallbackState};
@@ -51,7 +51,7 @@ fn params(
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeInit<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) {
     run(&mut env, |_| init_ort())
@@ -73,7 +73,7 @@ fn init_ort() -> Result<(), Failure> {
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeLoad<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     config_path: JString<'l>,
 ) -> jlong {
@@ -91,7 +91,7 @@ pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeLoad<'
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeUnload<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -104,7 +104,7 @@ pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeUnload
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeAudioInfo<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) -> jintArray {
@@ -124,15 +124,14 @@ pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeAudioI
             info.sample_width as i32,
         ];
         let array = env.new_int_array(3).map_err(jni_failure)?;
-        env.set_int_array_region(&array, 0, &values)
-            .map_err(jni_failure)?;
+        array.set_region(env, 0, &values).map_err(jni_failure)?;
         Ok(array.into_raw())
     })
 }
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeSpeak<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     text: JString<'l>,
@@ -170,7 +169,7 @@ pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeSpeak<
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeSpeakToFile<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     text: JString<'l>,
@@ -201,13 +200,13 @@ pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeSpeakT
             )
         };
         check(err)?;
-        Ok(wrote)
+        Ok(wrote != 0)
     })
 }
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Voice_nativeCancel<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {

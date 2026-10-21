@@ -1,41 +1,51 @@
+use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::{JString, JThrowable, JValue};
-use jni::JNIEnv;
+use jni::strings::JNIString;
+use jni::{jni_sig, jni_str, Env, EnvUnowned};
 
 use crate::guard::{guarded, jni_failure, Failure};
 
-pub const EXCEPTION_CLASS: &str = "io/github/zirekhq/dengjen/android/DengjenException";
-
-pub fn throw(env: &mut JNIEnv, failure: &Failure) {
-    if env.exception_check().unwrap_or(true) {
+pub fn throw(env: &mut Env, failure: &Failure) {
+    if env.exception_check() {
         return;
     }
     let built = env.new_string(&failure.message).and_then(|msg| {
         env.new_object(
-            EXCEPTION_CLASS,
-            "(ILjava/lang/String;)V",
+            jni_str!("io/github/zirekhq/dengjen/android/DengjenException"),
+            jni_sig!("(ILjava/lang/String;)V"),
             &[JValue::Int(failure.code), JValue::Object(&msg)],
         )
     });
-    match built {
-        Ok(obj) => {
-            let _ = env.throw(JThrowable::from(obj));
+    match built.and_then(|obj| env.cast_local::<JThrowable>(obj)) {
+        Ok(throwable) => {
+            let _ = env.throw(throwable);
         }
         Err(_) => {
-            let _ = env.throw_new("java/lang/RuntimeException", &failure.message);
+            let _ = env.throw_new(
+                jni_str!("java/lang/RuntimeException"),
+                JNIString::from(failure.message.as_str()),
+            );
         }
     }
 }
 
-pub fn run<T: Default>(env: &mut JNIEnv, f: impl FnOnce(&mut JNIEnv) -> Result<T, Failure>) -> T {
-    match guarded(|| f(env)) {
-        Ok(value) => value,
-        Err(failure) => {
-            throw(env, &failure);
-            T::default()
-        }
-    }
+pub fn run<T: Default>(
+    unowned: &mut EnvUnowned,
+    f: impl FnOnce(&mut Env) -> Result<T, Failure>,
+) -> T {
+    unowned
+        .with_env(|env| -> jni::errors::Result<T> {
+            Ok(match guarded(|| f(env)) {
+                Ok(value) => value,
+                Err(failure) => {
+                    throw(env, &failure);
+                    T::default()
+                }
+            })
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-pub fn java_string(env: &mut JNIEnv, s: &JString) -> Result<String, Failure> {
-    env.get_string(s).map(String::from).map_err(jni_failure)
+pub fn java_string(env: &mut Env, s: &JString) -> Result<String, Failure> {
+    s.try_to_string(env).map_err(jni_failure)
 }

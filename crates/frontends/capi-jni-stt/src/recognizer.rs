@@ -5,7 +5,7 @@ use dengjen_capi_jni_common::guard::{jni_failure, Failure, OPERATION_ERROR};
 use ffi_support::ExternError;
 use jni::objects::{JClass, JFloatArray, JString};
 use jni::sys::{jint, jlong, jstring};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned};
 use libdengjen_stt::{DengjenRecognizer, SttConfig};
 
 use crate::shim;
@@ -70,7 +70,7 @@ fn threads(value: jint) -> Result<i32, Failure> {
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Recognizer_nativeLoad<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     model_dir: JString<'l>,
     expected_sha256: JString<'l>,
@@ -98,7 +98,7 @@ pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Recognizer_nativeL
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Recognizer_nativeUnload<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
 ) {
@@ -109,10 +109,11 @@ pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Recognizer_nativeU
     })
 }
 
-fn read_samples(env: &mut JNIEnv, array: &JFloatArray) -> Result<Vec<f32>, Failure> {
-    let len = env.get_array_length(array).map_err(jni_failure)?;
-    let mut samples = vec![0f32; usize::try_from(len).unwrap_or(0)];
-    env.get_float_array_region(array, 0, &mut samples)
+fn read_samples(env: &mut Env, array: &JFloatArray) -> Result<Vec<f32>, Failure> {
+    let len = array.len(env).map_err(jni_failure)?;
+    let mut samples = vec![0f32; len];
+    array
+        .get_region(env, 0, &mut samples)
         .map_err(jni_failure)?;
     Ok(samples)
 }
@@ -151,7 +152,7 @@ fn owned_text(raw: *mut c_char) -> Result<String, Failure> {
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_Recognizer_nativeRecognize<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handle: jlong,
     samples: JFloatArray<'l>,

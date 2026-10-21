@@ -4,7 +4,7 @@ use dengjen_capi_jni_common::exception::run;
 use dengjen_capi_jni_common::guard::{jni_failure, Failure};
 use jni::objects::{JClass, JObject};
 use jni::sys::{jboolean, jint};
-use jni::JNIEnv;
+use jni::EnvUnowned;
 
 use crate::bridge::{deliver, CallbackState, Event};
 
@@ -21,7 +21,7 @@ fn speech() -> Event {
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_SelfTest_deliverFromNativeThread<
     'l,
 >(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handler: JObject<'l>,
 ) -> jboolean {
@@ -36,13 +36,13 @@ pub extern "system" fn Java_io_github_zirekhq_dengjen_android_SelfTest_deliverFr
                 code: -1,
                 message: "worker panicked".to_owned(),
             })?;
-        Ok(u8::from(kept))
+        Ok(kept)
     })
 }
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_SelfTest_deliverMany<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
     handler: JObject<'l>,
     n: jint,
@@ -58,7 +58,7 @@ pub extern "system" fn Java_io_github_zirekhq_dengjen_android_SelfTest_deliverMa
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_zirekhq_dengjen_android_SelfTest_panic<'l>(
-    mut env: JNIEnv<'l>,
+    mut env: EnvUnowned<'l>,
     _class: JClass<'l>,
 ) {
     run(&mut env, |_| -> Result<(), Failure> {
