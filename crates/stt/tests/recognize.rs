@@ -1,6 +1,10 @@
 use dengjen_stt::{Recognizer, RecognizerConfig};
 use std::path::PathBuf;
 
+const CLIP_SAMPLE_RATE: i32 = 24_000;
+// The 300M model spells Kurmanji phonetically, so only these stable words of the clip's sentence are asserted.
+const CLIP_WORDS: [&str; 3] = ["şêr", "komên mezin", "dijîn"];
+
 fn fixture(var: &str) -> Option<PathBuf> {
     std::env::var_os(var).map(PathBuf::from)
 }
@@ -12,7 +16,7 @@ fn read_f32_le(path: PathBuf) -> Vec<f32> {
 }
 
 // Self-skips without a model: DENGJEN_STT_MODEL_DIR holds the files named by MODEL_FILE and TOKENS_FILE,
-// DENGJEN_STT_CLIP is raw little-endian f32 mono samples at 16 kHz.
+// DENGJEN_STT_CLIP is raw little-endian f32 mono samples at 24 kHz.
 #[test]
 fn transcribes_a_kurmanji_clip() {
     let (Some(model_dir), Some(clip)) = (
@@ -23,6 +27,11 @@ fn transcribes_a_kurmanji_clip() {
         return;
     };
     let recognizer = Recognizer::new(&model_dir, RecognizerConfig::default()).unwrap();
-    let text = recognizer.recognize(&read_f32_le(clip), 16_000).unwrap();
-    assert!(!text.trim().is_empty());
+    let text = recognizer
+        .recognize(&read_f32_le(clip), CLIP_SAMPLE_RATE)
+        .unwrap()
+        .to_lowercase();
+    for word in CLIP_WORDS {
+        assert!(text.contains(word), "{word:?} missing from {text:?}");
+    }
 }

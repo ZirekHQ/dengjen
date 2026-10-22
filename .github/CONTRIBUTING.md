@@ -69,6 +69,10 @@ Changing a fixture: run `.github/scripts/build-bench-fixtures.sh OUT_DIR` with `
 `tag` and `sha256` in `bench-fixtures.json`. Never overwrite an existing release asset. Fixture
 tags must not start with `v`, which is what keeps `notify-docs.yaml` from pinging the docs site.
 
+The STT clip (`stt-clip.f32`, a FLEURS Kurmanji sentence under CC-BY-4.0, raw f32 mono at 24 kHz) is
+pinned the same way in [`stt-fixtures.json`](stt-fixtures.json) on the `stt-fixtures-v1` release. Point
+`DENGJEN_STT_CLIP` at it, plus `DENGJEN_STT_MODEL_DIR`, to run the `dengjen-stt` clip test.
+
 CI's `piper-real-voice-e2e` and `kokoro-real-voice-e2e` jobs run the real-voice *tests* on the
 weekly schedule, on manual dispatch, and on pull requests that touch `crates/dengjen`,
 `crates/text`, `crates/audio`, `crates/frontends/cli`, `Cargo.lock`, `rust-toolchain.toml` or the

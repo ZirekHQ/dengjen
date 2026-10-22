@@ -362,7 +362,7 @@ mod tests {
 
     // Self-skips without a model: DENGJEN_STT_MODEL_DIR holds the model files,
     // DENGJEN_STT_MODEL_SHA256 the hex digest of model.int8.onnx, and DENGJEN_STT_CLIP raw
-    // little-endian f32 mono samples at 16 kHz.
+    // little-endian f32 mono samples at 24 kHz.
     #[test]
     fn transcribes_a_clip_through_the_c_api() {
         let (Ok(dir), Ok(sha), Ok(clip)) = (
@@ -388,7 +388,7 @@ mod tests {
         );
         // SAFETY: `handle` is live and `samples` holds `samples.len()` floats.
         let text = unsafe {
-            libdengjenSttRecognize(handle, samples.as_ptr(), samples.len(), 16_000, &mut error)
+            libdengjenSttRecognize(handle, samples.as_ptr(), samples.len(), 24_000, &mut error)
         };
         assert!(
             !text.is_null(),
@@ -397,8 +397,13 @@ mod tests {
         );
         // SAFETY: `text` is the NUL-terminated string just returned.
         let transcript = unsafe { CStr::from_ptr(text) }.to_str().unwrap().to_owned();
-        eprintln!("transcript: {transcript}");
-        assert!(!transcript.trim().is_empty());
+        let lowered = transcript.to_lowercase();
+        for word in ["şêr", "komên mezin", "dijîn"] {
+            assert!(
+                lowered.contains(word),
+                "{word:?} missing from {transcript:?}"
+            );
+        }
         // SAFETY: each pointer is released once and not used afterwards.
         unsafe {
             libdengjenSttFreeString(text);
