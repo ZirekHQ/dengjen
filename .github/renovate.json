@@ -63,6 +63,17 @@
         "org.eclipse.jgit:org.eclipse.jgit"
       ],
       "enabled": false
+    },
+    {
+      "description": "AGP checks a minimum Gradle version and the Gradle wrapper update runs against the AGP in the tree, so they must land together",
+      "matchFileNames": [
+        "bindings/android/**"
+      ],
+      "matchDepNames": [
+        "com.android.library",
+        "gradle"
+      ],
+      "groupName": "android gradle plugin and gradle wrapper"
     }
   ],
   "gitIgnoredAuthors": [
