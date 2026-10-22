@@ -1,0 +1,11 @@
+{
+  "tag": "stt-fixtures-v1",
+  "fixtures": [
+    {
+      "name": "stt-clip",
+      "asset": "stt-clip.tar.gz",
+      "sha256": "f051ae3e050c1e543990a123ea7d94841d2d0296747d696fe6af1c4f6e0abcd4",
+      "dest": "bindings/android/stt-clip"
+    }
+  ]
+}

@@ -9,6 +9,7 @@ on:
       - "Cargo.lock"
       - ".github/scripts/fetch-manifest-fixtures.sh"
       - ".github/bench-fixtures.json"
+      - ".github/stt-fixtures.json"
       - ".github/stt-smoke-model.json"
       - ".github/workflows/android.yaml"
   workflow_dispatch:
@@ -54,6 +55,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends espeak-ng-data
           cp -r /usr/lib/x86_64-linux-gnu/espeak-ng-data bindings/android/voice/
+      - name: Download the recognition clip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash .github/scripts/fetch-manifest-fixtures.sh .github/stt-fixtures.json . stt-clip
       - name: Download the recognition model
         run: |
           python3 -m pip install --quiet --only-binary :all: huggingface_hub==0.34.4
@@ -81,6 +87,7 @@ jobs:
             adb push voice/. /data/local/tmp/dengjen-voice/
             adb shell mkdir -p /data/local/tmp/dengjen-stt
             adb push stt-model/model.int8.onnx stt-model/tokens.txt /data/local/tmp/dengjen-stt/
+            adb push stt-clip/stt-clip.f32 /data/local/tmp/dengjen-stt/
             ./gradlew --console=plain :tts:connectedDebugAndroidTest :stt:connectedDebugAndroidTest
 
   sizes:

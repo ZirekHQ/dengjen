@@ -10,10 +10,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
 import java.util.Random;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -22,6 +25,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 @RunWith(AndroidJUnit4.class)
 public class RecognizerInstrumentedTest {
   private static final File MODEL_DIR = new File("/data/local/tmp/dengjen-stt");
+  private static final String CLIP_FILE = "/data/local/tmp/dengjen-stt/stt-clip.f32";
+  private static final int CLIP_SAMPLE_RATE = 24_000;
+  private static final String[] CLIP_WORDS = {"şêr", "komên mezin", "dijîn"};
   private static final int SAMPLE_RATE = 16_000;
   private static final int MODEL_LOAD_FAILED = 43;
   private static final int INVALID_AUDIO = 44;
@@ -77,6 +83,26 @@ public class RecognizerInstrumentedTest {
       DengjenException e =
           assertThrows(DengjenException.class, () -> recognizer.recognize(new float[399], SAMPLE_RATE));
       assertEquals(INVALID_AUDIO, e.code());
+    }
+  }
+
+  private static float[] readClip() throws IOException {
+    byte[] bytes = Files.readAllBytes(new File(CLIP_FILE).toPath());
+    float[] samples = new float[bytes.length / Float.BYTES];
+    ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(samples);
+    return samples;
+  }
+
+  @Test
+  public void realModelTranscribesAKurmanjiClip() throws Exception {
+    File model = new File(MODEL_DIR, "model.int8.onnx");
+    assertTrue("push the model to " + MODEL_DIR, model.exists());
+    assertTrue("push the clip to " + CLIP_FILE, new File(CLIP_FILE).exists());
+    try (Recognizer recognizer = Recognizer.load(MODEL_DIR.getPath(), sha256(model), 2)) {
+      String transcript = recognizer.recognize(readClip(), CLIP_SAMPLE_RATE).toLowerCase(Locale.ROOT);
+      for (String word : CLIP_WORDS) {
+        assertTrue(word + " missing from " + transcript, transcript.contains(word));
+      }
     }
   }
 
