@@ -38,3 +38,26 @@ jobs:
             target/apple/Libdengjen.xcframework.zip
             target/apple/Libdengjen.xcframework.zip.sha256
           if-no-files-found: error
+
+  # Dictation is opt-in: the sherpa-onnx libraries ship beside the XCFramework, not inside it.
+  xcframework-stt:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/build-apple-xcframework # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        with:
+          features: espeak,coreml,stt
+      - name: Locate the sherpa-onnx libraries
+        run: |
+          set -euo pipefail
+          lib="$(find target -name 'libsherpa-onnx-c-api.dylib' -path '*aarch64-apple-darwin*' | head -n1)"
+          [ -n "$lib" ] || { echo "::error::libsherpa-onnx-c-api.dylib not found under target/" >&2; exit 1; }
+          echo "SHERPA_LIB_DIR=$GITHUB_WORKSPACE/$(dirname "$lib")" >> "$GITHUB_ENV"
+          find target -maxdepth 6 \( -name '*.xcframework' -o -name 'SherpaOnnxC.framework' -o -name 'libsherpa-onnx-c-api*' -o -name 'libonnxruntime*' \) | head -n 20
+      - name: Smoke-test the macOS slice with both modules
+        run: bindings/apple/scripts/smoke-xcframework.sh target/apple/Libdengjen.xcframework stt
+      - name: Show the slice sizes
+        run: ls -l target/apple/Libdengjen.xcframework.zip target/apple/Libdengjen.xcframework/*/*.a

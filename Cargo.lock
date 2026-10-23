@@ -2017,6 +2017,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "libdengjen-apple"
+version = "3.0.0"
+dependencies = [
+ "libdengjen",
+ "libdengjen-stt",
+ "workspace-hack",
+]
+
+[[package]]
 name = "libdengjen-stt"
 version = "3.0.0"
 dependencies = [

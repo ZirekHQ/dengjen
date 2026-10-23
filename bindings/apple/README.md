@@ -24,6 +24,16 @@ let version = libdengjenAbiVersion()
 
 The archive links CoreML and Accelerate. Add `-lc++` to the app's linker flags if Xcode does not infer it.
 
+## Dictation (opt-in)
+
+`APPLE_FEATURES=espeak,coreml,stt bindings/apple/scripts/build-xcframework.sh` also exports the `libdengjen-stt` C API, importable as a second Clang module:
+
+```swift
+import LibdengjenStt
+```
+
+The two headers define the same `ExternError` type, so they are separate modules rather than one. Both APIs live in one static library, because two Rust static libraries in one app collide on duplicate runtime symbols. The recognizer needs the sherpa-onnx libraries embedded in the app; the XCFramework does not contain them.
+
 ## eSpeak data
 
 The archive does not ship `espeak-ng-data`. Bundle it in the app and point `DENGJEN_ESPEAKNG_DATA_DIRECTORY` at its parent directory before loading a voice.
