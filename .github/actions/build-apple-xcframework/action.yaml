@@ -1,0 +1,24 @@
+name: Build the Apple XCFramework
+description: Builds the release Libdengjen.xcframework and leaves it in target/apple/. Needs a macOS runner.
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+      with:
+        apt-packages: ""
+    - name: Install build tools
+      shell: bash
+      run: brew install llvm protobuf coreutils espeak-ng
+    - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+    # rust-toolchain.toml pins the toolchain, so the targets must be added to that one.
+    - name: Add the Apple targets to the pinned toolchain
+      shell: bash
+      run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin
+    - name: Build the XCFramework
+      shell: bash
+      run: |
+        set -euo pipefail
+        export DENGJEN_ESPEAKNG_DATA_DIRECTORY="$(brew --prefix espeak-ng)/share"
+        export LIBCLANG_PATH="$(brew --prefix llvm)/lib"
+        export PATH="$(brew --prefix coreutils)/libexec/gnubin:$PATH"
+        bindings/apple/scripts/build-xcframework.sh release

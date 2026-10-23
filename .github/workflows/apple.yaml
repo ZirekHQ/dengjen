@@ -9,6 +9,7 @@ on:
       - "Cargo.lock"
       - "rust-toolchain.toml"
       - ".github/actions/setup-native-build-deps/**"
+      - ".github/actions/build-apple-xcframework/**"
       - ".github/workflows/apple.yaml"
   workflow_dispatch:
 
@@ -23,22 +24,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
-        timeout-minutes: 15
-      - name: Install build tools
-        run: |
-          brew install llvm protobuf coreutils espeak-ng
-          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$(brew --prefix espeak-ng)/share" >> "$GITHUB_ENV"
-          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "$GITHUB_ENV"
-          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      # rust-toolchain.toml pins the toolchain, so the targets must be added to that one.
-      - name: Add the Apple targets to the pinned toolchain
-        run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin
-      - name: Build the XCFramework
-        run: bindings/apple/scripts/build-xcframework.sh release
+      - uses: ./.github/actions/build-apple-xcframework # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
       - name: Smoke-test the macOS slice
         run: bindings/apple/scripts/smoke-xcframework.sh target/apple/Libdengjen.xcframework
+      - name: Check the size budgets
+        run: bindings/apple/scripts/check-sizes.sh target/apple/Libdengjen.xcframework.zip
       - name: List the slices
         run: plutil -p target/apple/Libdengjen.xcframework/Info.plist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
