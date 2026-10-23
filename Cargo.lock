@@ -868,7 +868,7 @@ dependencies = [
 [[package]]
 name = "dengjen-espeak-rs-sys"
 version = "0.2.8"
-source = "git+https://github.com/ZirekHQ/dengjen-piper-rs?rev=b5c73d6#b5c73d62bfe23df3aea0ba3cb0d9722cc1fc3aa4"
+source = "git+https://github.com/ZirekHQ/dengjen-piper-rs?rev=e9c343d#e9c343de0c86e567da685ddbe77b668dd1a5c74a"
 dependencies = [
  "bindgen",
  "cc",
