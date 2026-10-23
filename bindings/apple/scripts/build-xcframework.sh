@@ -13,16 +13,23 @@ export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
 cd "$root"
 target_dir="$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)"
 out="${APPLE_OUT_DIR:-$target_dir/apple}"
+features="${APPLE_FEATURES:-espeak,coreml}"
 for target in "${targets[@]}"; do
-  cargo build --locked $flag -p libdengjen --lib --no-default-features --features espeak,coreml --target "$target"
+  cargo build --locked $flag -p libdengjen-apple --lib --features "$features" --target "$target"
 done
 rm -rf "$out/headers" "$out/$name.xcframework"
 mkdir -p "$out/headers"
 cp crates/frontends/capi/libdengjen.h "$out/headers/"
 cp "$here/module.modulemap" "$out/headers/"
+case ",$(printf '%s' "$features" | tr ' ' ',')," in
+  *,stt,*)
+    cp crates/frontends/capi-stt/libdengjen_stt.h "$out/headers/"
+    cat "$here/module-stt.modulemap" >> "$out/headers/module.modulemap"
+    ;;
+esac
 args=()
 for target in "${targets[@]}"; do
-  args+=(-library "$target_dir/$target/$profile/liblibdengjen.a" -headers "$out/headers")
+  args+=(-library "$target_dir/$target/$profile/liblibdengjen_apple.a" -headers "$out/headers")
 done
 xcodebuild -create-xcframework "${args[@]}" -output "$out/$name.xcframework"
 (cd "$out" && ditto -c -k --sequesterRsrc --keepParent "$name.xcframework" "$name.xcframework.zip")

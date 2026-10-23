@@ -1,5 +1,10 @@
 name: Build the Apple XCFramework
 description: Builds the release Libdengjen.xcframework and leaves it in target/apple/. Needs a macOS runner.
+inputs:
+  features:
+    description: Cargo features of libdengjen-apple to build with.
+    required: false
+    default: espeak,coreml
 runs:
   using: composite
   steps:
@@ -16,6 +21,8 @@ runs:
       run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin
     - name: Build the XCFramework
       shell: bash
+      env:
+        APPLE_FEATURES: ${{ inputs.features }}
       run: |
         set -euo pipefail
         export DENGJEN_ESPEAKNG_DATA_DIRECTORY="$(brew --prefix espeak-ng)/share"

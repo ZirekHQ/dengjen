@@ -14,6 +14,7 @@ members = [
     "crates/frontends/python",
     "crates/frontends/capi",
     "crates/frontends/capi-stt",
+    "crates/frontends/capi-apple",
     "crates/frontends/capi-voices",
     "crates/frontends/capi-jni-common",
     "crates/frontends/capi-jni-tts",

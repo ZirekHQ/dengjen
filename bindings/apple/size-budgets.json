@@ -1,8 +1,8 @@
 {
   "zip": 150000000,
   "entries": {
-    "Libdengjen.xcframework/ios-arm64/liblibdengjen.a": 152000000,
-    "Libdengjen.xcframework/ios-arm64-simulator/liblibdengjen.a": 152000000,
-    "Libdengjen.xcframework/macos-arm64/liblibdengjen.a": 147000000
+    "Libdengjen.xcframework/ios-arm64/liblibdengjen_apple.a": 152000000,
+    "Libdengjen.xcframework/ios-arm64-simulator/liblibdengjen_apple.a": 152000000,
+    "Libdengjen.xcframework/macos-arm64/liblibdengjen_apple.a": 147000000
   }
 }

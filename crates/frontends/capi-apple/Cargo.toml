@@ -1,0 +1,27 @@
+[package]
+name = "libdengjen-apple"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "Single static library bundling the libdengjen and libdengjen-stt C APIs for the Apple XCFramework"
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "libdengjen_apple"
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = []
+espeak = ["libdengjen/espeak"]
+coreml = ["libdengjen/coreml"]
+stt = ["dep:libdengjen-stt"]
+
+[dependencies]
+libdengjen = { path = "../capi", default-features = false, features = ["piper"] }
+libdengjen-stt = { path = "../capi-stt", optional = true }
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
