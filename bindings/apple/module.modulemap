@@ -1,0 +1,4 @@
+module Libdengjen {
+    header "libdengjen.h"
+    export *
+}
