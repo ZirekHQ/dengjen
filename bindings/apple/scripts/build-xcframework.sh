@@ -8,6 +8,8 @@ profile="${1:-release}"
 flag="--release"; [ "$profile" = debug ] && { flag=""; profile=debug; }
 targets=(aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin)
 name="Libdengjen"
+export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-16.0}"
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
 cd "$root"
 target_dir="$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)"
 out="${APPLE_OUT_DIR:-$target_dir/apple}"

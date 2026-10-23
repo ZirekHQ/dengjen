@@ -868,8 +868,7 @@ dependencies = [
 [[package]]
 name = "dengjen-espeak-rs-sys"
 version = "0.2.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0588d315e7ea1d23a70adbc5810a5b3aae13ae24051c8eb08ddf53077d79cad7"
+source = "git+https://github.com/ZirekHQ/dengjen-piper-rs?rev=b5c73d6#b5c73d62bfe23df3aea0ba3cb0d9722cc1fc3aa4"
 dependencies = [
  "bindgen",
  "cc",

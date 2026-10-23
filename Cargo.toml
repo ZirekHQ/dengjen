@@ -76,3 +76,7 @@ opt-level = 3
 lto = true
 strip = true
 codegen-units = 1
+
+# Drop once dengjen-espeak-rs-sys releases the iOS fix (dengjen-piper-rs#219).
+[patch.crates-io]
+dengjen-espeak-rs-sys = { git = "https://github.com/ZirekHQ/dengjen-piper-rs", rev = "b5c73d6" }
