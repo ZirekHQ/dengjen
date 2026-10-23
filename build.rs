@@ -500,6 +500,11 @@ fn main() {
         config.define("USE_LIBPCAUDIO", "OFF");
     }
 
+    // CMake builds iOS executables as app bundles, and espeak-ng's install() has no BUNDLE DESTINATION.
+    if target_os == "ios" {
+        config.define("CMAKE_MACOSX_BUNDLE", "OFF");
+    }
+
     if target_os == "android" {
         let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
         let android_platform = format!("android-{}", android_api_level());
