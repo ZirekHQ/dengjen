@@ -403,9 +403,10 @@ pub(crate) const BUILD_CONFIG_ENV_VARS: &[&str] = &[
 ];
 
 fn main() {
-    println!("cargo:rustc-link-lib=speechPlayer");
+    // Without `static=`, a staticlib depending on this crate omits both and fails to link.
+    println!("cargo:rustc-link-lib=static=speechPlayer");
     println!("cargo:rustc-link-lib=espeak-ng");
-    println!("cargo:rustc-link-lib=ucd");
+    println!("cargo:rustc-link-lib=static=ucd");
     let target = env::var("TARGET").unwrap();
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
