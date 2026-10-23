@@ -69,6 +69,7 @@ nom = { version = "7" }
 once_cell = { version = "1" }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.13", default-features = false, features = ["std"] }
+prettyplease = { version = "0.2", default-features = false, features = ["verbatim"] }
 proc-macro2 = { version = "1" }
 prost = { version = "0.14" }
 quote = { version = "1" }

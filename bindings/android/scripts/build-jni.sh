@@ -3,8 +3,8 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 root="$(cd "$here/../.." && pwd)"
 profile="${1:-release}"
-features="ort-dylib"; out="$here/tts/src/main/jniLibs"; flag="--release"
-if [ "$profile" = debug ]; then features="ort-dylib,self-test"; out="$here/tts/src/debug/jniLibs"; flag=""; fi
+features="ort-dylib,espeak"; out="$here/tts/src/main/jniLibs"; flag="--release"
+if [ "$profile" = debug ]; then features="ort-dylib,espeak,self-test"; out="$here/tts/src/debug/jniLibs"; flag=""; fi
 cd "$root"
 cargo ndk -t arm64-v8a -t x86_64 -o "$out" build $flag -p dengjen-capi-jni-tts --no-default-features --features "$features"
 # cargo-ndk also copies the libdengjen cdylib; the JNI library already embeds the engine.

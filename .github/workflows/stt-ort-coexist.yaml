@@ -1,6 +1,6 @@
 name: STT and ort coexistence
 
-# A red leg means ort and sherpa-onnx cannot share a process on that OS.
+# A red leg means ort and sherpa-onnx failed to link or run together on that OS.
 on:
   workflow_dispatch:
 
@@ -108,3 +108,90 @@ jobs:
         env:
           DENGJEN_COEXIST_ORDER: sherpa-first
         run: cargo test --locked -p dengjen-tts-grpc --features stt --test coexist -- --nocapture
+
+  # Duplicate `onnx::` symbols between the ort and sherpa-onnx iOS archives fail at link time,
+  # so a linked test binary answers the spike before anything runs.
+  coexist-ios:
+    name: coexist (ios-simulator)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      DENGJEN_REQUIRE_COEXIST: "1"
+      IOS_TARGET: aarch64-apple-ios-sim
+      SIMCTL_CHILD_DENGJEN_COEXIST_TEXT_PHONEMES: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        timeout-minutes: 15
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - run: |
+          brew install llvm protobuf coreutils
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "$GITHUB_ENV"
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - name: Add the iOS simulator target
+        run: rustup target add "$IOS_TARGET"
+      - name: Fetch the Piper voice
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json . piper-std
+          echo "DENGJEN_COEXIST_VOICE_CONFIG=$GITHUB_WORKSPACE/crates/dengjen/synth/models/std/model.onnx.json" >> "$GITHUB_ENV"
+      - name: Fetch the recognition model
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --only-binary :all: huggingface_hub==0.34.4
+          python3 - <<'PY'
+          import json, os
+          from huggingface_hub import snapshot_download
+          spec = json.load(open(".github/stt-smoke-model.json"))
+          path = snapshot_download(spec["repo"], allow_patterns=spec["files"], local_dir=os.environ["RUNNER_TEMP"] + "/stt-model")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"DENGJEN_STT_MODEL_DIR={path}\n")
+          PY
+      - name: Link the test binary against both runtimes
+        run: |
+          set -euo pipefail
+          cargo test --locked -p dengjen-tts-grpc --no-default-features --features stt --test coexist \
+            --target "$IOS_TARGET" --no-run --message-format=json > "$RUNNER_TEMP/build.json"
+          bin="$(jq -r 'select(.profile.test == true and .target.name == "coexist") | .executable' "$RUNNER_TEMP/build.json" | tail -n1)"
+          [ -n "$bin" ] || { echo "::error::no coexist test binary was linked" >&2; exit 1; }
+          echo "COEXIST_BIN=$bin" >> "$GITHUB_ENV"
+      - name: Boot a simulator
+        run: |
+          set -euo pipefail
+          udid="$(xcrun simctl list devices available iPhone | grep -Eo '[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}' | head -n1)"
+          xcrun simctl bootstatus "$udid" -b
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+      # The test binary has no rpath to the sherpa-onnx framework that an app bundle would embed.
+      - name: Locate the sherpa-onnx framework
+        run: |
+          set -euo pipefail
+          fw="$(find target -type d -name SherpaOnnxC.framework -path '*ios*simulator*' | head -n1)"
+          [ -n "$fw" ] || fw="$(find target -type d -name SherpaOnnxC.framework | head -n1)"
+          [ -n "$fw" ] || { echo "::error::SherpaOnnxC.framework not found under target/" >&2; exit 1; }
+          echo "Using $fw"
+          echo "SHERPA_FRAMEWORK_DIR=$GITHUB_WORKSPACE/$(dirname "$fw")" >> "$GITHUB_ENV"
+      # simctl forwards only SIMCTL_CHILD_-prefixed variables to the spawned process.
+      - name: Run ort first, then sherpa-onnx
+        env:
+          SIMCTL_CHILD_DENGJEN_COEXIST_ORDER: ort-first
+          SIMCTL_CHILD_DENGJEN_REQUIRE_COEXIST: "1"
+          SIMCTL_CHILD_DYLD_FRAMEWORK_PATH: ${{ env.SHERPA_FRAMEWORK_DIR }}
+          SIMCTL_CHILD_DENGJEN_COEXIST_VOICE_CONFIG: ${{ env.DENGJEN_COEXIST_VOICE_CONFIG }}
+          SIMCTL_CHILD_DENGJEN_STT_MODEL_DIR: ${{ env.DENGJEN_STT_MODEL_DIR }}
+        run: xcrun simctl spawn "$SIM_UDID" "$COEXIST_BIN" --nocapture
+      - name: Run sherpa-onnx first, then ort
+        if: ${{ !cancelled() }}
+        env:
+          SIMCTL_CHILD_DENGJEN_COEXIST_ORDER: sherpa-first
+          SIMCTL_CHILD_DENGJEN_REQUIRE_COEXIST: "1"
+          SIMCTL_CHILD_DYLD_FRAMEWORK_PATH: ${{ env.SHERPA_FRAMEWORK_DIR }}
+          SIMCTL_CHILD_DENGJEN_COEXIST_VOICE_CONFIG: ${{ env.DENGJEN_COEXIST_VOICE_CONFIG }}
+          SIMCTL_CHILD_DENGJEN_STT_MODEL_DIR: ${{ env.DENGJEN_STT_MODEL_DIR }}
+        run: xcrun simctl spawn "$SIM_UDID" "$COEXIST_BIN" --nocapture

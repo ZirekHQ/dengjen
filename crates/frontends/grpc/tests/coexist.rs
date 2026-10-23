@@ -2,6 +2,7 @@
 //!
 //! Needs `DENGJEN_COEXIST_VOICE_CONFIG` (a Piper `model.onnx.json`) and `DENGJEN_STT_MODEL_DIR`.
 //! Self-skips without them unless `DENGJEN_REQUIRE_COEXIST` is set, which the manual workflow does.
+//! `DENGJEN_COEXIST_TEXT_PHONEMES` skips the transcript checks, for builds without espeak.
 #![cfg(feature = "stt")]
 
 use dengjen_stt::{Recognizer, RecognizerConfig};
@@ -40,6 +41,29 @@ impl Voice {
     fn load(config: &std::path::Path) -> DengjenResult<Self> {
         let model: Arc<dyn DengjenModel + Send + Sync> =
             dengjen_tts_piper::from_config_path(config)?;
+        Self::wrap(model)
+    }
+
+    // Builds without espeak (iOS) cannot phonemize, so the voice reads the text as phonemes and
+    // produces unintelligible audio; ort still runs its full inference path.
+    fn load_text_phonemes(
+        config: &std::path::Path,
+        scratch: &std::path::Path,
+    ) -> DengjenResult<Self> {
+        let original = std::fs::read_to_string(config).expect("read the voice config");
+        let patched = original.replace(r#""phoneme_type": "espeak""#, r#""phoneme_type": "text""#);
+        assert_ne!(
+            patched, original,
+            "voice config has no espeak phoneme_type to patch"
+        );
+        std::fs::copy(config.with_extension(""), scratch.join("voice.onnx"))
+            .expect("copy the voice model");
+        let patched_config = scratch.join("voice.onnx.json");
+        std::fs::write(&patched_config, patched).expect("write the patched voice config");
+        Self::load(&patched_config)
+    }
+
+    fn wrap(model: Arc<dyn DengjenModel + Send + Sync>) -> DengjenResult<Self> {
         let sample_rate =
             i32::try_from(model.audio_output_info()?.sample_rate).expect("sample rate fits in i32");
         Ok(Self {
@@ -86,10 +110,18 @@ fn ort_and_sherpa_onnx_share_a_process() {
         Recognizer::new(&inputs.stt_model_dir, RecognizerConfig::default())
             .expect("load the recognizer")
     };
+    let text_phonemes = std::env::var_os("DENGJEN_COEXIST_TEXT_PHONEMES").is_some();
+    let scratch = tempfile::tempdir().expect("create a scratch directory");
     let load_voice = || {
         eprintln!("loading the Piper voice through ort");
-        Voice::load(&inputs.voice_config).expect("load the Piper voice through ort")
+        if text_phonemes {
+            Voice::load_text_phonemes(&inputs.voice_config, scratch.path())
+        } else {
+            Voice::load(&inputs.voice_config)
+        }
+        .expect("load the Piper voice through ort")
     };
+    let heard = |transcript: &str| text_phonemes || heard_phrase(transcript);
     let (voice, recognizer) = if sherpa_first {
         let recognizer = load_recognizer();
         (load_voice(), recognizer)
@@ -108,7 +140,7 @@ fn ort_and_sherpa_onnx_share_a_process() {
         .expect("transcribe the synthesized audio");
     eprintln!("transcript: {transcript}");
     assert!(
-        heard_phrase(&transcript),
+        heard(&transcript),
         "sherpa-onnx did not hear the phrase: {transcript:?}"
     );
 
@@ -136,6 +168,6 @@ fn ort_and_sherpa_onnx_share_a_process() {
             .expect("recognition thread")
             .expect("concurrent recognition");
         assert!(similar_length(synthesized.len(), spoken.len()));
-        assert!(heard_phrase(&text), "concurrent transcript: {text:?}");
+        assert!(heard(&text), "concurrent transcript: {text:?}");
     });
 }
