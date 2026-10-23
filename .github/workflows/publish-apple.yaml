@@ -60,3 +60,44 @@ jobs:
           name: apple-xcframework
           path: out/*
           if-no-files-found: error
+
+  # Dictation is opt-in: the XCFramework exports the stt API, and the sherpa-onnx libraries it
+  # links ship as separate zips for the app to embed.
+  build-stt:
+    needs: guard
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/build-apple-xcframework # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        with:
+          features: espeak,coreml,stt
+      - name: Locate the sherpa-onnx libraries
+        run: |
+          set -euo pipefail
+          lib="$(find target -name 'libsherpa-onnx-c-api.dylib' -path '*aarch64-apple-darwin*' | head -n1)"
+          [ -n "$lib" ] || { echo "::error::libsherpa-onnx-c-api.dylib not found under target/" >&2; exit 1; }
+          echo "SHERPA_LIB_DIR=$GITHUB_WORKSPACE/$(dirname "$lib")" >> "$GITHUB_ENV"
+      - name: Smoke-test the macOS slice with both modules
+        run: bindings/apple/scripts/smoke-xcframework.sh target/apple/Libdengjen.xcframework stt
+      - name: Check the size budgets
+        run: bindings/apple/scripts/check-sizes.sh target/apple/Libdengjen.xcframework.zip
+      - name: Name the artifacts after the version and checksum them
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          mkdir -p out
+          cp target/apple/Libdengjen.xcframework.zip "out/dengjen-apple-stt-$version.xcframework.zip"
+          bindings/apple/scripts/package-sherpa.sh target out "$version"
+          (cd out && shasum -a 256 ./*.zip > SHA256SUMS-apple-stt.txt)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apple-xcframework-stt
+          path: out/*
+          if-no-files-found: error

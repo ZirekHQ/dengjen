@@ -40,4 +40,11 @@ The archive does not ship `espeak-ng-data`. Bundle it in the app and point `DENG
 
 ## Releases
 
-Each GitHub Release carries `dengjen-apple-<version>.xcframework.zip` and `SHA256SUMS-apple.txt`, both with build-provenance attestations. `bindings/apple/scripts/check-sizes.sh` enforces `size-budgets.json` on every Apple build.
+Each GitHub Release carries, all with build-provenance attestations:
+
+- `dengjen-apple-<version>.xcframework.zip`: speech synthesis only, with `SHA256SUMS-apple.txt`.
+- `dengjen-apple-stt-<version>.xcframework.zip`: synthesis and dictation, with `SHA256SUMS-apple-stt.txt`.
+- `dengjen-apple-sherpa-onnx-ios-<version>.xcframework.zip`: `SherpaOnnxC.xcframework`. Embed it in iOS apps that use dictation.
+- `dengjen-apple-sherpa-onnx-macos-<version>.zip`: the sherpa-onnx and ONNX Runtime dylibs for macOS apps that use dictation.
+
+`bindings/apple/scripts/check-sizes.sh` enforces `size-budgets.json` on every Apple build.

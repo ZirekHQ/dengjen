@@ -59,5 +59,7 @@ jobs:
           find target -maxdepth 6 \( -name '*.xcframework' -o -name 'SherpaOnnxC.framework' -o -name 'libsherpa-onnx-c-api*' -o -name 'libonnxruntime*' \) | head -n 20
       - name: Smoke-test the macOS slice with both modules
         run: bindings/apple/scripts/smoke-xcframework.sh target/apple/Libdengjen.xcframework stt
-      - name: Show the slice sizes
-        run: ls -l target/apple/Libdengjen.xcframework.zip target/apple/Libdengjen.xcframework/*/*.a
+      - name: Check the size budgets
+        run: bindings/apple/scripts/check-sizes.sh target/apple/Libdengjen.xcframework.zip
+      - name: Package the sherpa-onnx libraries
+        run: bindings/apple/scripts/package-sherpa.sh target target/apple/sherpa 0.0.0-pr
