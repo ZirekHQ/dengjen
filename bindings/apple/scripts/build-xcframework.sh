@@ -7,9 +7,10 @@ root="$(cd "$here/../.." && pwd)"
 profile="${1:-release}"
 flag="--release"; [ "$profile" = debug ] && { flag=""; profile=debug; }
 targets=(aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin)
-out="${APPLE_OUT_DIR:-$root/target/apple}"
 name="Libdengjen"
 cd "$root"
+target_dir="$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)"
+out="${APPLE_OUT_DIR:-$target_dir/apple}"
 for target in "${targets[@]}"; do
   cargo build --locked $flag -p libdengjen --lib --no-default-features --features espeak,coreml --target "$target"
 done
@@ -19,7 +20,7 @@ cp crates/frontends/capi/libdengjen.h "$out/headers/"
 cp "$here/module.modulemap" "$out/headers/"
 args=()
 for target in "${targets[@]}"; do
-  args+=(-library "target/$target/$profile/liblibdengjen.a" -headers "$out/headers")
+  args+=(-library "$target_dir/$target/$profile/liblibdengjen.a" -headers "$out/headers")
 done
 xcodebuild -create-xcframework "${args[@]}" -output "$out/$name.xcframework"
 (cd "$out" && ditto -c -k --sequesterRsrc --keepParent "$name.xcframework" "$name.xcframework.zip")
