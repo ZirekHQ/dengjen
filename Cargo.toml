@@ -46,7 +46,7 @@ homepage = "https://github.com/ZirekHQ/dengjen"
 dengjen-core = { path = "crates/core", version = "3.0.0" }
 dengjen-tts-core = { path = "crates/dengjen/core", version = "3.0.0" }
 dengjen-tts = { path = "crates/dengjen/synth", version = "3.0.0" }
-dengjen-tts-piper = { path = "crates/dengjen/models/piper", version = "3.0.0" }
+dengjen-tts-piper = { path = "crates/dengjen/models/piper", version = "3.0.0", default-features = false, features = ["tashkeel"] }
 dengjen-tts-kokoro = { path = "crates/dengjen/models/kokoro", version = "3.0.0", default-features = false }
 dengjen-tts-melotts = { path = "crates/dengjen/models/melotts", version = "3.0.0", default-features = false }
 dengjen-espeak-phonemizer = { path = "crates/text/espeak-phonemizer", version = "3.0.0" }

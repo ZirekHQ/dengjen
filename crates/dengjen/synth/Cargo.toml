@@ -24,7 +24,7 @@ tracing = { workspace = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [dev-dependencies]
-dengjen-tts-piper.workspace = true
+dengjen-tts-piper = { workspace = true, features = ["espeak"] }
 dengjen-tts-kokoro = { workspace = true, features = ["espeak"] }
 dengjen-espeak-phonemizer.workspace = true
 once_cell = "1.18.0"
