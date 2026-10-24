@@ -97,10 +97,15 @@ pub(crate) fn source_url(commit: &str) -> String {
 /// `/archive/<commit>.tar.gz`, but the tar stream of a fixed commit does not change.
 pub(crate) fn verify_tar_sha256(gz: &[u8], expected: &str) -> Result<(), String> {
     use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    std::io::copy(&mut flate2::read::GzDecoder::new(gz), &mut hasher)
+    use std::io::Read;
+    let mut tar = Vec::new();
+    flate2::read::GzDecoder::new(gz)
+        .read_to_end(&mut tar)
         .map_err(|e| format!("could not decompress the archive: {e}"))?;
-    let actual = format!("{:x}", hasher.finalize());
+    let actual: String = Sha256::digest(&tar)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     if actual.eq_ignore_ascii_case(expected) {
         Ok(())
     } else {

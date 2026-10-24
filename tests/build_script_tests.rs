@@ -328,7 +328,10 @@ fn points_the_download_at_the_pinned_commit() {
 
 fn tar_sha256_hex(tar_bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(tar_bytes))
+    Sha256::digest(tar_bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 #[test]
