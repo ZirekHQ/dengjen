@@ -43,6 +43,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: 3.x
+      - name: Stage the eSpeak-ng data built from source
+        run: bash scripts/stage-espeak-data.sh crates/frontends/python/python/pydengjen --release
       - name: Build wheels
         id: build-wheels-1
         continue-on-error: true
@@ -142,6 +144,9 @@ jobs:
         with:
           python-version: 3.x
           architecture: ${{ matrix.platform.target }}
+      - name: Stage the eSpeak-ng data built from source
+        shell: bash
+        run: bash scripts/stage-espeak-data.sh crates/frontends/python/python/pydengjen --release
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
@@ -181,6 +186,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: 3.x
+      - name: Stage the eSpeak-ng data built from source
+        run: bash scripts/stage-espeak-data.sh crates/frontends/python/python/pydengjen --release
       - name: Build wheels
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
@@ -258,14 +265,12 @@ jobs:
         timeout-minutes: 15
         with:
           apt-packages: llvm llvm-dev llvm-runtime libclang-dev espeak-ng protobuf-compiler
-      - name: locate espeak-ng-data directory
+      # The data built from the pinned espeak-ng source, not the distro's: only it carries upstream
+      # fixes such as the Kurmanji word stress.
+      - name: stage the eSpeak-ng data built from source
         run: |
-          data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
-          if [ -z "$data_dir" ] || [ "$data_dir" = "." ]; then
-            echo "Could not locate an espeak-ng-data directory" >&2
-            exit 1
-          fi
-          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
+          bash scripts/stage-espeak-data.sh "$RUNNER_TEMP/espeak"
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$RUNNER_TEMP/espeak" >> "$GITHUB_ENV"
       - name: cargo test (workspace, excluding dengjen-espeak-phonemizer, dengjen-tts, and dengjen-tts-kokoro)
         run: cargo test --workspace --exclude dengjen-espeak-phonemizer --exclude dengjen-tts --exclude dengjen-tts-kokoro --no-fail-fast
       # The C API build scripts rewrite their headers from cbindgen.toml; fail if one differs from
@@ -273,7 +278,7 @@ jobs:
       - name: C headers match the committed copies
         run: git diff --exit-code -- crates/frontends/capi/libdengjen.h crates/frontends/capi-stt/libdengjen_stt.h crates/frontends/capi-voices/libdengjen_voices.h
       - name: cargo test (dengjen-espeak-phonemizer, single-threaded)
-        run: cargo test -p dengjen-espeak-phonemizer -- --test-threads=1
+        run: cargo test -p dengjen-espeak-phonemizer -- --test-threads=1 --include-ignored
       - name: cargo test (dengjen-tts-piper, hebrew and pinyin features enabled)
         run: cargo test -p dengjen-tts-piper --no-default-features --features espeak,tashkeel,hebrew,pinyin
       - name: cargo test (dengjen-tts-piper, espeak feature disabled)
@@ -311,6 +316,7 @@ jobs:
       - run: bash scripts/test-ort-gate.sh
       - run: bash scripts/test-assemble-natives.sh
       - run: bash scripts/test-bump-natives-versions.sh
+      - run: bash scripts/test-stage-espeak-data.sh
 
   # The three-OS natives build is slow, so a pull request runs it only when something it packages
   # or the scripts it runs changed; pushes to main and manual runs always do.

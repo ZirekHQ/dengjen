@@ -58,6 +58,3 @@ features = ["extension-module", "abi3-py39"]
 version = "=2.0.0-rc.15"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]
-
-[build-dependencies]
-fs_extra = "1.3.0"

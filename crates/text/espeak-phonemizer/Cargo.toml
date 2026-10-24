@@ -10,6 +10,10 @@ homepage.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Compiles the eSpeak-ng data from the pinned source; scripts/stage-espeak-data.sh enables it.
+built-data = ["dengjen-espeak-rs-sys/compile-espeak-intonations"]
+
 [dependencies]
 dengjen-espeak-rs-sys = "0.2.1"
 ffi-support = "0.4.4"

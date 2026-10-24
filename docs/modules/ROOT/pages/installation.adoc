@@ -1,8 +1,9 @@
 = Build from source
 
 Prosody control is a Rust port of Sonic inside `dengjen-audio-ops`, so no C toolchain is needed
-for it. eSpeak-ng comes from the `dengjen-espeak-rs-sys` crate, and its data ships in
-`deps/dev/espeak-ng-data`.
+for it. eSpeak-ng comes from the `dengjen-espeak-rs-sys` crate, and
+`scripts/stage-espeak-data.sh <dir>` builds its data from the pinned espeak-ng source into
+`<dir>/espeak-ng-data`.
 
 [source,sh]
 ----
