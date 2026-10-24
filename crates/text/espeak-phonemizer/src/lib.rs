@@ -261,6 +261,22 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "needs the data built from source: scripts/stage-espeak-data.sh, then --include-ignored"]
+    fn kurmanji_words_carry_the_stress_fixed_in_espeak_ng_2500() -> ESpeakResult<()> {
+        let cases = [
+            ("mafan", "mafˈan."),
+            ("malên", "mˈalen."),
+            ("kirin", "kɪɾˈɪn."),
+            ("hatin", "hatˈɪn."),
+        ];
+        for (word, expected) in cases {
+            let phonemes = text_to_phonemes(word, "ku", None, false, false)?.join("");
+            assert_eq!(phonemes, expected, "{word}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn splits_multiple_sentences_into_separate_phoneme_entries() -> ESpeakResult<()> {
         let phonemes = text_to_phonemes(TEXT_ALICE, "en-US", None, false, false)?;
         assert_eq!(phonemes.len(), 3);

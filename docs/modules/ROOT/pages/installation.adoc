@@ -1,8 +1,9 @@
 = Build from source
 
 Prosody control is a Rust port of Sonic inside `dengjen-audio-ops`, so no C toolchain is needed
-for it. eSpeak-ng comes from the `dengjen-espeak-rs-sys` crate, and its data ships in
-`deps/dev/espeak-ng-data`.
+for it. eSpeak-ng comes from the `dengjen-espeak-rs-sys` crate, and
+`scripts/stage-espeak-data.sh <dir>` builds its data from the pinned espeak-ng source into
+`<dir>/espeak-ng-data`.
 
 [source,sh]
 ----
@@ -20,6 +21,15 @@ cargo build --release -p dengjen-tts-cli
 ----
 
 The resulting binary is at `target/release/dengjen` (`dengjen.exe` on Windows).
+
+Then build the eSpeak-ng data and point Dengjen at it. The script builds it from the pinned
+espeak-ng source, so it needs the same toolchain as the build above and `jq`:
+
+[source,sh]
+----
+scripts/stage-espeak-data.sh ./data
+export DENGJEN_ESPEAKNG_DATA_DIRECTORY="$PWD/data"
+----
 
 == Runtime data directory
 

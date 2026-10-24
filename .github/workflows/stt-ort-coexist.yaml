@@ -55,10 +55,13 @@ jobs:
         run: |
           data_dir="$(dirname "$(find /usr -maxdepth 5 -type d -name espeak-ng-data -not -path '/usr/share/doc/*' | head -n1)")"
           echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$data_dir" >> "$GITHUB_ENV"
-      - name: Point Windows at the committed espeak-ng data
+      - name: Stage the espeak-ng data built from source (Windows)
         if: matrix.platform.os == 'windows'
         shell: bash
-        run: echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$GITHUB_WORKSPACE/deps/dev" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          bash scripts/stage-espeak-data.sh "$RUNNER_TEMP/espeak"
+          echo "DENGJEN_ESPEAKNG_DATA_DIRECTORY=$RUNNER_TEMP/espeak" >> "$GITHUB_ENV"
       - name: Fetch the Piper voice
         shell: bash
         env:

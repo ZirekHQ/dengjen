@@ -5,5 +5,3 @@
 # "cargo test (dengjen-espeak-phonemizer, single-threaded)" step also passes
 # `--test-threads=1` explicitly (see .github/workflows/CI.yml).
 RUST_TEST_THREADS = { value = "1", force = true }
-# Set espeak-ng-data directory
-DENGJEN_ESPEAKNG_DATA_DIRECTORY = "../deps/dev"

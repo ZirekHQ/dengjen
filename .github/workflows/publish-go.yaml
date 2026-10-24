@@ -287,6 +287,9 @@ jobs:
           persist-credentials: false
       # Local-action paths resolve off $GITHUB_WORKSPACE, not this step's own `path:`.
       - uses: ./dengjen/.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        timeout-minutes: 15
+        with:
+          apt-packages: llvm llvm-dev llvm-runtime libclang-dev
       - name: Create deploy App token
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -367,7 +370,7 @@ jobs:
           (cd "$dst" && sha256sum lib/*/* include/libdengjen.h stt/lib/*/* stt/include/libdengjen_stt.h > SHA256SUMS)
           echo "sums_digest=$(sha256sum "$dst/SHA256SUMS" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
-          cp -r dengjen/deps/dev/espeak-ng-data "$dst/espeak-ng-data"
+          bash dengjen/scripts/stage-espeak-data.sh "$dst"
 
           for f in callback.go error.go speak.go synthconfig.go voice.go; do
             cp "dengjen/bindings/go/$f" "$dst/$f"
