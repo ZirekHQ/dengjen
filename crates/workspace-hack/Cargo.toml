@@ -19,6 +19,7 @@ publish = false
 aho-corasick = { version = "1" }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "std", "suggestions", "usage", "wrap_help"] }
+crc32fast = { version = "1" }
 either = { version = "1", features = ["use_std"] }
 fastrand = { version = "2" }
 futures-core = { version = "0.3" }
@@ -42,12 +43,13 @@ regex-automata = { version = "0.4", default-features = false, features = ["dfa-b
 regex-syntax = { version = "0.8" }
 serde = { version = "1", features = ["alloc", "derive"] }
 serde_core = { version = "1", features = ["alloc"] }
+simd-adler32 = { version = "0.3", default-features = false, features = ["std"] }
 simdutf8 = { version = "0.1", default-features = false, features = ["std"] }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
 tracing = { version = "0.1" }
 tracing-core = { version = "0.1" }
 typenum = { version = "1", default-features = false, features = ["const-generics"] }
-ureq = { version = "3", default-features = false, features = ["rustls", "socks-proxy"] }
+ureq = { version = "3", features = ["socks-proxy"] }
 zeroize = { version = "1", features = ["zeroize_derive"] }
 
 [build-dependencies]
@@ -55,6 +57,8 @@ aho-corasick = { version = "1" }
 cc = { version = "1", default-features = false, features = ["parallel"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "std", "suggestions", "usage", "wrap_help"] }
+crc32fast = { version = "1" }
+digest = { version = "0.10", features = ["mac", "std"] }
 either = { version = "1", features = ["use_std"] }
 fastrand = { version = "2" }
 getrandom = { version = "0.3", default-features = false, features = ["std", "wasm_js"] }
@@ -63,7 +67,6 @@ httparse = { version = "1" }
 indexmap = { version = "2" }
 libc = { version = "0.2" }
 log = { version = "0.4", default-features = false, features = ["std"] }
-lzma-rs = { version = "0.3", default-features = false, features = ["stream"] }
 memchr = { version = "2" }
 nom = { version = "7" }
 once_cell = { version = "1" }
@@ -78,12 +81,13 @@ regex-automata = { version = "0.4", default-features = false, features = ["dfa-b
 regex-syntax = { version = "0.8" }
 serde = { version = "1", features = ["alloc", "derive"] }
 serde_core = { version = "1", features = ["alloc"] }
+simd-adler32 = { version = "0.3", default-features = false, features = ["std"] }
 simdutf8 = { version = "0.1", default-features = false, features = ["std"] }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
 syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 typenum = { version = "1", default-features = false, features = ["const-generics"] }
-ureq = { version = "3", default-features = false, features = ["rustls", "socks-proxy"] }
+ureq = { version = "3", features = ["socks-proxy"] }
 zeroize = { version = "1", features = ["zeroize_derive"] }
 
 [target.x86_64-unknown-linux-gnu.dependencies]

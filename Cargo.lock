@@ -867,16 +867,18 @@ dependencies = [
 
 [[package]]
 name = "dengjen-espeak-rs-sys"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbc4fea1a8b8b03b3309a1089144a508a28c4b478b107644c86227e1aa90d979"
+checksum = "78a70e8a4928afd41ab6922474209ace95d5e37419e49107136815c02f4aaafa"
 dependencies = [
  "bindgen",
  "cc",
  "cmake",
+ "flate2",
  "glob",
- "lzma-rs",
+ "sha2 0.10.9",
  "tar",
+ "ureq 3.4.2",
 ]
 
 [[package]]
@@ -908,7 +910,7 @@ dependencies = [
 name = "dengjen-stt"
 version = "3.0.0"
 dependencies = [
- "sha2",
+ "sha2 0.11.1",
  "sherpa-onnx",
  "tempfile",
  "workspace-hack",
@@ -971,7 +973,7 @@ dependencies = [
  "ort",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.11.1",
  "tempfile",
  "tracing-subscriber",
  "workspace-hack",
@@ -1090,7 +1092,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.11.1",
  "tempfile",
  "ureq 3.4.2",
  "workspace-hack",
@@ -1277,7 +1279,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3139,7 +3141,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3292,6 +3294,17 @@ name = "sha1"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.2.17",
+ "digest 0.10.7",
+]
+
+[[package]]
+name = "sha2"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
@@ -3546,7 +3559,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4064,6 +4077,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a7ac20be9b7726e0bbdbf974c059676d9acb1cd414961f570a4e8231cacd7fc"
 dependencies = [
  "base64 0.23.1",
+ "flate2",
  "log",
  "percent-encoding",
  "rustls",
@@ -4272,7 +4286,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4399,6 +4413,8 @@ dependencies = [
  "cc",
  "clap",
  "clap_builder",
+ "crc32fast",
+ "digest 0.10.7",
  "either",
  "fastrand",
  "futures-core",
@@ -4409,7 +4425,6 @@ dependencies = [
  "indexmap",
  "libc",
  "log",
- "lzma-rs",
  "memchr",
  "ndarray",
  "nom",
@@ -4427,6 +4442,7 @@ dependencies = [
  "rustix",
  "serde",
  "serde_core",
+ "simd-adler32",
  "simdutf8",
  "smallvec",
  "syn 2.0.119",
