@@ -1,10 +1,5 @@
 #!/bin/sh
 set -e
 if [ "$1" = "configure" ]; then
-    # The espeak-ng-data path differs per architecture; the binary looks for it beside itself.
-    data="$(dpkg -L espeak-ng-data | grep -m1 '/espeak-ng-data$' || true)"
-    if [ -n "$data" ]; then
-        ln -sfn "$data" /usr/lib/dengjen/espeak-ng-data
-    fi
     ln -sfn /usr/lib/dengjen/dengjen /usr/bin/dengjen
 fi

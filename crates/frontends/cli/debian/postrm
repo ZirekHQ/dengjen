@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
+if [ "$1" = "abort-upgrade" ]; then
+    # The preinst removed the link older releases left; dpkg restores their files on a rollback
+    # but not that link, so put it back for them.
+    data="$(dpkg -L espeak-ng-data 2>/dev/null | grep -m1 '/espeak-ng-data$' || true)"
+    if [ -n "$data" ] && [ ! -e /usr/lib/dengjen/espeak-ng-data ]; then
+        ln -sfn "$data" /usr/lib/dengjen/espeak-ng-data
+    fi
+fi
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    rm -f /usr/lib/dengjen/espeak-ng-data /usr/bin/dengjen
+    rm -f /usr/bin/dengjen
     rmdir /usr/lib/dengjen 2>/dev/null || true
 fi

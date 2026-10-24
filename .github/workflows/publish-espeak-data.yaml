@@ -1,0 +1,69 @@
+name: Build eSpeak-ng data
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "vX.Y.Z being released"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # github.workflow_ref stays bound to the top-level caller through nested workflow_call hops.
+      - name: verify this workflow was only reached through release.yaml or prepare-release.yaml
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          actual_path="${WORKFLOW_REF%@*}"
+          if [ "$WORKFLOW_REF" != "ZirekHQ/dengjen/.github/workflows/release.yaml@refs/heads/main" ] \
+            && [ "$actual_path" != "ZirekHQ/dengjen/.github/workflows/prepare-release.yaml" ]; then
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen -- refusing to run outside release.yaml's main-branch flow or prepare-release.yaml's override path" >&2
+            exit 1
+          fi
+
+  build:
+    needs: guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-native-build-deps # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+        timeout-minutes: 15
+        with:
+          apt-packages: llvm llvm-dev llvm-runtime libclang-dev cmake
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - name: Build the data from the pinned espeak-ng source
+        run: bash scripts/stage-espeak-data.sh "$RUNNER_TEMP/espeak" --release
+      - name: Name the archive after the version and checksum it
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          archive="dengjen-espeak-ng-data-$version.tar.gz"
+          mkdir -p out
+          tar -czf "out/$archive" -C "$RUNNER_TEMP/espeak" espeak-ng-data
+          # Listed to a file first: `grep -q` can exit early and SIGPIPE tar, which pipefail reports.
+          tar -tzf "out/$archive" > "$RUNNER_TEMP/listing.txt"
+          grep -qx 'espeak-ng-data/phontab' "$RUNNER_TEMP/listing.txt"
+          grep -qx 'espeak-ng-data/ku_dict' "$RUNNER_TEMP/listing.txt"
+          (cd out && sha256sum "$archive" > SHA256SUMS-espeak-ng-data.txt)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: espeak-ng-data
+          path: out/*
+          if-no-files-found: error

@@ -64,12 +64,16 @@ tempfile = "3"
 name = "dengjen"
 section = "sound"
 priority = "optional"
-depends = "$auto, espeak-ng-data"
+depends = "$auto"
 maintainer = "austek <13117393+austek@users.noreply.github.com>"
 extended-description = "Command-line speech synthesis and voice manager."
 maintainer-scripts = "debian"
 assets = [
     ["target/release/dengjen", "usr/lib/dengjen/dengjen", "755"],
+    # Staged by scripts/stage-espeak-data.sh, built from the pinned espeak-ng source. The binary
+    # looks for it beside itself; the distro's espeak-ng-data lacks upstream fixes such as the
+    # Kurmanji word stress.
+    ["target/espeak/espeak-ng-data/**/*", "usr/lib/dengjen/espeak-ng-data/", "644"],
     ["README.md", "usr/share/doc/dengjen/README.md", "644"],
     ["target/man/dengjen.1.gz", "usr/share/man/man1/dengjen.1.gz", "644"],
     ["target/man/dengjen-speak.1.gz", "usr/share/man/man1/dengjen-speak.1.gz", "644"],

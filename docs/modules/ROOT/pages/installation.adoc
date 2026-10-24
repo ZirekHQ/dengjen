@@ -55,4 +55,6 @@ sudo apt install ./dengjen_<version>_amd64.deb
 dengjen --help
 ----
 
-The package installs `dengjen` and depends on `espeak-ng-data`.
+The package installs `dengjen` with its own `espeak-ng-data`, built from the pinned espeak-ng
+source. It does not depend on the distribution's `espeak-ng-data` package, whose copy lacks upstream
+fixes such as the Kurmanji word stress.
