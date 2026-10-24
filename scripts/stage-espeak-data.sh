@@ -32,7 +32,11 @@ main() {
       ;;
   esac
 
-  out_dir="$(cd "$root" && cargo build --locked -p dengjen-espeak-phonemizer --features built-data \
+  # The feature is enabled from the command line, not declared in a manifest: cargo-hakari would
+  # otherwise unify it into every workspace build, including cross builds that cannot run the
+  # espeak-ng binary the data build needs.
+  out_dir="$(cd "$root" && cargo build --locked -p dengjen-espeak-phonemizer \
+    --features dengjen-espeak-rs-sys/compile-espeak-intonations \
     --message-format=json-render-diagnostics "$@" \
     | jq -r 'select(.reason == "build-script-executed" and (.package_id | contains("dengjen-espeak-rs-sys"))) | .out_dir' \
     | tail -n1)"

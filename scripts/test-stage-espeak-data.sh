@@ -24,7 +24,7 @@ export PATH="$tmp/bin:$PATH"
 ./stage-espeak-data.sh "$tmp/dest" --release
 check '[ -f "$tmp/dest/espeak-ng-data/phontab" ]' "stages the data from the sys crate's out_dir"
 check '[ -f "$tmp/dest/espeak-ng-data/lang/ku" ]' "stages nested files"
-check 'grep -q -- "--locked -p dengjen-espeak-phonemizer --features built-data" "$tmp/cargo.args"' "builds the phonemizer with the data feature and a locked lockfile"
+check 'grep -q -- "--locked -p dengjen-espeak-phonemizer --features dengjen-espeak-rs-sys/compile-espeak-intonations" "$tmp/cargo.args"' "builds the phonemizer with the sys crate's data feature and a locked lockfile"
 check 'grep -q -- "--release" "$tmp/cargo.args"' "passes extra args through to cargo"
 
 : > "$tmp/dest/espeak-ng-data/stale"
