@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+if [ "$1" = "install" ] || [ "$1" = "upgrade" ]; then
+    # Earlier releases linked the distro's espeak-ng-data here. The package now ships its own
+    # directory, and unpacking onto the link would write into the distro's files.
+    if [ -L /usr/lib/dengjen/espeak-ng-data ]; then
+        rm -f /usr/lib/dengjen/espeak-ng-data
+    fi
+fi

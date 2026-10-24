@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    rm -f /usr/lib/dengjen/espeak-ng-data /usr/bin/dengjen
+    rm -f /usr/bin/dengjen
     rmdir /usr/lib/dengjen 2>/dev/null || true
 fi

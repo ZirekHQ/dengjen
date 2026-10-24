@@ -45,7 +45,10 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev espeak-ng help2man
+        run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev help2man jq
+      - name: build the eSpeak-ng data
+        # cargo-deb resolves non-release asset paths against the crate directory.
+        run: bash scripts/stage-espeak-data.sh crates/frontends/cli/target/espeak --release
       - name: build the binary and man page
         run: |
           set -euo pipefail
@@ -73,9 +76,18 @@ jobs:
           set -euo pipefail
           docker run --rm -v "$PWD/target/debian:/pkg:ro" ubuntu:24.04 sh -ec '
             apt-get update
+            # An earlier release left a link to the distro data here; installing must replace it
+            # and never write through it.
+            mkdir -p /usr/lib/dengjen /tmp/distro-data
+            ln -s /tmp/distro-data /usr/lib/dengjen/espeak-ng-data
             apt-get install -y /pkg/*.deb
             dengjen --help | grep -q voices
-            test -e /usr/lib/dengjen/espeak-ng-data
+            test ! -L /usr/lib/dengjen/espeak-ng-data
+            test -z "$(ls -A /tmp/distro-data)"
+            # The package ships its own data, built from the pinned espeak-ng source.
+            test -f /usr/lib/dengjen/espeak-ng-data/phontab
+            test -f /usr/lib/dengjen/espeak-ng-data/ku_dict
+            ! dpkg -s espeak-ng-data >/dev/null 2>&1
             status=0
             DENGJEN_VOICES_DIR=/tmp/voices DENGJEN_CATALOGUE_URL=http://127.0.0.1:9/voices.json \
               dengjen voices list || status=$?

@@ -36,7 +36,7 @@ The two headers define the same `ExternError` type, so they are separate modules
 
 ## eSpeak data
 
-The archive does not ship `espeak-ng-data`. Bundle it in the app and point `DENGJEN_ESPEAKNG_DATA_DIRECTORY` at its parent directory before loading a voice.
+The archive does not ship `espeak-ng-data`. Bundle it in the app and point `DENGJEN_ESPEAKNG_DATA_DIRECTORY` at its parent directory before loading a voice. Each release attaches `dengjen-espeak-ng-data-<version>.tar.gz`, built from the same pinned espeak-ng source; the distribution's copy lacks upstream fixes such as the Kurmanji word stress.
 
 ## Releases
 
