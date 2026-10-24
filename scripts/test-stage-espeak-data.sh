@@ -47,10 +47,14 @@ gitbin="$tmp/gitbin"; msvc="$tmp/msvc"; mkdir -p "$gitbin" "$msvc" "$tmp/other"
   source ./stage-espeak-data.sh
   fail=0
   export GIT_BASH_USR_BIN="$gitbin"
-  PATH="$gitbin:$tmp/other:$msvc:$PATH"
+  system_path="$PATH"
+  PATH="$gitbin:$tmp/other:$msvc:$system_path"
   check '[ "$(msvc_linker)" = "$msvc/link.exe" ]' "skips Git's link.exe and picks MSVC's"
-  PATH="$gitbin:$tmp/other"
+  # The system directories stay on the PATH: msvc_linker needs `tr`, and without it the scan would
+  # fail for the wrong reason and this check would pass whatever the selection logic did.
+  PATH="$gitbin:$tmp/other:$system_path"
   check '! msvc_linker >/dev/null' "reports no linker when only Git's link.exe is on the PATH"
+  check 'command -v tr >/dev/null' "keeps tr available for the scan"
   exit "$fail"
 ) || fail=1
 

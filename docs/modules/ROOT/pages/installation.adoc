@@ -22,6 +22,15 @@ cargo build --release -p dengjen-tts-cli
 
 The resulting binary is at `target/release/dengjen` (`dengjen.exe` on Windows).
 
+Then build the eSpeak-ng data and point Dengjen at it. The script builds it from the pinned
+espeak-ng source, so it needs the same toolchain as the build above and `jq`:
+
+[source,sh]
+----
+scripts/stage-espeak-data.sh ./data
+export DENGJEN_ESPEAKNG_DATA_DIRECTORY="$PWD/data"
+----
+
 == Runtime data directory
 
 eSpeak-ng needs its `espeak-ng-data` directory at runtime. Dengjen looks for it next to the
