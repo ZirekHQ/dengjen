@@ -4,8 +4,8 @@
 mod build_script;
 
 use build_script::{
-    BUILD_CONFIG_ENV_VARS, EspeakNgSource, copy_folder, entry_is_safe,
-    espeak_ng_data_dir_const_source, extract_tar_gz, is_below_a_symlink,
+    BUILD_CONFIG_ENV_VARS, EspeakNgSource, copy_folder, ensure_libs_installed, entry_is_safe,
+    espeak_ng_data_dir_const_source, extract_lib_assets, extract_tar_gz, is_below_a_symlink,
     materialize_espeak_ng_source, parse_clang_libraries_dir, parse_source_lock,
     resolve_espeak_ng_source, resolved_pcaudio_lib, resolved_sonic_lib, source_url, stripped_path,
     verify_tar_sha256,
@@ -505,6 +505,19 @@ fn extract_tar_gz_refuses_to_write_through_a_symlinked_directory() {
 }
 
 #[test]
+fn passes_installed_libraries_through() {
+    let libs = vec!["espeak-ng".to_string(), "ucd".to_string()];
+    let kept = ensure_libs_installed(libs.clone(), Path::new("/out/lib")).unwrap();
+    assert_eq!(kept, libs);
+}
+
+#[test]
+fn names_the_directory_when_no_libraries_were_installed() {
+    let error = ensure_libs_installed(Vec::new(), Path::new("/out/lib")).unwrap_err();
+    assert!(error.contains("/out/lib"), "{error}");
+}
+
+#[test]
 fn refuses_hard_links_and_special_files() {
     let relative = Path::new("src/a.c");
     let link = Some(Path::new("src/b.c"));
@@ -628,4 +641,54 @@ fn materializes_an_override_archive_over_a_stale_destination() {
 
     std::fs::remove_file(&archive_path).unwrap();
     std::fs::remove_dir_all(&dst).unwrap();
+}
+
+fn out_dir_with(name: &str, files: &[&str]) -> PathBuf {
+    let out = scratch_path(name);
+    let _ = std::fs::remove_dir_all(&out);
+    for file in files {
+        let path = out.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, b"").unwrap();
+    }
+    out
+}
+
+#[test]
+fn windows_runtime_dll_is_found_in_bin() {
+    let out = out_dir_with(
+        "assets-win-bin",
+        &["bin/espeak-ng.dll", "lib/espeak-ng.lib"],
+    );
+
+    assert_eq!(
+        extract_lib_assets(&out, "windows"),
+        vec![out.join("bin/espeak-ng.dll")]
+    );
+
+    std::fs::remove_dir_all(&out).unwrap();
+}
+
+#[test]
+fn windows_dll_in_lib_is_still_found() {
+    let out = out_dir_with("assets-win-lib", &["lib/espeak-ng.dll"]);
+
+    assert_eq!(
+        extract_lib_assets(&out, "windows"),
+        vec![out.join("lib/espeak-ng.dll")]
+    );
+
+    std::fs::remove_dir_all(&out).unwrap();
+}
+
+#[test]
+fn linux_shared_libs_are_not_searched_in_bin() {
+    let out = out_dir_with("assets-linux", &["lib/libespeak-ng.so", "bin/stray.so"]);
+
+    assert_eq!(
+        extract_lib_assets(&out, "linux"),
+        vec![out.join("lib/libespeak-ng.so")]
+    );
+
+    std::fs::remove_dir_all(&out).unwrap();
 }

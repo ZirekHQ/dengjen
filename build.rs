@@ -348,6 +348,21 @@ pub(crate) fn espeak_ng_data_dir_const_source(data_dir: Option<&Path>) -> String
     }
 }
 
+/// An empty install otherwise surfaces only as a linker error, e.g. when a distro's CMake
+/// installs to lib64 instead.
+pub(crate) fn ensure_libs_installed(
+    libs: Vec<String>,
+    libs_dir: &Path,
+) -> Result<Vec<String>, String> {
+    if libs.is_empty() {
+        return Err(format!(
+            "no espeak-ng libraries were installed under {}; check where CMake put them",
+            libs_dir.display()
+        ));
+    }
+    Ok(libs)
+}
+
 fn extract_lib_names(out_dir: &Path, build_shared_libs: bool, target_os: &str) -> Vec<String> {
     let lib_pattern = if target_os == "windows" {
         "*.lib"
@@ -383,7 +398,7 @@ fn extract_lib_names(out_dir: &Path, build_shared_libs: bool, target_os: &str) -
     lib_names
 }
 
-fn extract_lib_assets(out_dir: &Path, target_os: &str) -> Vec<PathBuf> {
+pub(crate) fn extract_lib_assets(out_dir: &Path, target_os: &str) -> Vec<PathBuf> {
     let shared_lib_pattern = if target_os == "windows" {
         "*.dll"
     } else if target_os == "macos" {
@@ -392,17 +407,22 @@ fn extract_lib_assets(out_dir: &Path, target_os: &str) -> Vec<PathBuf> {
         "*.so"
     };
 
-    let libs_dir = out_dir.join("lib");
-    let pattern = libs_dir.join(shared_lib_pattern);
-    debug_log!("Extract lib assets {}", pattern.display());
+    // CMake installs a Windows DLL as a runtime artifact into bin, not lib.
+    let asset_dirs: &[&str] = if target_os == "windows" {
+        &["lib", "bin"]
+    } else {
+        &["lib"]
+    };
     let mut files = Vec::new();
 
-    for entry in glob(pattern.to_str().unwrap()).unwrap() {
-        match entry {
-            Ok(path) => {
-                files.push(path);
+    for dir in asset_dirs {
+        let pattern = out_dir.join(dir).join(shared_lib_pattern);
+        debug_log!("Extract lib assets {}", pattern.display());
+        for entry in glob(pattern.to_str().unwrap()).unwrap() {
+            match entry {
+                Ok(path) => files.push(path),
+                Err(e) => eprintln!("cargo:warning=error={}", e),
             }
-            Err(e) => eprintln!("cargo:warning=error={}", e),
         }
     }
 
@@ -732,8 +752,11 @@ fn main() {
             .define("ANDROID_STL", "c++_shared");
     }
 
+    // espeak-ng includes GNUInstallDirs, which installs to lib64 on RHEL-family systems, but
+    // extract_lib_names and the link search below read OUT_DIR/lib.
     config
         .profile(&profile)
+        .define("CMAKE_INSTALL_LIBDIR", "lib")
         .define("ENABLE_TESTS", "OFF")
         .define(
             "COMPILE_INTONATIONS",
@@ -791,7 +814,11 @@ fn main() {
     }
 
     let espeak_libs_kind = if build_shared_libs { "dylib" } else { "static" };
-    let espeak_libs = extract_lib_names(&out_dir, build_shared_libs, &target_os);
+    let espeak_libs = ensure_libs_installed(
+        extract_lib_names(&out_dir, build_shared_libs, &target_os),
+        &out_dir.join("lib"),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
 
     for lib in espeak_libs {
         debug_log!(
