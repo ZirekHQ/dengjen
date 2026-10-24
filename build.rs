@@ -1,5 +1,6 @@
 use cmake::Config;
 use glob::glob;
+use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -42,12 +43,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
 }
 
 pub(crate) fn copy_folder(src: &Path, dst: &Path) {
-    assert!(
-        src.exists(),
-        "copy source not found at {} (for the espeak-ng submodule, did you run \
-         `git submodule update --init`?)",
-        src.display()
-    );
+    assert!(src.exists(), "copy source not found at {}", src.display());
 
     let parent = dst
         .parent()
@@ -72,46 +68,242 @@ pub(crate) fn copy_folder(src: &Path, dst: &Path) {
     std::fs::rename(&tmp_dst, dst).expect("Failed to move completed copy into place");
 }
 
-pub(crate) enum EspeakNgSource<'a> {
-    Directory(&'a Path),
-    Bundle(&'a Path),
+pub(crate) struct SourceLock {
+    pub(crate) commit: String,
+    pub(crate) sha256: String,
 }
 
-pub(crate) fn resolve_espeak_ng_source<'a>(
-    espeak_src: &'a Path,
-    bundle_path: &'a Path,
-) -> EspeakNgSource<'a> {
-    if espeak_src.exists() {
-        EspeakNgSource::Directory(espeak_src)
-    } else if bundle_path.exists() {
-        EspeakNgSource::Bundle(bundle_path)
+/// Reads the `key = value` lines of espeak-ng.lock.
+pub(crate) fn parse_source_lock(text: &str) -> Result<SourceLock, String> {
+    let value = |key: &str| {
+        text.lines()
+            .filter_map(|line| line.split_once('='))
+            .find(|(k, _)| k.trim() == key)
+            .map(|(_, v)| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| format!("espeak-ng.lock has no `{key}`"))
+    };
+    Ok(SourceLock {
+        commit: value("commit")?,
+        sha256: value("sha256")?,
+    })
+}
+
+pub(crate) fn source_url(commit: &str) -> String {
+    format!("https://github.com/espeak-ng/espeak-ng/archive/{commit}.tar.gz")
+}
+
+/// Checks the tar stream inside a gzip archive. GitHub does not promise stable gzip bytes for
+/// `/archive/<commit>.tar.gz`, but the tar stream of a fixed commit does not change.
+pub(crate) fn verify_tar_sha256(gz: &[u8], expected: &str) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut flate2::read::GzDecoder::new(gz), &mut hasher)
+        .map_err(|e| format!("could not decompress the archive: {e}"))?;
+    let actual = format!("{:x}", hasher.finalize());
+    if actual.eq_ignore_ascii_case(expected) {
+        Ok(())
     } else {
-        panic!(
-            "neither the espeak-ng submodule ({}) nor the pre-built bundle ({}) was found -- \
-             did you run `git submodule update --init`?",
-            espeak_src.display(),
-            bundle_path.display()
-        );
+        Err(format!("tar sha256 is {actual}, expected {expected}"))
     }
 }
 
-pub(crate) fn materialize_espeak_ng_source(espeak_src: &Path, bundle_path: &Path, dst: &Path) {
+const DOWNLOAD_ATTEMPTS: u64 = 3;
+const DOWNLOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+const MAX_DOWNLOAD_BYTES: u64 = 256 * 1024 * 1024;
+
+fn download_once(url: &str) -> Result<Vec<u8>, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(DOWNLOAD_TIMEOUT))
+        .build()
+        .into();
+    let mut response = agent.get(url).call().map_err(|e| e.to_string())?;
+    response
+        .body_mut()
+        .with_config()
+        .limit(MAX_DOWNLOAD_BYTES)
+        .read_to_vec()
+        .map_err(|e| e.to_string())
+}
+
+fn download(url: &str) -> Result<Vec<u8>, String> {
+    let mut last_error = String::new();
+    for attempt in 1..=DOWNLOAD_ATTEMPTS {
+        match download_once(url) {
+            Ok(bytes) => return Ok(bytes),
+            Err(e) => last_error = e,
+        }
+        std::thread::sleep(std::time::Duration::from_secs(attempt));
+    }
+    Err(format!(
+        "downloading {url} failed after {DOWNLOAD_ATTEMPTS} attempts: {last_error}"
+    ))
+}
+
+fn fetch_pinned_archive(lock: &SourceLock) -> Vec<u8> {
+    let bytes = download(&source_url(&lock.commit)).unwrap_or_else(|e| {
+        panic!("{e}; set ESPEAK_NG_SOURCE to an espeak-ng checkout or .tar.gz to build offline")
+    });
+    verify_tar_sha256(&bytes, &lock.sha256)
+        .unwrap_or_else(|e| panic!("espeak-ng {} tarball: {e}", lock.commit));
+    bytes
+}
+
+pub(crate) enum EspeakNgSource {
+    Directory(PathBuf),
+    Archive(PathBuf),
+    Pinned,
+}
+
+pub(crate) fn resolve_espeak_ng_source(override_path: Option<&Path>) -> EspeakNgSource {
+    match override_path {
+        None => EspeakNgSource::Pinned,
+        Some(path) if path.is_dir() => EspeakNgSource::Directory(path.to_path_buf()),
+        Some(path) if path.is_file() => EspeakNgSource::Archive(path.to_path_buf()),
+        Some(path) => panic!(
+            "ESPEAK_NG_SOURCE {} is neither a directory nor a .tar.gz file",
+            path.display()
+        ),
+    }
+}
+
+const PINNED_STAMP: &str = ".pinned-sha256";
+
+fn remove_stale(dst: &Path) {
     if dst.exists() {
         std::fs::remove_dir_all(dst).expect("Failed to remove stale materialized espeak-ng source");
     }
-    match resolve_espeak_ng_source(espeak_src, bundle_path) {
-        EspeakNgSource::Directory(src) => copy_folder(src, dst),
-        EspeakNgSource::Bundle(bundle) => extract_xz_tar_bundle(bundle, dst),
+}
+
+fn materialize_pinned(lock_text: &str, dst: &Path) {
+    let lock = parse_source_lock(lock_text).unwrap_or_else(|e| panic!("{e}"));
+    let stamp = dst.join(PINNED_STAMP);
+    if std::fs::read_to_string(&stamp).is_ok_and(|s| s == lock.sha256) {
+        return;
+    }
+    remove_stale(dst);
+    extract_tar_gz(&fetch_pinned_archive(&lock), dst);
+    std::fs::write(&stamp, &lock.sha256).expect("Failed to record the pinned espeak-ng checksum");
+}
+
+pub(crate) fn materialize_espeak_ng_source(
+    override_path: Option<&Path>,
+    lock_text: &str,
+    dst: &Path,
+) {
+    match resolve_espeak_ng_source(override_path) {
+        EspeakNgSource::Pinned => materialize_pinned(lock_text, dst),
+        EspeakNgSource::Directory(src) => {
+            remove_stale(dst);
+            copy_folder(&src, dst);
+        }
+        EspeakNgSource::Archive(path) => {
+            remove_stale(dst);
+            let bytes = std::fs::read(&path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+            extract_tar_gz(&bytes, dst);
+        }
     }
 }
 
-pub(crate) fn extract_xz_tar_bundle(bundle: &Path, dst: &Path) {
-    assert!(
-        bundle.exists(),
-        "espeak-ng bundle not found at {}",
-        bundle.display()
-    );
+/// Drops the leading `espeak-ng-<commit>/` component that GitHub archives add; anything
+/// that would leave the destination is skipped.
+pub(crate) fn stripped_path(path: &Path) -> Option<PathBuf> {
+    let mut components = path.components();
+    components.next()?;
+    let rest: PathBuf = components.collect();
+    let safe = rest
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)));
+    (safe && !rest.as_os_str().is_empty()).then_some(rest)
+}
 
+/// Whether a symlink at `relative` (inside the destination) points somewhere inside it too.
+/// `..` is accepted only as a leading prefix: after a normal component it could step out of a
+/// directory that is itself an extracted symlink, which a lexical count cannot see.
+fn symlink_stays_inside(relative: &Path, link: &Path) -> bool {
+    use std::path::Component::{CurDir, Normal, ParentDir};
+    // Directories between the destination root and the link's own directory.
+    let mut depth = relative.components().count().saturating_sub(1);
+    let mut descended = false;
+    for component in link.components() {
+        match component {
+            Normal(_) => descended = true,
+            CurDir => {}
+            ParentDir if depth > 0 && !descended => depth -= 1,
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// `Entry::unpack` does not validate link targets the way `unpack_in` does, and the stripped
+/// destination rules out `unpack_in`, so only files, directories and contained symlinks pass.
+pub(crate) fn entry_is_safe(
+    kind: tar::EntryType,
+    relative: &Path,
+    link: Option<&Path>,
+) -> Result<(), String> {
+    if kind.is_file() || kind.is_dir() {
+        return Ok(());
+    }
+    match link {
+        Some(link) if kind.is_symlink() && symlink_stays_inside(relative, link) => Ok(()),
+        Some(link) if kind.is_symlink() => Err(format!(
+            "symlink {} points outside the archive: {}",
+            relative.display(),
+            link.display()
+        )),
+        _ => Err(format!(
+            "unsupported {kind:?} entry in the archive: {}",
+            relative.display()
+        )),
+    }
+}
+
+/// Refuses an entry written beneath a symlink extracted earlier, which would move it, and what
+/// the symlink checks assume about `..`, somewhere else.
+pub(crate) fn is_below_a_symlink(relative: &Path, symlinks: &HashSet<PathBuf>) -> bool {
+    relative
+        .ancestors()
+        .skip(1)
+        .any(|ancestor| symlinks.contains(ancestor))
+}
+
+fn unpack_stripped(archive: &[u8], dst: &Path) -> std::io::Result<()> {
+    let invalid = |e: String| std::io::Error::new(std::io::ErrorKind::InvalidData, e);
+    let mut symlinks = HashSet::new();
+    let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(archive));
+    for entry in tar.entries()? {
+        let mut entry = entry?;
+        let Some(relative) = stripped_path(&entry.path()?) else {
+            continue;
+        };
+        let kind = entry.header().entry_type();
+        let link = entry.link_name()?.map(|l| l.into_owned());
+        entry_is_safe(kind, &relative, link.as_deref()).map_err(invalid)?;
+        if is_below_a_symlink(&relative, &symlinks) {
+            return Err(invalid(format!(
+                "{} is below a symlink in the archive",
+                relative.display()
+            )));
+        }
+        if kind.is_symlink() {
+            symlinks.insert(relative.clone());
+        }
+        let target = dst.join(relative);
+        if let Some(dir) = target.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        // GitHub stamps every file with the commit time. Keeping it would let CMake treat sources
+        // from a re-pinned commit as older than the objects already built in OUT_DIR.
+        entry.set_preserve_mtime(false);
+        entry.unpack(&target)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn extract_tar_gz(archive: &[u8], dst: &Path) {
     let parent = dst
         .parent()
         .expect("extraction destination must have a parent directory");
@@ -130,18 +322,13 @@ pub(crate) fn extract_xz_tar_bundle(bundle: &Path, dst: &Path) {
         tmp_dst.display()
     );
 
-    let compressed = std::fs::read(bundle)
-        .unwrap_or_else(|e| panic!("failed to read bundle {}: {e}", bundle.display()));
-    let mut decompressed = Vec::new();
-    lzma_rs::xz_decompress(&mut &compressed[..], &mut decompressed)
-        .unwrap_or_else(|e| panic!("failed to xz-decompress bundle {}: {e}", bundle.display()));
-
     std::fs::create_dir_all(&tmp_dst).expect("Failed to create extraction temp directory");
-    tar::Archive::new(&decompressed[..])
-        .unpack(&tmp_dst)
-        .unwrap_or_else(|e| panic!("failed to unpack bundle {}: {e}", bundle.display()));
+    if let Err(e) = unpack_stripped(archive, &tmp_dst) {
+        let _ = std::fs::remove_dir_all(&tmp_dst);
+        panic!("failed to unpack the espeak-ng archive: {e}");
+    }
 
-    std::fs::rename(&tmp_dst, dst).expect("Failed to move extracted bundle into place");
+    std::fs::rename(&tmp_dst, dst).expect("Failed to move extracted archive into place");
 }
 
 const ESPEAK_NG_DATA_DIR_NAME: &str = "espeak-ng-data";
@@ -396,28 +583,44 @@ pub(crate) const BUILD_CONFIG_ENV_VARS: &[&str] = &[
     "ESPEAK_BUILD_SHARED_LIBS",
     "ESPEAK_LIB_PROFILE",
     "ESPEAK_STATIC_CRT",
+    "ESPEAK_NG_SOURCE",
     "ANDROID_NDK_HOME",
     "ANDROID_NDK_ROOT",
     "NDK_HOME",
     "ANDROID_PLATFORM",
 ];
 
+// docs.rs builds without network, so it documents these checked-in bindings and links nothing.
+fn use_docsrs_bindings(manifest_dir: &Path, out_dir: &Path) {
+    std::fs::copy(
+        manifest_dir.join("docsrs").join("bindings.rs"),
+        out_dir.join("bindings.rs"),
+    )
+    .expect("Failed to copy the docs.rs bindings");
+    std::fs::write(
+        out_dir.join("espeak_ng_data_dir.rs"),
+        espeak_ng_data_dir_const_source(None),
+    )
+    .expect("Failed to write the docs.rs data dir constant");
+}
+
 fn main() {
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
+    if env::var_os("DOCS_RS").is_some() {
+        use_docsrs_bindings(Path::new(&manifest_dir), &out_dir);
+        return;
+    }
     // Without `static=`, a staticlib depending on this crate omits both and fails to link.
     println!("cargo:rustc-link-lib=static=speechPlayer");
     println!("cargo:rustc-link-lib=espeak-ng");
     println!("cargo:rustc-link-lib=static=ucd");
     let target = env::var("TARGET").unwrap();
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     let target_dir = get_cargo_target_dir().ok();
     let espeak_dst = out_dir.join("espeak-ng");
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
-    let espeak_src = Path::new(&manifest_dir).join("espeak-ng");
-    let bundle_path = Path::new(&manifest_dir)
-        .join("bundled")
-        .join("espeak-ng.tar.xz");
+    let lock_path = Path::new(&manifest_dir).join("espeak-ng.lock");
     let build_shared_libs = false;
 
     let build_shared_libs = std::env::var("ESPEAK_BUILD_SHARED_LIBS")
@@ -434,13 +637,19 @@ fn main() {
     debug_log!("OUT_DIR: {}", out_dir.display());
     debug_log!("BUILD_SHARED: {}", build_shared_libs);
 
+    let lock_text = std::fs::read_to_string(&lock_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", lock_path.display()));
+    let source_override = env::var_os("ESPEAK_NG_SOURCE").map(PathBuf::from);
+    if let Some(path) = &source_override {
+        // Cargo walks a directory for changes, so editing the override rebuilds from it.
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
     debug_log!(
-        "Materializing espeak-ng source from {} or {} into {}",
-        espeak_src.display(),
-        bundle_path.display(),
+        "Materializing espeak-ng source (override {:?}) into {}",
+        source_override,
         espeak_dst.display()
     );
-    materialize_espeak_ng_source(&espeak_src, &bundle_path, &espeak_dst);
+    materialize_espeak_ng_source(source_override.as_deref(), &lock_text, &espeak_dst);
     unsafe {
         env::set_var(
             "CMAKE_BUILD_PARALLEL_LEVEL",
@@ -478,8 +687,7 @@ fn main() {
         .write_to_file(bindings_path)
         .expect("Failed to write bindings");
     println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rerun-if-changed=./espeak-ng");
-    println!("cargo:rerun-if-changed={}", bundle_path.display());
+    println!("cargo:rerun-if-changed={}", lock_path.display());
     for var in BUILD_CONFIG_ENV_VARS {
         println!("cargo:rerun-if-env-changed={var}");
     }
