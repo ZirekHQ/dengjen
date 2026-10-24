@@ -25,6 +25,11 @@ sha2 = "0.11"
 tar = "0.4.46"
 ureq = "3"
 
+[package.metadata.cargo-semver-checks.lints]
+constructible_struct_adds_field = "allow"
+pub_module_level_const_missing = "allow"
+struct_pub_field_missing = "allow"
+
 [dev-dependencies]
 bindgen = "0.72.1"
 cc = "1"

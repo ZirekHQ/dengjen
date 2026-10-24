@@ -548,6 +548,13 @@ pub(crate) fn resolved_pcaudio_lib(cache_contents: &str) -> Option<PathBuf> {
     )
 }
 
+pub(crate) fn system_link_libs(target_os: &str) -> &'static [&'static str] {
+    match target_os {
+        "windows" => &["advapi32"],
+        _ => &[],
+    }
+}
+
 pub(crate) fn resolved_sonic_lib(cache_contents: &str) -> Option<PathBuf> {
     resolved_system_lib(
         cache_contents,
@@ -826,6 +833,10 @@ fn main() {
             format!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib)
         );
         println!("cargo:rustc-link-lib={}={}", espeak_libs_kind, lib);
+    }
+
+    for lib in system_link_libs(&target_os) {
+        println!("cargo:rustc-link-lib=dylib={lib}");
     }
 
     if target_os == "windows" && cfg!(debug_assertions) {

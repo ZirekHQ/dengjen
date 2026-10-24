@@ -8,10 +8,22 @@ use build_script::{
     espeak_ng_data_dir_const_source, extract_lib_assets, extract_tar_gz, is_below_a_symlink,
     materialize_espeak_ng_source, parse_clang_libraries_dir, parse_source_lock,
     resolve_espeak_ng_source, resolved_pcaudio_lib, resolved_sonic_lib, source_url, stripped_path,
-    verify_tar_sha256,
+    system_link_libs, verify_tar_sha256,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
+
+#[test]
+fn links_advapi32_on_windows_for_the_registry_lookups_espeak_makes() {
+    assert_eq!(system_link_libs("windows"), ["advapi32"]);
+}
+
+#[test]
+fn links_no_extra_system_libs_off_windows() {
+    ["linux", "macos", "android"]
+        .iter()
+        .for_each(|os| assert!(system_link_libs(os).is_empty()));
+}
 
 #[test]
 fn resolves_sonic_lib_path_when_cmake_found_system_libsonic() {
