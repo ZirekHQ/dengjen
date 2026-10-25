@@ -80,3 +80,12 @@ isolate_macos() {
 if [ "$layout" = isolated ]; then
   "isolate_$os"
 fi
+
+# cargo stamps a cdylib with its build-tree path; a consumer linking it records that path and dyld
+# then fails on any other machine.
+if [ "$os" = macos ]; then
+  for lib in "$out"/lib*dengjen_stt.dylib; do
+    install_name_tool -id "@rpath/$(basename "$lib")" "$lib"
+    codesign --force -s - "$lib"
+  done
+fi
