@@ -620,7 +620,8 @@ jobs:
           # library must match it, so a swapped or truncated native library fails the release.
           if command -v sha256sum >/dev/null; then sha() { sha256sum "$@"; }; else sha() { shasum -a 256 "$@"; }; fi
           sums_dir="$(go list -m -f '{{.Dir}}' "${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_MODULE_PATH}")"
-          fetched_digest="$(sha "$sums_dir/SHA256SUMS" | cut -d' ' -f1)"
+          # sha256sum prefixes a backslash to the digest when the path has one, as Windows dirs do.
+          fetched_digest="$(cd "$sums_dir" && sha SHA256SUMS | cut -d' ' -f1)"
           if [[ "$fetched_digest" != "$NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_SUMS_DIGEST" ]]; then
             echo "::error::SHA256SUMS digest ${fetched_digest} differs from the built ${NEEDS_ASSEMBLE_AND_PUSH_OUTPUTS_SUMS_DIGEST}" >&2
             exit 1
