@@ -48,7 +48,7 @@ features = ["fmt", "env-filter"]
 
 [dependencies.clap]
 version = "4.3.2"
-features = ["derive",]
+features = ["derive", "env"]
 
 [dependencies.ort]
 version = "=2.0.0-rc.15"
