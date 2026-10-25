@@ -31,7 +31,7 @@ members = [
 
 
 
-version = "3.0.2"
+version = "3.0.3"
 # Floor set by the highest dependency-declared rust-version in the tree (ort/ort-sys at
 # 1.88, per `cargo metadata`), then confirmed to actually compile at that version with
 # both default and --all-features.
@@ -44,18 +44,18 @@ homepage = "https://github.com/ZirekHQ/dengjen"
 
 
 [workspace.dependencies]
-dengjen-core = { path = "crates/core", version = "3.0.2" }
-dengjen-tts-core = { path = "crates/dengjen/core", version = "3.0.2" }
-dengjen-tts = { path = "crates/dengjen/synth", version = "3.0.2" }
-dengjen-tts-piper = { path = "crates/dengjen/models/piper", version = "3.0.2", default-features = false, features = ["tashkeel"] }
-dengjen-tts-kokoro = { path = "crates/dengjen/models/kokoro", version = "3.0.2", default-features = false }
-dengjen-tts-melotts = { path = "crates/dengjen/models/melotts", version = "3.0.2", default-features = false }
-dengjen-espeak-phonemizer = { path = "crates/text/espeak-phonemizer", version = "3.0.2" }
-dengjen-hebrew-phonemizer = { path = "crates/text/hebrew-phonemizer", version = "3.0.2" }
-dengjen-pinyin-phonemizer = { path = "crates/text/pinyin-phonemizer", version = "3.0.2" }
-dengjen-stt = { path = "crates/stt", version = "3.0.2" }
-dengjen-voices = { path = "crates/voices", version = "3.0.2" }
-dengjen-audio-ops = { path = "crates/audio/ops", version = "3.0.2" }
+dengjen-core = { path = "crates/core", version = "3.0.3" }
+dengjen-tts-core = { path = "crates/dengjen/core", version = "3.0.3" }
+dengjen-tts = { path = "crates/dengjen/synth", version = "3.0.3" }
+dengjen-tts-piper = { path = "crates/dengjen/models/piper", version = "3.0.3", default-features = false, features = ["tashkeel"] }
+dengjen-tts-kokoro = { path = "crates/dengjen/models/kokoro", version = "3.0.3", default-features = false }
+dengjen-tts-melotts = { path = "crates/dengjen/models/melotts", version = "3.0.3", default-features = false }
+dengjen-espeak-phonemizer = { path = "crates/text/espeak-phonemizer", version = "3.0.3" }
+dengjen-hebrew-phonemizer = { path = "crates/text/hebrew-phonemizer", version = "3.0.3" }
+dengjen-pinyin-phonemizer = { path = "crates/text/pinyin-phonemizer", version = "3.0.3" }
+dengjen-stt = { path = "crates/stt", version = "3.0.3" }
+dengjen-voices = { path = "crates/voices", version = "3.0.3" }
+dengjen-audio-ops = { path = "crates/audio/ops", version = "3.0.3" }
 tracing = "0.1"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 
