@@ -45,4 +45,18 @@ fi
 nosrc="$tmp/nosrv"; mkdir -p "$nosrc"
 for f in liblibdengjen_stt.so libsherpa-onnx-c-api.so libonnxruntime.so.1.24.1; do : > "$nosrc/$f"; done
 check './assemble-natives.sh linux shared "$nosrc" "$tmp/nosrv-out" 2>/dev/null' "assembles without the gRPC server binary"
+
+cat > "$tmp/bin/otool" <<'SH'
+#!/usr/bin/env bash
+printf '%s:\n\t@rpath/libonnxruntime.1.24.1.dylib (compatibility version 0.0.0)\n' "$2"
+SH
+for tool in install_name_tool codesign; do
+  printf '#!/usr/bin/env bash\necho "%s $*" >> "$PATCH_LOG"\n' "$tool" > "$tmp/bin/$tool"
+done
+chmod +x "$tmp/bin/otool" "$tmp/bin/install_name_tool" "$tmp/bin/codesign"
+msrc="$tmp/msrc"; mkdir -p "$msrc"
+for f in liblibdengjen_stt.dylib libsherpa-onnx-c-api.dylib libonnxruntime.1.24.1.dylib; do : > "$msrc/$f"; done
+: > "$PATCH_LOG"
+./assemble-natives.sh macos shared "$msrc" "$tmp/mac"
+check 'grep -q -- "install_name_tool -id @rpath/liblibdengjen_stt.dylib .*liblibdengjen_stt.dylib" "$PATCH_LOG"' "macos shared gives libdengjen-stt an @rpath install name"
 exit "$fail"
