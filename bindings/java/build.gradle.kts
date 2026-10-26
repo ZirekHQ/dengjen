@@ -262,7 +262,7 @@ val nativeArtifactsDir: Directory =
 // The native libraries ship once per native change as their own artifact, one classifier jar per
 // platform, so a binding-only release uploads a few KB. natives.fingerprint is regenerated with
 // scripts/natives-fingerprint.sh --update; bump nativesVersion whenever it changes.
-val nativesVersion = "1.0.25"
+val nativesVersion = "1.0.26"
 val nativesArtifactId = "dengjen-tts-natives"
 val nativesFingerprint: String = file("natives.fingerprint").readText().trim()
 
@@ -342,7 +342,7 @@ publishing {
 // The speech recognition libraries ship as their own artifact: sherpa-onnx and its ONNX Runtime are
 // large, so text-to-speech users never download them. The assembled native
 // directories (scripts/assemble-natives.sh) are staged under stt-native-artifacts/<classifier>.
-val sttNativesVersion = "1.0.17"
+val sttNativesVersion = "1.0.18"
 val sttNativesArtifactId = "dengjen-stt-natives"
 val sttNativesFingerprint: String = file("stt-natives.fingerprint").readText().trim()
 val sttNativeClassifiers = listOf("linux-x86_64", "windows-x64", "macos-aarch64")
