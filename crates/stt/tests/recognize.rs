@@ -1,4 +1,4 @@
-use dengjen_stt::{Recognizer, RecognizerConfig};
+use dengjen_stt::{Recognizer, RecognizerConfig, SttError, MODEL_FILE, TOKENS_FILE};
 use std::path::PathBuf;
 
 const CLIP_SAMPLE_RATE: i32 = 24_000;
@@ -13,6 +13,15 @@ fn read_f32_le(path: PathBuf) -> Vec<f32> {
     let bytes = std::fs::read(path).unwrap();
     let (chunks, _) = bytes.as_chunks::<4>();
     chunks.iter().map(|b| f32::from_le_bytes(*b)).collect()
+}
+
+#[test]
+fn a_corrupt_model_file_is_a_load_error() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(MODEL_FILE), b"not an onnx model").unwrap();
+    std::fs::write(dir.path().join(TOKENS_FILE), b"<blk> 0\n").unwrap();
+    let result = Recognizer::new(dir.path(), RecognizerConfig::default());
+    assert!(matches!(result, Err(SttError::ModelLoad(_))));
 }
 
 // Self-skips without a model: DENGJEN_STT_MODEL_DIR holds the files named by MODEL_FILE and TOKENS_FILE,
