@@ -805,7 +805,7 @@ checksum = "ac6b926516df9c60bfa16e107b21086399f8285a44ca9711344b9e553c5146e2"
 
 [[package]]
 name = "dengjen-audio-ops"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "divan",
  "libsonic",
@@ -817,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-capi-jni-common"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "jni",
  "workspace-hack",
@@ -825,7 +825,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-capi-jni-stt"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "cc",
  "dengjen-capi-jni-common",
@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-capi-jni-tts"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-capi-jni-common",
  "ffi-support",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-core"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "ort",
  "workspace-hack",
@@ -856,7 +856,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-espeak-phonemizer"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-espeak-rs-sys",
  "ffi-support",
@@ -866,7 +866,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-espeak-rs-sys"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "bindgen",
  "cc",
@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-hebrew-phonemizer"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-tts-core",
  "ndarray",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-pinyin-phonemizer"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-tts-core",
  "ndarray",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-stt"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "sha2",
  "sherpa-onnx",
@@ -932,7 +932,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-audio-ops",
  "dengjen-espeak-phonemizer",
@@ -954,7 +954,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-cli"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -979,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-core"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-audio-ops",
  "dengjen-core",
@@ -989,7 +989,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-grpc"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "async-stream",
  "dengjen-stt",
@@ -1014,7 +1014,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-kokoro"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-espeak-phonemizer",
  "dengjen-tts-core",
@@ -1030,7 +1030,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-melotts"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-espeak-phonemizer",
  "dengjen-pinyin-phonemizer",
@@ -1046,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-piper"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-espeak-phonemizer",
  "dengjen-hebrew-phonemizer",
@@ -1064,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-python"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "dengjen-espeak-phonemizer",
  "dengjen-stt",
@@ -1082,7 +1082,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-voices"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "fd-lock",
  "md-5",
@@ -1987,7 +1987,7 @@ checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "libdengjen"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "cbindgen",
  "dengjen-tts",
@@ -2003,7 +2003,7 @@ dependencies = [
 
 [[package]]
 name = "libdengjen-apple"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "libdengjen",
  "libdengjen-stt",
@@ -2012,7 +2012,7 @@ dependencies = [
 
 [[package]]
 name = "libdengjen-stt"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "cbindgen",
  "dengjen-stt",
@@ -2023,7 +2023,7 @@ dependencies = [
 
 [[package]]
 name = "libdengjen-voices"
-version = "3.0.3"
+version = "3.0.4"
 dependencies = [
  "cbindgen",
  "dengjen-voices",
