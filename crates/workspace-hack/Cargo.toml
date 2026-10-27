@@ -17,15 +17,17 @@ publish = false
 ### BEGIN HAKARI SECTION
 [dependencies]
 aho-corasick = { version = "1" }
+block-buffer = { version = "0.12", default-features = false, features = ["zeroize"] }
 cc = { version = "1", default-features = false, features = ["parallel"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "std", "suggestions", "usage", "wrap_help"] }
 crc32fast = { version = "1" }
+digest = { version = "0.11", features = ["alloc", "mac", "oid", "zeroize"] }
 either = { version = "1", features = ["use_std"] }
 fastrand = { version = "2" }
+flate2 = { version = "1", features = ["zlib-rs"] }
 futures-core = { version = "0.3" }
 futures-sink = { version = "0.3" }
-getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std", "wasm_js"] }
 http = { version = "1" }
 httparse = { version = "1" }
 indexmap = { version = "2" }
@@ -52,19 +54,19 @@ smallvec = { version = "1", default-features = false, features = ["const_new"] }
 syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 tracing = { version = "0.1" }
 tracing-core = { version = "0.1" }
-typenum = { version = "1", default-features = false, features = ["const-generics"] }
 ureq = { version = "3", features = ["socks-proxy"] }
-zeroize = { version = "1", features = ["zeroize_derive"] }
 
 [build-dependencies]
 aho-corasick = { version = "1" }
+block-buffer = { version = "0.12", default-features = false, features = ["zeroize"] }
 cc = { version = "1", default-features = false, features = ["parallel"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "std", "suggestions", "usage", "wrap_help"] }
 crc32fast = { version = "1" }
+digest = { version = "0.11", features = ["alloc", "mac", "oid", "zeroize"] }
 either = { version = "1", features = ["use_std"] }
 fastrand = { version = "2" }
-getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std", "wasm_js"] }
+flate2 = { version = "1", features = ["zlib-rs"] }
 http = { version = "1" }
 httparse = { version = "1" }
 indexmap = { version = "2" }
@@ -87,21 +89,19 @@ simd-adler32 = { version = "0.3", default-features = false, features = ["std"] }
 simdutf8 = { version = "0.1", default-features = false, features = ["std"] }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
 syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
-syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
-typenum = { version = "1", default-features = false, features = ["const-generics"] }
+syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "fold", "full", "visit-mut"] }
 ureq = { version = "3", features = ["socks-proxy"] }
-zeroize = { version = "1", features = ["zeroize_derive"] }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
-getrandom-9fbad63c4bcf4a8f = { package = "getrandom", version = "0.4", default-features = false, features = ["std", "sys_rng"] }
+getrandom = { version = "0.4", default-features = false, features = ["std", "sys_rng"] }
 libc = { version = "0.2", default-features = false, features = ["extra_traits"] }
 rustix = { version = "1", features = ["fs", "termios"] }
 simdutf8 = { version = "0.1", default-features = false, features = ["aarch64_neon", "public_imp"] }
 
 [target.x86_64-unknown-linux-gnu.build-dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
-getrandom-9fbad63c4bcf4a8f = { package = "getrandom", version = "0.4", default-features = false, features = ["std", "sys_rng"] }
+getrandom = { version = "0.4", default-features = false, features = ["std", "sys_rng"] }
 libc = { version = "0.2", default-features = false, features = ["extra_traits"] }
 rustix = { version = "1", features = ["fs", "termios"] }
 simdutf8 = { version = "0.1", default-features = false, features = ["aarch64_neon", "public_imp"] }

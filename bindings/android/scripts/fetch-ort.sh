@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-version="${SHERPA_VERSION:-1.13.8}"
+version="${SHERPA_VERSION:-2.0.1}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 asset="sherpa-onnx-v${version}-android.tar.bz2"
 work="$(mktemp -d)"

@@ -15,7 +15,7 @@ workspace = true
 # The default `static` feature fails to link next to `ort` (duplicate `onnx::` symbols at 1.13.8);
 # recheck when the pin moves.
 sha2 = "0.11"
-sherpa-onnx = { version = "=1.13.8", default-features = false, features = ["shared"] }
+sherpa-onnx = { version = "=2.0.1", default-features = false, features = ["shared"] }
 workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
