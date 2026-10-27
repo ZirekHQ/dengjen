@@ -4375,7 +4375,6 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "phf_shared",
- "prettyplease 0.2.37",
  "proc-macro2",
  "prost",
  "quote",
