@@ -5,6 +5,7 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![allow(clippy::ptr_offset_with_cast)]
+#![allow(clippy::manual_div_ceil)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 include!(concat!(env!("OUT_DIR"), "/espeak_ng_data_dir.rs"));

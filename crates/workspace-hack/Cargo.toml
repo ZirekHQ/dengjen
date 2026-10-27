@@ -38,7 +38,6 @@ num-traits = { version = "0.2", default-features = false, features = ["i128", "s
 once_cell = { version = "1" }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.13", default-features = false, features = ["std"] }
-prettyplease = { version = "0.2", default-features = false, features = ["verbatim"] }
 proc-macro2 = { version = "1" }
 prost = { version = "0.14" }
 quote = { version = "1" }
@@ -50,7 +49,7 @@ serde_core = { version = "1", features = ["alloc"] }
 simd-adler32 = { version = "0.3", default-features = false, features = ["std"] }
 simdutf8 = { version = "0.1", default-features = false, features = ["std"] }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
-syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
+syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 tracing = { version = "0.1" }
 tracing-core = { version = "0.1" }
 typenum = { version = "1", default-features = false, features = ["const-generics"] }
@@ -76,7 +75,6 @@ nom = { version = "7" }
 once_cell = { version = "1" }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.13", default-features = false, features = ["std"] }
-prettyplease = { version = "0.2", default-features = false, features = ["verbatim"] }
 proc-macro2 = { version = "1" }
 prost = { version = "0.14" }
 quote = { version = "1" }
