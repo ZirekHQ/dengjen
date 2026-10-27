@@ -1,0 +1,49 @@
+[package]
+name = "dengjen-espeak-rs-sys"
+version = "0.2.12"
+rust-version = "1.92"
+edition = "2024"
+description = "Rust bindings to espeak-ng"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/ZirekHQ/dengjen-piper-rs"
+
+include = [
+    "espeak-ng.lock",
+    "docsrs/bindings.rs",
+    "src/*.rs",
+    "build.rs",
+    "wrapper.h",
+]
+
+[build-dependencies]
+bindgen = "0.72.1"
+cc = "1"
+cmake = "0.1"
+flate2 = "1"
+glob = "0.3.1"
+sha2 = "0.11"
+tar = "0.4.46"
+ureq = "3"
+
+[package.metadata.cargo-semver-checks.lints]
+constructible_struct_adds_field = "allow"
+pub_module_level_const_missing = "allow"
+struct_pub_field_missing = "allow"
+
+[dev-dependencies]
+bindgen = "0.72.1"
+cc = "1"
+cmake = "0.1"
+flate2 = "1"
+glob = "0.3.1"
+sha2 = "0.11"
+tar = "0.4.46"
+ureq = "3"
+
+[features]
+default = []
+compile-espeak-intonations = []
+
+[[test]]
+name = "build_script_unit_tests"
+path = "tests/build_script_tests.rs"
