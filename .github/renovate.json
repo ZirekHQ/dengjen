@@ -65,6 +65,23 @@
       "enabled": false
     },
     {
+      "description": "git-versioning 7 calls PersonIdent.getWhenAsInstant, which the jgit 5.x buildscript pin lacks",
+      "matchPackageNames": [
+        "/me\\.qoomon\\.git-versioning/"
+      ],
+      "allowedVersions": "<7"
+    },
+    {
+      "description": "the Go linux natives build on ubuntu-24.04 to match the glibc of the verify job",
+      "matchFileNames": [
+        ".github/workflows/publish-go.yaml"
+      ],
+      "matchDepNames": [
+        "ubuntu"
+      ],
+      "enabled": false
+    },
+    {
       "description": "AGP checks a minimum Gradle version and the Gradle wrapper update runs against the AGP in the tree, so they must land together",
       "matchFileNames": [
         "bindings/android/**"
