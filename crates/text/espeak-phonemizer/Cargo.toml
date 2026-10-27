@@ -11,7 +11,7 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
-dengjen-espeak-rs-sys = "0.2.1"
+dengjen-espeak-rs-sys = { workspace = true }
 ffi-support = "0.4.4"
 once_cell = "1.18.0"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }

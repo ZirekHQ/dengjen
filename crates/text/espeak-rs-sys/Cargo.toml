@@ -1,11 +1,12 @@
 [package]
 name = "dengjen-espeak-rs-sys"
-version = "0.2.12"
-rust-version = "1.92"
+version.workspace = true
+rust-version.workspace = true
 edition = "2024"
 description = "Rust bindings to espeak-ng"
-license = "GPL-3.0-or-later"
-repository = "https://github.com/ZirekHQ/dengjen-piper-rs"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 include = [
     "espeak-ng.lock",
@@ -14,6 +15,12 @@ include = [
     "build.rs",
     "wrapper.h",
 ]
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [build-dependencies]
 bindgen = "0.72.1"

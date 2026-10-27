@@ -3,6 +3,7 @@
 #![allow(non_snake_case)]
 #![allow(unnecessary_transmutes)]
 #![allow(clippy::missing_safety_doc)]
+#![allow(clippy::undocumented_unsafe_blocks)]
 #![allow(clippy::ptr_offset_with_cast)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
