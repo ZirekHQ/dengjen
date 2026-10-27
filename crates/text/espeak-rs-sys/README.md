@@ -1,6 +1,6 @@
 # eSpeak NG Sys Bindings
 
-Raw, unsafe FFI bindings to espeak-ng, generated with `bindgen` from `wrapper.h`. `build.rs` downloads the espeak-ng commit pinned in `espeak-ng.lock`, checks its sha256, builds it via CMake and statically links `espeak-ng`, `ucd`, and `speechPlayer`. Consumed by `dengjen-espeak-rs`, which wraps these bindings in a safe API.
+Raw, unsafe FFI bindings to espeak-ng, generated with `bindgen` from `wrapper.h`. `build.rs` downloads the espeak-ng commit pinned in `espeak-ng.lock`, checks its sha256, builds it via CMake and statically links `espeak-ng`, `ucd`, and `speechPlayer`. Consumed by `dengjen-espeak-phonemizer`, which wraps these bindings in a safe API.
 
 The crate ships no espeak-ng source, because the language data alone exceeds crates.io's 10 MiB limit for a published crate. The pin is an upstream commit, not a release: the latest release (1.52.0) predates fixes this project needs, such as Kurmanji word stress.
 

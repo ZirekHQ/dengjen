@@ -81,6 +81,9 @@ xref:streaming.adoc[Streaming synthesis and the gRPC frontend] for detail.
 |`dengjen-espeak-phonemizer`
 |Converts text to IPA phonemes using a patched version of eSpeak-ng
 
+|`dengjen-espeak-rs-sys`
+|Raw bindings to eSpeak-ng, built from the source pinned in `espeak-ng.lock`
+
 |`dengjen-hebrew-phonemizer`, `dengjen-pinyin-phonemizer`
 |Hebrew (diacritization plus IPA) and Mandarin pinyin grapheme-to-phoneme conversion
 
