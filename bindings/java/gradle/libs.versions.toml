@@ -4,7 +4,7 @@ assertj = "3.27.7"
 awaitility = "4.3.0"
 spotless = "8.10.4"
 foojay-resolver = "1.0.0"
-git-version = "6.4.4"
+git-version = "7.0.0"
 jreleaser = "1.26.0"
 
 [libraries]
