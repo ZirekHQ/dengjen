@@ -114,12 +114,13 @@ jobs:
           # bincode is unmaintained (transitive via jpreprocess, optional `japanese`
           # feature); upstream replacement is open:
           # https://github.com/jpreprocess/jpreprocess/issues/497
-          # zip 2.x (RUSTSEC-2026-0367/0368/0369) is a build-dependency of sherpa-onnx-sys 1.13.8 that
-          # unpacks its own prebuilt download; drop these when #410 bumps to a release using zip 9.
+          # zip 2.x (RUSTSEC-2026-0367/0368/0369) and its zstd 0.13 (RUSTSEC-2026-0391/0398/0403) are
+          # build-dependencies of sherpa-onnx-sys 1.13.8 that unpack its own prebuilt download; drop
+          # these when #410 bumps to a release using zip 9.
           # unsafe-libyaml is unmaintained (transitive via jpreprocess 0.15.0 -> lindera 3 ->
           # serde_yaml_ng); lindera 6 drops it, pending
           # https://github.com/jpreprocess/jpreprocess/pull/542
-          ignore: RUSTSEC-2024-0436,RUSTSEC-2024-0449,RUSTSEC-2025-0141,RUSTSEC-2026-0367,RUSTSEC-2026-0368,RUSTSEC-2026-0369
+          ignore: RUSTSEC-2024-0436,RUSTSEC-2024-0449,RUSTSEC-2025-0141,RUSTSEC-2026-0367,RUSTSEC-2026-0368,RUSTSEC-2026-0369,RUSTSEC-2026-0391,RUSTSEC-2026-0398,RUSTSEC-2026-0403
 
   fmt:
     runs-on: ubuntu-latest

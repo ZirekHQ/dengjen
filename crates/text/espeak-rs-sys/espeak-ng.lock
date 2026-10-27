@@ -1,0 +1,3 @@
+# espeak-ng source that build.rs downloads and verifies. Re-pin with scripts/update_espeak.py.
+commit = ba90c8e9f440ad544f674a790bb5f53878b6ffc5
+sha256 = ad180c5269ef0f5a5db814a38c96171da58185aebf082da70102b25b234a7396

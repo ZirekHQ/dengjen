@@ -1,0 +1,56 @@
+[package]
+name = "dengjen-espeak-rs-sys"
+version.workspace = true
+rust-version.workspace = true
+edition = "2024"
+description = "Rust bindings to espeak-ng"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+include = [
+    "espeak-ng.lock",
+    "docsrs/bindings.rs",
+    "src/*.rs",
+    "build.rs",
+    "wrapper.h",
+]
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
+
+[build-dependencies]
+bindgen = "0.72.1"
+cc = "1"
+cmake = "0.1"
+flate2 = "1"
+glob = "0.3.1"
+sha2 = "0.11"
+tar = "0.4.46"
+ureq = "3"
+
+[package.metadata.cargo-semver-checks.lints]
+constructible_struct_adds_field = "allow"
+pub_module_level_const_missing = "allow"
+struct_pub_field_missing = "allow"
+
+[dev-dependencies]
+bindgen = "0.72.1"
+cc = "1"
+cmake = "0.1"
+flate2 = "1"
+glob = "0.3.1"
+sha2 = "0.11"
+tar = "0.4.46"
+ureq = "3"
+
+[features]
+default = []
+compile-espeak-intonations = []
+
+[[test]]
+name = "build_script_unit_tests"
+path = "tests/build_script_tests.rs"

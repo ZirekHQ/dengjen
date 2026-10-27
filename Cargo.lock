@@ -867,9 +867,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-espeak-rs-sys"
-version = "0.2.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "405bac231a79a57dd1a91581307dfbbf4ebcf063f41fa5a329806b8d8e9cfa54"
+version = "3.0.3"
 dependencies = [
  "bindgen",
  "cc",
@@ -879,6 +877,7 @@ dependencies = [
  "sha2",
  "tar",
  "ureq 3.5.0",
+ "workspace-hack",
 ]
 
 [[package]]
