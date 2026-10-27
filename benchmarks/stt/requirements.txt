@@ -1660,9 +1660,9 @@ tqdm==4.70.1 \
     # via
     #   huggingface-hub
     #   transformers
-transformers==5.20.1 \
-    --hash=sha256:25b30879e4c243f00630c1079171ede6d4f6bf76e68f978acd47628a640bc8a0 \
-    --hash=sha256:5f51ce444193e5d0a751e3fa489ddbc2224ff12f6675a5cfefd4044b09757c19
+transformers==5.20.2 \
+    --hash=sha256:080871e061546d720be57f5846fce426f46b44d61574907cc7404c2cba49d180 \
+    --hash=sha256:7ae75dbc1fb3922aff1b6c97b9e5479d6cf26fd86a8866bfb71324190479f807
     # via -r benchmarks/stt/requirements.in
 triton==3.8.0 ; python_full_version < '3.15' and sys_platform == 'linux' \
     --hash=sha256:1b84e7d512490ba529111260fa6f7cad8b254a6bb5fbdf41d5ef9a5e57f52d0a \
