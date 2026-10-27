@@ -682,17 +682,6 @@ fn main() {
         espeak_dst.display()
     );
     materialize_espeak_ng_source(source_override.as_deref(), &lock_text, &espeak_dst);
-    // SAFETY: the build script runs `main` on a single thread and has spawned none by this point,
-    // so nothing else reads or writes the process environment concurrently.
-    unsafe {
-        env::set_var(
-            "CMAKE_BUILD_PARALLEL_LEVEL",
-            std::thread::available_parallelism()
-                .unwrap()
-                .get()
-                .to_string(),
-        );
-    }
 
     let mut bindgen_builder = bindgen::Builder::default()
         .header("wrapper.h")
