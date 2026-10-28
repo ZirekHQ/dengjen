@@ -64,6 +64,12 @@ pub(crate) fn phonemize_dispatch(
         PhonemeType::Pinyin => Some(Err(DengjenError::PhonemizationError(
             "Phonemization for phoneme_type `Pinyin` requires the `pinyin` feature".to_string(),
         ))),
+        #[cfg(feature = "kurmanji")]
+        PhonemeType::Kurmanji => Some(dengjen_kurmanji_phonemizer::text_to_kurmanji_phonemes(text)),
+        #[cfg(not(feature = "kurmanji"))]
+        PhonemeType::Kurmanji => Some(Err(DengjenError::PhonemizationError(
+            "Phonemization for phoneme_type `Kurmanji` requires the `kurmanji` feature".to_string(),
+        ))),
     }
 }
 
@@ -172,6 +178,22 @@ mod tests {
     #[test]
     fn phonemize_dispatch_falls_through_to_espeak_for_espeak_phoneme_type() {
         assert!(phonemize_dispatch(PhonemeType::Espeak, "hello", None, None).is_none());
+    }
+
+    #[cfg(feature = "kurmanji")]
+    #[test]
+    fn phonemize_dispatch_runs_the_kurmanji_phonemizer_without_an_engine() {
+        let result = phonemize_dispatch(PhonemeType::Kurmanji, "Silav", None, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.sentences(), &vec!["sɪlˈav.".to_string()]);
+    }
+
+    #[cfg(not(feature = "kurmanji"))]
+    #[test]
+    fn phonemize_dispatch_reports_the_missing_kurmanji_feature() {
+        let result = phonemize_dispatch(PhonemeType::Kurmanji, "Silav", None, None).unwrap();
+        assert!(result.is_err());
     }
 
     #[cfg(feature = "hebrew")]

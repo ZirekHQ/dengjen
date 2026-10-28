@@ -45,6 +45,7 @@ pub enum PhonemeType {
     Text,
     Pinyin,
     Hebrew,
+    Kurmanji,
 }
 
 #[derive(Deserialize, Default)]
@@ -74,6 +75,23 @@ pub struct ModelConfig {
     pub(crate) hebrew_model_path: Option<PathBuf>,
     #[cfg_attr(not(feature = "pinyin"), allow(dead_code))]
     pub(crate) pinyin_model_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub(crate) kurmanji_use_espeak: bool,
+}
+
+impl ModelConfig {
+    /// Phoneme type to dispatch on. `ku` espeak voices resolve to `Kurmanji`
+    /// when the `kurmanji` feature is on, unless `kurmanji_use_espeak` is set.
+    pub(crate) fn effective_phoneme_type(&self) -> PhonemeType {
+        match self.phoneme_type.unwrap_or_default() {
+            PhonemeType::Espeak if self.routes_to_kurmanji() => PhonemeType::Kurmanji,
+            other => other,
+        }
+    }
+
+    fn routes_to_kurmanji(&self) -> bool {
+        cfg!(feature = "kurmanji") && self.espeak.voice == "ku" && !self.kurmanji_use_espeak
+    }
 }
 
 pub(crate) fn load_model_config(
@@ -226,6 +244,49 @@ mod tests {
         assert_eq!(config.phoneme_type, Some(PhonemeType::Hebrew));
         assert_eq!(config.default_speaker_id, Some(3));
         assert_eq!(config.hop_length, Some(512));
+    }
+
+    fn ku_config(extra: &str) -> ModelConfig {
+        let json = BASE_CONFIG_JSON.replace(r#""en-us""#, r#""ku""#).replacen(
+            '{',
+            &format!("{{{extra}"),
+            1,
+        );
+        serde_json::from_str(&json).unwrap()
+    }
+
+    #[test]
+    fn model_config_parses_an_explicit_kurmanji_phoneme_type() {
+        let config = ku_config(r#""phoneme_type": "kurmanji","#);
+        assert_eq!(config.effective_phoneme_type(), PhonemeType::Kurmanji);
+    }
+
+    #[test]
+    #[cfg(feature = "kurmanji")]
+    fn ku_espeak_voice_routes_to_kurmanji_when_the_feature_is_enabled() {
+        assert_eq!(
+            ku_config("").effective_phoneme_type(),
+            PhonemeType::Kurmanji
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "kurmanji")]
+    fn kurmanji_use_espeak_keeps_the_espeak_backend() {
+        let config = ku_config(r#""kurmanji_use_espeak": true,"#);
+        assert_eq!(config.effective_phoneme_type(), PhonemeType::Espeak);
+    }
+
+    #[test]
+    #[cfg(not(feature = "kurmanji"))]
+    fn ku_espeak_voice_stays_on_espeak_without_the_feature() {
+        assert_eq!(ku_config("").effective_phoneme_type(), PhonemeType::Espeak);
+    }
+
+    #[test]
+    fn non_ku_espeak_voices_never_route_to_kurmanji() {
+        let config: ModelConfig = serde_json::from_str(BASE_CONFIG_JSON).unwrap();
+        assert_eq!(config.effective_phoneme_type(), PhonemeType::Espeak);
     }
 
     #[test]

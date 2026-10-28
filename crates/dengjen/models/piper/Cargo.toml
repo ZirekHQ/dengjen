@@ -15,6 +15,7 @@ default = ["tashkeel", "espeak"]
 tashkeel = ["dep:dengjen-tashkeel"]
 hebrew = ["dep:dengjen-hebrew-phonemizer"]
 pinyin = ["dep:dengjen-pinyin-phonemizer"]
+kurmanji = ["dep:dengjen-kurmanji-phonemizer"]
 
 espeak = ["dep:dengjen-espeak-phonemizer"]
 
@@ -26,6 +27,7 @@ directml = ["ort/directml", "dengjen-tts-core/directml"]
 [dependencies]
 dengjen-espeak-phonemizer = { workspace = true, optional = true }
 dengjen-hebrew-phonemizer = { workspace = true, optional = true }
+dengjen-kurmanji-phonemizer = { workspace = true, optional = true }
 dengjen-pinyin-phonemizer = { workspace = true, optional = true }
 dengjen-tts-core = { workspace = true, features = ["ort-providers"] }
 ndarray = "0.17"

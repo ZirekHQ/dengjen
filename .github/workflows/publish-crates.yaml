@@ -113,12 +113,13 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: bash .github/scripts/wait-for-crate.sh dengjen-tts-core "$VERSION"
 
-      - name: publish tier 3 (dengjen-hebrew-phonemizer, dengjen-pinyin-phonemizer)
+      - name: publish tier 3 (dengjen-hebrew-phonemizer, dengjen-kurmanji-phonemizer, dengjen-pinyin-phonemizer)
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           bash .github/scripts/publish-crate-if-needed.sh dengjen-hebrew-phonemizer "$VERSION"
+          bash .github/scripts/publish-crate-if-needed.sh dengjen-kurmanji-phonemizer "$VERSION"
           bash .github/scripts/publish-crate-if-needed.sh dengjen-pinyin-phonemizer "$VERSION"
       - name: wait for tier 3 to index
         if: env.DRY_RUN != 'true'
@@ -126,6 +127,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           bash .github/scripts/wait-for-crate.sh dengjen-hebrew-phonemizer "$VERSION"
+          bash .github/scripts/wait-for-crate.sh dengjen-kurmanji-phonemizer "$VERSION"
           bash .github/scripts/wait-for-crate.sh dengjen-pinyin-phonemizer "$VERSION"
 
       - name: publish tier 4 (dengjen-espeak-phonemizer)

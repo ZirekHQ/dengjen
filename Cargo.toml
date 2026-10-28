@@ -23,6 +23,7 @@ members = [
     "crates/text/espeak-phonemizer",
     "crates/text/espeak-rs-sys",
     "crates/text/hebrew-phonemizer",
+    "crates/text/kurmanji-phonemizer",
     "crates/text/pinyin-phonemizer",
     "crates/audio/ops",
     "crates/workspace-hack",
@@ -54,6 +55,7 @@ dengjen-tts-melotts = { path = "crates/dengjen/models/melotts", version = "3.0.4
 dengjen-espeak-phonemizer = { path = "crates/text/espeak-phonemizer", version = "3.0.4" }
 dengjen-espeak-rs-sys = { path = "crates/text/espeak-rs-sys", version = "3.0.4" }
 dengjen-hebrew-phonemizer = { path = "crates/text/hebrew-phonemizer", version = "3.0.4" }
+dengjen-kurmanji-phonemizer = { path = "crates/text/kurmanji-phonemizer", version = "3.0.4" }
 dengjen-pinyin-phonemizer = { path = "crates/text/pinyin-phonemizer", version = "3.0.4" }
 dengjen-stt = { path = "crates/stt", version = "3.0.4" }
 dengjen-voices = { path = "crates/voices", version = "3.0.4" }
