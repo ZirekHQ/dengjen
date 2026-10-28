@@ -9,13 +9,27 @@ pub(crate) enum Break {
     Exclamation,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Token<'a> {
     Word(&'a str),
     Number {
         integer: &'a str,
         fraction: Option<&'a str>,
     },
+    Time {
+        hour: usize,
+        minute: usize,
+    },
+    Date {
+        day: usize,
+        month: usize,
+        year: usize,
+    },
+    Ordinal {
+        value: usize,
+        formal: bool,
+    },
+    Currency(Currency),
     Percent,
     Dollar,
     Slash,
@@ -23,12 +37,41 @@ pub(crate) enum Token<'a> {
     Boundary(Break),
 }
 
-fn is_word_char(c: char) -> bool {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Currency {
+    Euro,
+    Pound,
+    Lira,
+}
+
+impl Currency {
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            Currency::Euro => "euro",
+            Currency::Pound => "sterlîn",
+            Currency::Lira => "lîre",
+        }
+    }
+}
+
+pub(crate) fn is_word_char(c: char) -> bool {
     c.is_alphabetic() || is_combining_mark(c)
 }
 
+fn currency_symbol(c: char) -> Option<Currency> {
+    match c {
+        '€' => Some(Currency::Euro),
+        '£' => Some(Currency::Pound),
+        '₺' => Some(Currency::Lira),
+        _ => None,
+    }
+}
+
 fn is_token_start(c: char) -> bool {
-    is_word_char(c) || c.is_ascii_digit() || matches!(c, '%' | '$' | '/')
+    is_word_char(c)
+        || c.is_ascii_digit()
+        || matches!(c, '%' | '$' | '/')
+        || currency_symbol(c).is_some()
 }
 
 fn split_run(text: &str, belongs: impl Fn(char) -> bool) -> (&str, &str) {
@@ -144,12 +187,17 @@ fn next_token(text: &str, before: Option<char>) -> Option<(Token<'_>, &str)> {
     if let Some(kind) = break_for(first, after) {
         return Some((Token::Boundary(kind), after));
     }
+    if let Some(currency) = currency_symbol(first) {
+        return Some((Token::Currency(currency), after));
+    }
     Some(match first {
         '-' | '−' if is_minus(first, before, after) => (Token::Minus, after),
         '%' => (Token::Percent, after),
         '$' => (Token::Dollar, after),
         '/' => (Token::Slash, after),
-        c if c.is_ascii_digit() => number_token(text),
+        c if c.is_ascii_digit() => {
+            crate::numeric::structured(text).unwrap_or_else(|| number_token(text))
+        }
         _ => {
             let (word, rest) = word_run(text);
             (Token::Word(word), rest)
@@ -223,7 +271,13 @@ mod tests {
     #[test]
     fn comma_colon_and_semicolon_break_only_before_whitespace() {
         assert_eq!(tokenize("3,5"), vec![number("3"), number("5")]);
-        assert_eq!(tokenize("10:30"), vec![number("10"), number("30")]);
+        assert_eq!(
+            tokenize("10:30"),
+            vec![Token::Time {
+                hour: 10,
+                minute: 30
+            }]
+        );
         assert_eq!(
             tokenize("a, b"),
             vec![

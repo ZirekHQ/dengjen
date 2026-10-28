@@ -4,9 +4,13 @@
     deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
 )]
 
+mod expand;
 mod letters;
 mod normalize;
 mod numbers;
+mod numeric;
+mod phrases;
+mod spell;
 mod stress;
 mod suffix;
 mod tokens;
@@ -36,10 +40,33 @@ fn compound_to_ipa(word: &str, clause_final: bool) -> String {
         .join(" ")
 }
 
+fn phrase_to_ipa(words: &[String], clause_final: bool) -> String {
+    let last = words.len().saturating_sub(1);
+    words
+        .iter()
+        .enumerate()
+        .map(|(i, word)| compound_to_ipa(word, clause_final && i == last))
+        .filter(|ipa| !ipa.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn token_to_ipa(token: &Token, clause_final: bool) -> String {
     match token {
         Token::Boundary(_) => String::new(),
         Token::Word(word) => compound_to_ipa(word, clause_final),
+        Token::Time { hour, minute } => {
+            phrase_to_ipa(&phrases::time_words(*hour, *minute), clause_final)
+        }
+        Token::Date { day, month, year } => phrase_to_ipa(
+            &phrases::date_words(*day, *month, *year).unwrap_or_default(),
+            clause_final,
+        ),
+        Token::Ordinal { value, formal } => phrase_to_ipa(
+            &spell::ordinal_words(*value, *formal).unwrap_or_default(),
+            clause_final,
+        ),
+        Token::Currency(currency) => compound_to_ipa(currency.word(), clause_final),
         Token::Number {
             integer,
             fraction: None,
@@ -98,7 +125,7 @@ fn ends_sentence(kind: Option<Break>) -> bool {
 }
 
 fn line_to_sentences(line: &str) -> Vec<String> {
-    let (mut sentences, pending) = clauses(tokens::tokenize(line)).iter().fold(
+    let (mut sentences, pending) = clauses(expand::expand(tokens::tokenize(line))).iter().fold(
         (Vec::new(), String::new()),
         |(mut sentences, mut pending), (tokens, kind)| {
             let words = clause_to_ipa(tokens);
@@ -186,7 +213,7 @@ mod tests {
     #[test]
     fn a_period_before_lowercase_text_does_not_end_the_sentence() {
         assert_eq!(sentences("Ew hat. min dît"), vec!["eʊ hˈat mˈɪn dˈit."]);
-        assert_eq!(sentences("Dr. Ali hat").len(), 2);
+        assert_eq!(sentences("Ew hat. Ali çû").len(), 2);
     }
 
     #[test]
@@ -209,12 +236,34 @@ mod tests {
     fn numbers_percent_dollar_and_slash_are_spoken() {
         assert_eq!(sentences("50%"), vec!["pendʒˈi sɛdˈe."]);
         assert_eq!(sentences("$10"), vec!["dʊlˈar dˈɛh."]);
-        assert_eq!(sentences("10:30"), vec!["dˈɛh sˈi."]);
         assert_eq!(sentences("3,5"), vec!["sˈe pˈendʒ."]);
+        assert_eq!(sentences("3/4"), vec!["sˈe slˈaʃ dʒˈar."]);
+    }
+
+    #[test]
+    fn times_dates_and_ordinals_are_spelled_as_words() {
+        assert_eq!(sentences("10:30"), sentences("saet deh û nîv"));
         assert_eq!(
-            sentences("27/10/2026"),
-            vec!["bˈɪstuhˈɛft slˈaʃ dˈɛh slˈaʃ dˈʊ hɛzˈar u bˈɪstuʃˈɛʃ."]
+            sentences("28.10.2026"),
+            sentences("bîst û heştê Çirîyê du hezar û bîst û şeş")
         );
+        assert_eq!(sentences("27/10/2026"), sentences("27.10.2026"));
+        assert_eq!(sentences("3em"), sentences("sêyem"));
+        assert_eq!(sentences("3-emîn"), sentences("sêyemîn"));
+    }
+
+    #[test]
+    fn currency_units_and_titles_are_spelled_as_words() {
+        assert_eq!(sentences("€5"), sentences("pênc euro"));
+        assert_eq!(sentences("5 €"), sentences("pênc euro"));
+        assert_eq!(sentences("5 km"), sentences("pênc kîlometre"));
+        assert_eq!(sentences("Dr. Ali"), sentences("doktor Ali"));
+        assert_eq!(sentences("Dr. Ali hat").len(), 1);
+    }
+
+    #[test]
+    fn an_ordinal_needs_its_suffix() {
+        assert_eq!(sentences("3."), sentences("3"));
     }
 
     #[test]
