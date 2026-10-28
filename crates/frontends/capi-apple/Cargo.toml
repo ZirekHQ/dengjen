@@ -22,6 +22,6 @@ coreml = ["libdengjen/coreml"]
 stt = ["dep:libdengjen-stt"]
 
 [dependencies]
-libdengjen = { path = "../capi", default-features = false, features = ["piper"] }
+libdengjen = { path = "../capi", default-features = false, features = ["piper", "kurmanji"] }
 libdengjen-stt = { path = "../capi-stt", optional = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
