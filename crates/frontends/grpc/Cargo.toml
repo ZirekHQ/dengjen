@@ -11,7 +11,7 @@ homepage.workspace = true
 workspace = true
 
 [features]
-default = ["espeak"]
+default = ["espeak", "kurmanji"]
 espeak = ["dengjen-tts-piper/espeak", "dengjen-tts-kokoro/espeak", "dengjen-tts-melotts/espeak"]
 japanese = ["dengjen-tts-kokoro/japanese"]
 hebrew = ["dengjen-tts-piper/hebrew"]
