@@ -137,9 +137,16 @@ fn after_first_char(text: &str) -> &str {
 }
 
 fn is_minus(c: char, before: Option<char>, after: &str) -> bool {
-    let digit_follows = after.starts_with(|n: char| n.is_ascii_digit());
-    let opens = before
-        .is_none_or(|p| p.is_whitespace() || matches!(p, '(' | '[' | ',' | ';' | ':' | '"' | '“'));
+    let starts_with_digit = |s: &str| s.starts_with(|n: char| n.is_ascii_digit());
+    let digit_follows = starts_with_digit(after)
+        || after.chars().next().is_some_and(|n| {
+            currency_symbol(n).is_some() && starts_with_digit(after_first_char(after))
+        });
+    let opens = before.is_none_or(|p| {
+        p.is_whitespace()
+            || currency_symbol(p).is_some()
+            || matches!(p, '(' | '[' | ',' | ';' | ':' | '"' | '“')
+    });
     digit_follows && (c == '−' || (c == '-' && opens))
 }
 
@@ -154,7 +161,11 @@ fn skip_ignorable(text: &str, before: Option<char>) -> (&str, Option<char>) {
     .unwrap_or((text, before))
 }
 
-fn next_token(text: &str, before: Option<char>) -> Option<(Token<'_>, &str)> {
+fn next_token(
+    text: &str,
+    before: Option<char>,
+    after_digit_colon: bool,
+) -> Option<(Token<'_>, &str)> {
     let (text, before) = skip_ignorable(text, before);
     let first = text.chars().next()?;
     let after = after_first_char(text);
@@ -169,9 +180,9 @@ fn next_token(text: &str, before: Option<char>) -> Option<(Token<'_>, &str)> {
         '%' => (Token::Percent, after),
         '$' => (Token::Dollar, after),
         '/' => (Token::Slash, after),
-        c if c.is_ascii_digit() => {
-            crate::numeric::structured(text).unwrap_or_else(|| crate::numeric::number(text))
-        }
+        c if c.is_ascii_digit() => crate::numeric::structured(text)
+            .filter(|_| !after_digit_colon)
+            .unwrap_or_else(|| crate::numeric::number(text)),
         _ => {
             let (word, rest) = word_run(text);
             (Token::Word(word), rest)
@@ -185,8 +196,10 @@ pub(crate) fn tokenize(text: &str) -> Vec<Token<'_>> {
         text.get(..text.len() - rest.len())
             .and_then(|read| read.chars().next_back())
     };
+    let after_digit_colon =
+        |rest: &str| rest.starts_with(':') && before(rest).is_some_and(|c| c.is_ascii_digit());
     std::iter::from_fn(|| {
-        let (token, after) = next_token(rest, before(rest))?;
+        let (token, after) = next_token(rest, before(rest), after_digit_colon(rest))?;
         rest = after;
         Some(token)
     })
@@ -269,6 +282,24 @@ mod tests {
         assert_eq!(
             tokenize("a: b").get(1),
             Some(&Token::Boundary(Break::Colon))
+        );
+    }
+
+    #[test]
+    fn a_colon_run_of_three_numbers_is_not_a_time() {
+        assert_eq!(
+            tokenize("12:10:15"),
+            vec![number("12"), number("10"), number("15")]
+        );
+        assert_eq!(
+            tokenize("at:10:30"),
+            vec![
+                Token::Word("at"),
+                Token::Time {
+                    hour: 10,
+                    minute: 30
+                }
+            ]
         );
     }
 

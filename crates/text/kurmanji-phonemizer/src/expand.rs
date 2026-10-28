@@ -23,6 +23,9 @@ fn title(word: &str) -> Option<&'static str> {
 
 fn step<'a>(rest: &[Token<'a>]) -> Step<'a> {
     match rest {
+        [Token::Currency(c), Token::Minus, number @ Token::Number { .. }, ..] => {
+            (vec![Token::Minus, number.clone(), Token::Word(c.word())], 3)
+        }
         [Token::Currency(c), number @ Token::Number { .. }, ..] => {
             (vec![number.clone(), Token::Word(c.word())], 2)
         }

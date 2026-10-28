@@ -72,7 +72,8 @@ fn fraction_word(fraction: &str) -> Option<&'static str> {
 
 pub(crate) fn fraction_words(integer: &str, fraction: &str) -> Option<Vec<String>> {
     let word = fraction_word(fraction)?.to_string();
-    let whole = integer.parse().ok()?;
+    let whole: usize = integer.parse().ok()?;
+    (whole.to_string() == integer).then_some(())?;
     cardinal_words(whole)?;
     Some(match whole {
         0 => vec![word],
@@ -133,6 +134,7 @@ mod tests {
         assert_eq!(said_for("0", "25"), "çaryek");
         assert!(fraction_words("3", "55").is_none());
         assert!(fraction_words("3", "05").is_none());
+        assert!(fraction_words("007", "5").is_none());
     }
 
     #[test]
