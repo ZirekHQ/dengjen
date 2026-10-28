@@ -9,6 +9,7 @@ Where eSpeak-ng has no rule, the crate spells the text out in Kurmanji instead o
 - Clock times: `12:30` is *saet diwanzde û nîv*; quarters use *çaryek* and `12:45` is *saet yek kêm çaryek*; other minutes are *… û MM deqîqe*.
 - Dates `D.M.YYYY`, `D/M/YYYY` and `YYYY-MM-DD`: `28.10.2026` is *bîst û heştê Çirîyê du hezar û bîst û şeş*.
 - Ordinals with an explicit suffix (`3em`, `3-yem`, `3emîn`); a bare `3.` stays a number.
+- Numbers follow the Turkish convention: `.` before exactly three digits groups thousands (`12.000` is 12000) and `,` is the decimal mark. `3,5` is *sê û nîv*, `2,25` is *du û çaryek*, and other decimals read the digits after *bêhnok* (`3,15` is *sê bêhnok yek pênc*).
 - Currency `€` `£` `₺` and `TL`, units `km` `kg` `m` `cm` after a number, and the titles `Dr.` and `Prof.`.
 
 Stress follows eSpeak-ng after [espeak-ng#2500](https://github.com/espeak-ng/espeak-ng/pull/2500), which differs from eSpeak-ng 1.52.0 for unstressed pronouns, verb-prefix words and the plural `-an`.

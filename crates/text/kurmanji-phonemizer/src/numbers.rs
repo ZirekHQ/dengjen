@@ -4,7 +4,7 @@ const PRIMARY_STRESS: char = 'ˈ';
 const HUNDRED: &str = "sˈɛd";
 const THOUSAND: &str = "hɛzˈar";
 const MILLION: &str = "mɪljˈon";
-const DECIMAL_POINT: &str = "xal";
+const DECIMAL_POINT: &str = "bêhnok";
 const MAX_GROUPED_DIGITS: usize = 14;
 
 const UNITS_AND_TEENS: [&str; 20] = [
@@ -215,7 +215,8 @@ pub(crate) fn decimal(integer: &str, fraction: &str) -> String {
         .map(|b| digit_word(usize::from(b.saturating_sub(b'0'))))
         .collect::<Vec<_>>()
         .join(" ");
-    format!("{} {DECIMAL_POINT} {digits}", cardinal(integer))
+    let point = crate::compound_to_ipa(DECIMAL_POINT, false);
+    format!("{} {point} {digits}", cardinal(integer))
 }
 
 #[cfg(test)]
@@ -260,6 +261,6 @@ mod tests {
 
     #[test]
     fn decimals_speak_fraction_digits_one_by_one() {
-        assert_eq!(decimal("3", "14"), "sˈe xal jˈɛk dʒˈar");
+        assert_eq!(decimal("3", "14"), "sˈe behnˈok jˈɛk dʒˈar");
     }
 }

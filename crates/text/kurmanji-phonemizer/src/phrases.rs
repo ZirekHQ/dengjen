@@ -62,6 +62,24 @@ pub(crate) fn date_words(day: usize, month: usize, year: usize) -> Option<Vec<St
     )
 }
 
+fn fraction_word(fraction: &str) -> Option<&'static str> {
+    match fraction.trim_end_matches('0') {
+        "5" => Some("nîv"),
+        "25" => Some("çaryek"),
+        _ => None,
+    }
+}
+
+pub(crate) fn fraction_words(integer: &str, fraction: &str) -> Option<Vec<String>> {
+    let word = fraction_word(fraction)?.to_string();
+    let whole = integer.parse().ok()?;
+    cardinal_words(whole)?;
+    Some(match whole {
+        0 => vec![word],
+        _ => [spelled(whole), vec!["û".to_string(), word]].concat(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,6 +120,19 @@ mod tests {
             said(date_words(2, 3, 2026).unwrap_or_default()),
             "duyê Adarê du hezar û bîst û şeş"
         );
+    }
+
+    #[test]
+    fn halves_and_quarters_read_as_u_niv_and_u_caryek() {
+        let said_for =
+            |integer, fraction| said(fraction_words(integer, fraction).unwrap_or_default());
+        assert_eq!(said_for("3", "5"), "sê û nîv");
+        assert_eq!(said_for("21", "50"), "bîst û yek û nîv");
+        assert_eq!(said_for("0", "5"), "nîv");
+        assert_eq!(said_for("2", "25"), "du û çaryek");
+        assert_eq!(said_for("0", "25"), "çaryek");
+        assert!(fraction_words("3", "55").is_none());
+        assert!(fraction_words("3", "05").is_none());
     }
 
     #[test]

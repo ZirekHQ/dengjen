@@ -74,7 +74,10 @@ fn token_to_ipa(token: &Token, clause_final: bool) -> String {
         Token::Number {
             integer,
             fraction: Some(fraction),
-        } => numbers::decimal(integer, fraction),
+        } => phrases::fraction_words(integer, fraction).map_or_else(
+            || numbers::decimal(integer, fraction),
+            |words| phrase_to_ipa(&words, clause_final),
+        ),
         Token::Percent => PERCENT.to_string(),
         Token::Dollar => DOLLAR.to_string(),
         Token::Slash => SLASH.to_string(),
@@ -236,7 +239,8 @@ mod tests {
     fn numbers_percent_dollar_and_slash_are_spoken() {
         assert_eq!(sentences("50%"), vec!["pendʒˈi sɛdˈe."]);
         assert_eq!(sentences("$10"), vec!["dʊlˈar dˈɛh."]);
-        assert_eq!(sentences("3,5"), vec!["sˈe xal pˈendʒ."]);
+        assert_eq!(sentences("3,5"), sentences("sê û nîv"));
+        assert_eq!(sentences("3,15"), sentences("sê bêhnok yek pênc"));
         assert_eq!(sentences("12.000"), sentences("12000"));
         assert_eq!(sentences("1.502"), sentences("1502"));
         assert_eq!(sentences("3/4"), vec!["sˈe slˈaʃ dʒˈar."]);
