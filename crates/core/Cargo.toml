@@ -6,6 +6,7 @@ license.workspace = true
 description = "Shared runtime primitives for the dengjen speech engines: cancellation, ONNX Runtime providers, path confinement and poison-tolerant locks"
 repository.workspace = true
 homepage.workspace = true
+readme = "README.md"
 
 [lints]
 workspace = true
