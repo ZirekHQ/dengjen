@@ -6,11 +6,11 @@ A pure-Rust port of eSpeak-ng's `ku` rules: letters and context rules, stress (f
 
 Where eSpeak-ng has no rule, the crate spells the text out in Kurmanji instead of reading bare numbers or letters (`tests/divergence.tsv` pins each case):
 
-- Clock times: `12:30` is *saet diwanzde û nîv*; quarters use *çaryek* and `12:45` is *saet yek kêm çaryek*; other minutes are *… û MM deqîqe*.
+- Clock times: `12:30` is *saet diwanzde û nîv*; quarters use *çaryek* and `12:45` is *saet yek kêm çaryek*; other minutes are *… û MM deqîqe*, and `12:10:15` adds *û panzde saniye*.
 - Dates `D.M.YYYY`, `D/M/YYYY` and `YYYY-MM-DD`: `28.10.2026` is *bîst û heştê Çirîyê du hezar û bîst û şeş*.
 - Ordinals with an explicit suffix (`3em`, `3-yem`, `3emîn`); a bare `3.` stays a number.
 - Numbers follow the Turkish convention: `.` before exactly three digits groups thousands (`12.000` is 12000) and `,` is the decimal mark. `3,5` is *sê û nîv*, `2,25` is *du û çaryek*, and other decimals read the digits after *bêhnok* (`3,15` is *sê bêhnok yek pênc*).
-- Currency `€` `£` `₺` and `TL`, units `km` `kg` `m` `cm` after a number, and the titles `Dr.` and `Prof.`.
+- Currency `€` `£` `₺` and `TL`, units `km` `kg` `m` `cm` after a number (`3,5 kg` is *sê kîlogram û nîv*), and the titles `Dr.` and `Prof.`.
 
 Stress follows eSpeak-ng after [espeak-ng#2500](https://github.com/espeak-ng/espeak-ng/pull/2500), which differs from eSpeak-ng 1.52.0 for unstressed pronouns, verb-prefix words and the plural `-an`.
 

@@ -29,12 +29,26 @@ fn continues_with_digit_after(rest: &str, separator: char) -> bool {
         .is_some_and(|after| after.starts_with(|c: char| c.is_ascii_digit()))
 }
 
+fn seconds(rest: &str) -> (Option<usize>, &str) {
+    rest.strip_prefix(':')
+        .and_then(|after| digit_run(after, 2..=2))
+        .map_or((None, rest), |(digits, after)| (value(digits), after))
+}
+
 fn time(text: &str) -> Parsed<'_> {
     let (hour, rest) = digit_run(text, 1..=2)?;
     let (minute, rest) = digit_run(rest.strip_prefix(':')?, 2..=2)?;
+    let (second, rest) = seconds(rest);
     let (hour, minute) = (value(hour)?, value(minute)?);
-    (hour < 24 && minute < 60 && !continues_with_digit_after(rest, ':'))
-        .then_some((Token::Time { hour, minute }, rest))
+    let in_range = hour < 24 && minute < 60 && second.is_none_or(|s| s < 60);
+    (in_range && !continues_with_digit_after(rest, ':')).then_some((
+        Token::Time {
+            hour,
+            minute,
+            second,
+        },
+        rest,
+    ))
 }
 
 fn three_parts(text: &str) -> Option<([&str; 3], char, &str)> {
@@ -193,13 +207,34 @@ mod tests {
             parsed("12:30"),
             Some(Token::Time {
                 hour: 12,
-                minute: 30
+                minute: 30,
+                second: None
             })
         );
-        assert_eq!(parsed("9:05"), Some(Token::Time { hour: 9, minute: 5 }));
+        assert_eq!(
+            parsed("9:05"),
+            Some(Token::Time {
+                hour: 9,
+                minute: 5,
+                second: None
+            })
+        );
         assert_eq!(parsed("24:00"), None);
         assert_eq!(parsed("12:60"), None);
-        assert_eq!(parsed("12:30:15"), None);
+        assert_eq!(parsed("12:30:60"), None);
+        assert_eq!(parsed("12:30:15:20"), None);
+    }
+
+    #[test]
+    fn times_accept_seconds() {
+        assert_eq!(
+            parsed("12:10:15"),
+            Some(Token::Time {
+                hour: 12,
+                minute: 10,
+                second: Some(15)
+            })
+        );
     }
 
     #[test]
