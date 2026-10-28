@@ -68,7 +68,7 @@ mod tests {
     fn currency_follows_its_amount_wherever_the_symbol_sits() {
         let expected = vec![
             Token::Number {
-                integer: "5",
+                integer: "5".into(),
                 fraction: None,
             },
             Token::Word(Currency::Euro.word()),

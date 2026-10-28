@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use unicode_normalization::char::is_combining_mark;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -13,7 +15,7 @@ pub(crate) enum Break {
 pub(crate) enum Token<'a> {
     Word(&'a str),
     Number {
-        integer: &'a str,
+        integer: Cow<'a, str>,
         fraction: Option<&'a str>,
     },
     Time {
@@ -74,10 +76,6 @@ fn is_token_start(c: char) -> bool {
         || currency_symbol(c).is_some()
 }
 
-fn split_run(text: &str, belongs: impl Fn(char) -> bool) -> (&str, &str) {
-    text.split_at(text.find(|c| !belongs(c)).unwrap_or(text.len()))
-}
-
 fn word_run(text: &str) -> (&str, &str) {
     let span_len = text
         .find(|c| !is_word_char(c) && c != '-')
@@ -111,30 +109,6 @@ pub(crate) fn split_camel_case(word: &str) -> Vec<&str> {
         .zip(cuts.iter().copied().chain(std::iter::once(word.len())))
         .filter_map(|(start, end)| word.get(start..end))
         .collect()
-}
-
-fn number_token(text: &str) -> (Token<'_>, &str) {
-    let (integer, rest) = split_run(text, |c| c.is_ascii_digit());
-    let fraction = rest
-        .strip_prefix('.')
-        .filter(|after| after.starts_with(|c: char| c.is_ascii_digit()))
-        .map(|after| split_run(after, |c| c.is_ascii_digit()));
-    match fraction {
-        Some((digits, rest)) => (
-            Token::Number {
-                integer,
-                fraction: Some(digits),
-            },
-            rest,
-        ),
-        None => (
-            Token::Number {
-                integer,
-                fraction: None,
-            },
-            rest,
-        ),
-    }
 }
 
 fn ends_sentence(after_period: &str) -> bool {
@@ -196,7 +170,7 @@ fn next_token(text: &str, before: Option<char>) -> Option<(Token<'_>, &str)> {
         '$' => (Token::Dollar, after),
         '/' => (Token::Slash, after),
         c if c.is_ascii_digit() => {
-            crate::numeric::structured(text).unwrap_or_else(|| number_token(text))
+            crate::numeric::structured(text).unwrap_or_else(|| crate::numeric::number(text))
         }
         _ => {
             let (word, rest) = word_run(text);
@@ -225,7 +199,7 @@ mod tests {
 
     fn number(integer: &str) -> Token<'_> {
         Token::Number {
-            integer,
+            integer: integer.into(),
             fraction: None,
         }
     }
@@ -242,7 +216,7 @@ mod tests {
                 number("50"),
                 Token::Percent,
                 Token::Number {
-                    integer: "3",
+                    integer: "3".into(),
                     fraction: Some("14")
                 },
                 number("1"),
@@ -270,7 +244,13 @@ mod tests {
 
     #[test]
     fn comma_colon_and_semicolon_break_only_before_whitespace() {
-        assert_eq!(tokenize("3,5"), vec![number("3"), number("5")]);
+        assert_eq!(
+            tokenize("3,5"),
+            vec![Token::Number {
+                integer: "3".into(),
+                fraction: Some("5")
+            }]
+        );
         assert_eq!(
             tokenize("10:30"),
             vec![Token::Time {
