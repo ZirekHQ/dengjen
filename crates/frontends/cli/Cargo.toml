@@ -15,7 +15,7 @@ name = "dengjen"
 path = "src/main.rs"
 
 [features]
-default = ["espeak"]
+default = ["espeak", "kurmanji"]
 espeak = ["dengjen-tts-piper/espeak", "dengjen-tts-kokoro/espeak", "dengjen-tts-melotts/espeak"]
 japanese = ["dengjen-tts-kokoro/japanese"]
 hebrew = ["dengjen-tts-piper/hebrew"]

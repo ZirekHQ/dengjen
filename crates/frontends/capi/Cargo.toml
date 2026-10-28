@@ -15,7 +15,7 @@ name = "libdengjen"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
-default = ["piper", "espeak"]
+default = ["piper", "espeak", "kurmanji"]
 piper = []
 espeak = ["dengjen-tts-piper/espeak", "dengjen-tts-kokoro/espeak", "dengjen-tts-melotts/espeak"]
 japanese = ["dengjen-tts-kokoro/japanese"]

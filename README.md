@@ -28,7 +28,7 @@ this engine's neural-ONNX pipeline and isn't planned.
 | Tunable inference knobs | `noise_scale`, `length_scale`, `noise_w` | None | `noise_scale`, `length_scale`, `noise_scale_w` |
 | Phonemizers | eSpeak-ng, raw text, Hebrew, pinyin, Kurmanji; Arabic diacritization via `libtashkeel` | eSpeak-ng, fixed to `en-US` | eSpeak-ng (`en`, `es`, `fr`, `ja`, `ko`) or pinyin (`zh`) |
 
-The Hebrew, pinyin and Kurmanji phonemizers are opt-in Cargo features (`hebrew`, `pinyin`, `kurmanji`) that no frontend in this repository enables by default, so the prebuilt `dengjen-tts-grpc` server and the `pydengjen` wheels do not include them; embedding the Rust crates lets you enable them. With `kurmanji` on, voices whose espeak voice is `ku` use the built-in phonemizer instead of eSpeak-ng unless the voice config sets `"kurmanji_use_espeak": true`. Arabic diacritization (the `tashkeel` feature) is enabled by default in every frontend this repository publishes.
+The Hebrew and pinyin phonemizers are opt-in Cargo features (`hebrew`, `pinyin`) that no frontend in this repository enables by default, so the prebuilt `dengjen-tts-grpc` server and the `pydengjen` wheels do not include them; embedding the Rust crates lets you enable them. The `kurmanji` feature is on by default in the `capi`, `cli`, `grpc` and `python` frontends: voices whose espeak voice is `ku` use the built-in phonemizer instead of eSpeak-ng unless the voice config sets `"kurmanji_use_espeak": true`. Arabic diacritization (the `tashkeel` feature) is enabled by default in every frontend this repository publishes.
 
 ## Documentation
 

@@ -15,7 +15,7 @@ name = "pydengjen"
 crate-type = ["cdylib"]
 
 [features]
-default = ["tashkeel", "espeak"]
+default = ["tashkeel", "espeak", "kurmanji"]
 ort-dylib = ["ort/load-dynamic"]
 tashkeel = ["dep:dengjen-tashkeel", "dengjen-tts-piper/tashkeel"]
 espeak = ["dep:dengjen-espeak-phonemizer", "dengjen-tts-piper/espeak", "dengjen-tts-kokoro/espeak", "dengjen-tts-melotts/espeak"]
