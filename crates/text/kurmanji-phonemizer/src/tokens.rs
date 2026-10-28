@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use unicode_normalization::char::is_combining_mark;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -9,13 +11,27 @@ pub(crate) enum Break {
     Exclamation,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Token<'a> {
     Word(&'a str),
     Number {
-        integer: &'a str,
+        integer: Cow<'a, str>,
         fraction: Option<&'a str>,
     },
+    Time {
+        hour: usize,
+        minute: usize,
+    },
+    Date {
+        day: usize,
+        month: usize,
+        year: usize,
+    },
+    Ordinal {
+        value: usize,
+        formal: bool,
+    },
+    Currency(Currency),
     Percent,
     Dollar,
     Slash,
@@ -23,16 +39,41 @@ pub(crate) enum Token<'a> {
     Boundary(Break),
 }
 
-fn is_word_char(c: char) -> bool {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Currency {
+    Euro,
+    Pound,
+    Lira,
+}
+
+impl Currency {
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            Currency::Euro => "euro",
+            Currency::Pound => "sterlîn",
+            Currency::Lira => "lîre",
+        }
+    }
+}
+
+pub(crate) fn is_word_char(c: char) -> bool {
     c.is_alphabetic() || is_combining_mark(c)
 }
 
-fn is_token_start(c: char) -> bool {
-    is_word_char(c) || c.is_ascii_digit() || matches!(c, '%' | '$' | '/')
+fn currency_symbol(c: char) -> Option<Currency> {
+    match c {
+        '€' => Some(Currency::Euro),
+        '£' => Some(Currency::Pound),
+        '₺' => Some(Currency::Lira),
+        _ => None,
+    }
 }
 
-fn split_run(text: &str, belongs: impl Fn(char) -> bool) -> (&str, &str) {
-    text.split_at(text.find(|c| !belongs(c)).unwrap_or(text.len()))
+fn is_token_start(c: char) -> bool {
+    is_word_char(c)
+        || c.is_ascii_digit()
+        || matches!(c, '%' | '$' | '/')
+        || currency_symbol(c).is_some()
 }
 
 fn word_run(text: &str) -> (&str, &str) {
@@ -70,30 +111,6 @@ pub(crate) fn split_camel_case(word: &str) -> Vec<&str> {
         .collect()
 }
 
-fn number_token(text: &str) -> (Token<'_>, &str) {
-    let (integer, rest) = split_run(text, |c| c.is_ascii_digit());
-    let fraction = rest
-        .strip_prefix('.')
-        .filter(|after| after.starts_with(|c: char| c.is_ascii_digit()))
-        .map(|after| split_run(after, |c| c.is_ascii_digit()));
-    match fraction {
-        Some((digits, rest)) => (
-            Token::Number {
-                integer,
-                fraction: Some(digits),
-            },
-            rest,
-        ),
-        None => (
-            Token::Number {
-                integer,
-                fraction: None,
-            },
-            rest,
-        ),
-    }
-}
-
 fn ends_sentence(after_period: &str) -> bool {
     let trimmed = after_period.trim_start();
     trimmed.is_empty()
@@ -120,9 +137,16 @@ fn after_first_char(text: &str) -> &str {
 }
 
 fn is_minus(c: char, before: Option<char>, after: &str) -> bool {
-    let digit_follows = after.starts_with(|n: char| n.is_ascii_digit());
-    let opens = before
-        .is_none_or(|p| p.is_whitespace() || matches!(p, '(' | '[' | ',' | ';' | ':' | '"' | '“'));
+    let starts_with_digit = |s: &str| s.starts_with(|n: char| n.is_ascii_digit());
+    let digit_follows = starts_with_digit(after)
+        || after.chars().next().is_some_and(|n| {
+            currency_symbol(n).is_some() && starts_with_digit(after_first_char(after))
+        });
+    let opens = before.is_none_or(|p| {
+        p.is_whitespace()
+            || currency_symbol(p).is_some()
+            || matches!(p, '(' | '[' | ',' | ';' | ':' | '"' | '“')
+    });
     digit_follows && (c == '−' || (c == '-' && opens))
 }
 
@@ -137,19 +161,28 @@ fn skip_ignorable(text: &str, before: Option<char>) -> (&str, Option<char>) {
     .unwrap_or((text, before))
 }
 
-fn next_token(text: &str, before: Option<char>) -> Option<(Token<'_>, &str)> {
+fn next_token(
+    text: &str,
+    before: Option<char>,
+    after_digit_colon: bool,
+) -> Option<(Token<'_>, &str)> {
     let (text, before) = skip_ignorable(text, before);
     let first = text.chars().next()?;
     let after = after_first_char(text);
     if let Some(kind) = break_for(first, after) {
         return Some((Token::Boundary(kind), after));
     }
+    if let Some(currency) = currency_symbol(first) {
+        return Some((Token::Currency(currency), after));
+    }
     Some(match first {
         '-' | '−' if is_minus(first, before, after) => (Token::Minus, after),
         '%' => (Token::Percent, after),
         '$' => (Token::Dollar, after),
         '/' => (Token::Slash, after),
-        c if c.is_ascii_digit() => number_token(text),
+        c if c.is_ascii_digit() => crate::numeric::structured(text)
+            .filter(|_| !after_digit_colon)
+            .unwrap_or_else(|| crate::numeric::number(text)),
         _ => {
             let (word, rest) = word_run(text);
             (Token::Word(word), rest)
@@ -163,8 +196,10 @@ pub(crate) fn tokenize(text: &str) -> Vec<Token<'_>> {
         text.get(..text.len() - rest.len())
             .and_then(|read| read.chars().next_back())
     };
+    let after_digit_colon =
+        |rest: &str| rest.starts_with(':') && before(rest).is_some_and(|c| c.is_ascii_digit());
     std::iter::from_fn(|| {
-        let (token, after) = next_token(rest, before(rest))?;
+        let (token, after) = next_token(rest, before(rest), after_digit_colon(rest))?;
         rest = after;
         Some(token)
     })
@@ -177,7 +212,7 @@ mod tests {
 
     fn number(integer: &str) -> Token<'_> {
         Token::Number {
-            integer,
+            integer: integer.into(),
             fraction: None,
         }
     }
@@ -194,7 +229,7 @@ mod tests {
                 number("50"),
                 Token::Percent,
                 Token::Number {
-                    integer: "3",
+                    integer: "3".into(),
                     fraction: Some("14")
                 },
                 number("1"),
@@ -222,8 +257,20 @@ mod tests {
 
     #[test]
     fn comma_colon_and_semicolon_break_only_before_whitespace() {
-        assert_eq!(tokenize("3,5"), vec![number("3"), number("5")]);
-        assert_eq!(tokenize("10:30"), vec![number("10"), number("30")]);
+        assert_eq!(
+            tokenize("3,5"),
+            vec![Token::Number {
+                integer: "3".into(),
+                fraction: Some("5")
+            }]
+        );
+        assert_eq!(
+            tokenize("10:30"),
+            vec![Token::Time {
+                hour: 10,
+                minute: 30
+            }]
+        );
         assert_eq!(
             tokenize("a, b"),
             vec![
@@ -235,6 +282,24 @@ mod tests {
         assert_eq!(
             tokenize("a: b").get(1),
             Some(&Token::Boundary(Break::Colon))
+        );
+    }
+
+    #[test]
+    fn a_colon_run_of_three_numbers_is_not_a_time() {
+        assert_eq!(
+            tokenize("12:10:15"),
+            vec![number("12"), number("10"), number("15")]
+        );
+        assert_eq!(
+            tokenize("at:10:30"),
+            vec![
+                Token::Word("at"),
+                Token::Time {
+                    hour: 10,
+                    minute: 30
+                }
+            ]
         );
     }
 
