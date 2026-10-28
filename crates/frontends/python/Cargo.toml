@@ -23,6 +23,7 @@ japanese = ["dengjen-tts-kokoro/japanese"]
 stt = ["dep:dengjen-stt"]
 hebrew = ["dengjen-tts-piper/hebrew"]
 pinyin = ["dengjen-tts-piper/pinyin", "dengjen-tts-melotts/pinyin"]
+kurmanji = ["dengjen-tts-piper/kurmanji"]
 
 
 cuda = ["dengjen-tts-piper/cuda", "dengjen-tts-kokoro/cuda", "dengjen-tts-melotts/cuda"]

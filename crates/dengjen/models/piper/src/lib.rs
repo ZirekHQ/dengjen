@@ -158,7 +158,7 @@ trait VitsModelCommons {
     fn do_phonemize_text(&self, text: &str) -> DengjenResult<Phonemes> {
         let config = self.get_config();
         if let Some(handled) = phonemize_dispatch(
-            config.phoneme_type.unwrap_or_default(),
+            config.effective_phoneme_type(),
             text,
             self.get_hebrew_engine(),
             self.get_pinyin_engine(),
@@ -184,7 +184,7 @@ trait VitsModelCommons {
     fn do_phonemize_text(&self, text: &str) -> DengjenResult<Phonemes> {
         let config = self.get_config();
         phonemize_dispatch(
-            config.phoneme_type.unwrap_or_default(),
+            config.effective_phoneme_type(),
             text,
             self.get_hebrew_engine(),
             self.get_pinyin_engine(),

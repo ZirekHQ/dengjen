@@ -1,0 +1,16 @@
+[package]
+name = "dengjen-kurmanji-phonemizer"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "Kurmanji Kurdish grapheme-to-phoneme conversion for the dengjen-tts speech synthesis engine"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+dengjen-tts-core = { workspace = true }
+unicode-normalization = "0.1"
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }

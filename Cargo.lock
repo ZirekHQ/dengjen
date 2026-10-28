@@ -864,6 +864,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dengjen-kurmanji-phonemizer"
+version = "3.0.4"
+dependencies = [
+ "dengjen-tts-core",
+ "unicode-normalization",
+ "workspace-hack",
+]
+
+[[package]]
 name = "dengjen-pinyin-phonemizer"
 version = "3.0.4"
 dependencies = [
@@ -1023,6 +1032,7 @@ version = "3.0.4"
 dependencies = [
  "dengjen-espeak-phonemizer",
  "dengjen-hebrew-phonemizer",
+ "dengjen-kurmanji-phonemizer",
  "dengjen-pinyin-phonemizer",
  "dengjen-tashkeel",
  "dengjen-tts-core",

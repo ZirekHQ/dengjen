@@ -335,8 +335,8 @@ jobs:
         run: cargo llvm-cov --no-report --workspace --exclude dengjen-espeak-phonemizer --exclude dengjen-tts --exclude dengjen-tts-kokoro --no-fail-fast
       - name: cargo llvm-cov (dengjen-espeak-phonemizer, single-threaded)
         run: cargo llvm-cov --no-report -p dengjen-espeak-phonemizer -- --test-threads=1
-      - name: cargo llvm-cov (dengjen-tts-piper, hebrew and pinyin features enabled)
-        run: cargo llvm-cov --no-report -p dengjen-tts-piper --no-default-features --features espeak,tashkeel,hebrew,pinyin
+      - name: cargo llvm-cov (dengjen-tts-piper, hebrew, pinyin and kurmanji features enabled)
+        run: cargo llvm-cov --no-report -p dengjen-tts-piper --no-default-features --features espeak,tashkeel,hebrew,pinyin,kurmanji
       - name: cargo llvm-cov (dengjen-tts-piper, espeak feature disabled)
         run: cargo llvm-cov --no-report -p dengjen-tts-piper --no-default-features --features tashkeel
       - name: cargo llvm-cov (dengjen-tts-kokoro, espeak feature enabled)
