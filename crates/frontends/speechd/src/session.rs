@@ -1,5 +1,6 @@
 use std::io::{self, BufRead, Write};
 
+use crate::lines::{Interrupt, Lines};
 use crate::protocol::{self, Command, Message};
 use crate::reply;
 use crate::settings::Settings;
@@ -32,14 +33,22 @@ enum Flow {
     Quit,
 }
 
-struct Session<B, R, W> {
+struct Session<B, W> {
     backend: B,
     settings: Settings,
-    input: R,
+    input: Lines,
     output: W,
 }
 
-pub fn run<B: Backend>(backend: B, input: impl BufRead, output: impl Write) -> io::Result<()> {
+pub fn run<B: Backend>(
+    backend: B,
+    input: impl BufRead + Send + 'static,
+    output: impl Write,
+) -> io::Result<()> {
+    run_lines(backend, Lines::spawn(input)?, output)
+}
+
+fn run_lines<B: Backend>(backend: B, input: Lines, output: impl Write) -> io::Result<()> {
     let mut session = Session {
         backend,
         settings: Settings::default(),
@@ -49,7 +58,7 @@ pub fn run<B: Backend>(backend: B, input: impl BufRead, output: impl Write) -> i
     if !session.init()? {
         return Ok(());
     }
-    while let Some(line) = protocol::read_line(&mut session.input)? {
+    while let Some(line) = session.input.next_line()? {
         let flow = session.dispatch(protocol::parse_command(&line))?;
         session.output.flush()?;
         if flow == Flow::Quit {
@@ -59,13 +68,13 @@ pub fn run<B: Backend>(backend: B, input: impl BufRead, output: impl Write) -> i
     Ok(())
 }
 
-impl<B: Backend, R: BufRead, W: Write> Session<B, R, W> {
+impl<B: Backend, W: Write> Session<B, W> {
     fn say(&mut self, text: &str) -> io::Result<()> {
         reply::line(&mut self.output, text)
     }
 
     fn init(&mut self) -> io::Result<bool> {
-        match protocol::read_line(&mut self.input)?.as_deref() {
+        match self.input.next_line()?.as_deref() {
             Some("INIT") => {}
             _ => {
                 return Err(io::Error::new(
@@ -104,7 +113,7 @@ impl<B: Backend, R: BufRead, W: Write> Session<B, R, W> {
 
     fn settings_block(&mut self, block: Block) -> io::Result<Flow> {
         self.say(block.opening())?;
-        let Some(lines) = protocol::read_block(&mut self.input)? else {
+        let Some(lines) = protocol::read_block(|| self.input.next_line())? else {
             return Ok(Flow::Quit);
         };
         let error = lines
@@ -151,7 +160,7 @@ impl<B: Backend, R: BufRead, W: Write> Session<B, R, W> {
 
     fn speak(&mut self, kind: Message) -> io::Result<Flow> {
         self.say("202 OK RECEIVING MESSAGE")?;
-        let Some(lines) = protocol::read_block(&mut self.input)? else {
+        let Some(lines) = protocol::read_block(|| self.input.next_line())? else {
             return Ok(Flow::Quit);
         };
         match message_text(kind, &lines) {
@@ -171,13 +180,20 @@ impl<B: Backend, R: BufRead, W: Write> Session<B, R, W> {
         };
         reply::line(&mut self.output, "200 OK SPEAKING")?;
         reply::line(&mut self.output, "701 BEGIN")?;
-        stream_audio(chunks, &mut self.output)?;
-        reply::line(&mut self.output, "702 END")
+        let ending = stream_audio(chunks, &mut self.output, &mut self.input)?;
+        reply::line(&mut self.output, ending.map_or("702 END", Interrupt::event))
     }
 }
 
-fn stream_audio(chunks: Chunks<'_>, output: &mut impl Write) -> io::Result<()> {
+fn stream_audio(
+    chunks: Chunks<'_>,
+    output: &mut impl Write,
+    input: &mut Lines,
+) -> io::Result<Option<Interrupt>> {
     for chunk in chunks {
+        if let Some(interrupt) = input.interrupt() {
+            return Ok(Some(interrupt));
+        }
         match chunk {
             Ok(audio) => {
                 output.write_all(&reply::audio_frame(&audio.samples, audio.sample_rate))?;
@@ -189,7 +205,7 @@ fn stream_audio(chunks: Chunks<'_>, output: &mut impl Write) -> io::Result<()> {
             }
         }
     }
-    Ok(())
+    Ok(None)
 }
 
 fn matches_language(requested: &str, language: &str) -> bool {
@@ -305,10 +321,45 @@ mod tests {
         }
     }
 
+    fn scripted(input: &str) -> Lines {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        input
+            .lines()
+            .for_each(|line| sender.send(Ok(line.to_owned())).unwrap());
+        Lines::new(receiver)
+    }
+
     fn transcript(backend: &mut Fake, input: &str) -> String {
         let mut output = Vec::new();
-        run(backend, input.as_bytes(), &mut output).unwrap();
+        run_lines(backend, scripted(input), &mut output).unwrap();
         String::from_utf8_lossy(&output).into_owned()
+    }
+
+    #[test]
+    fn stop_during_speech_ends_it_with_a_stop_event_and_no_audio() {
+        let out = transcript(&mut fake(), "INIT\nSPEAK\nx\n.\nSTOP\nQUIT\n");
+        assert!(out.contains("701 BEGIN\n703 STOP\n210 OK QUIT\n"));
+        assert!(!out.contains("705 AUDIO"));
+    }
+
+    #[test]
+    fn pause_during_speech_reports_a_pause_event() {
+        let out = transcript(&mut fake(), "INIT\nSPEAK\nx\n.\nPAUSE\nQUIT\n");
+        assert!(out.contains("701 BEGIN\n704 PAUSE\n210 OK QUIT\n"));
+    }
+
+    #[test]
+    fn quit_during_speech_stops_it_and_still_quits() {
+        let out = transcript(&mut fake(), "INIT\nSPEAK\nx\n.\nQUIT\n");
+        assert!(out.ends_with("701 BEGIN\n703 STOP\n210 OK QUIT\n"));
+    }
+
+    #[test]
+    fn a_spoken_line_reading_stop_is_not_a_command() {
+        let mut backend = fake();
+        let out = transcript(&mut backend, "INIT\nSPEAK\nx\n.\nSPEAK\nSTOP\n.\n");
+        assert_eq!(out.matches("702 END\n").count(), 2);
+        assert_eq!(backend.spoken[1].0, "STOP");
     }
 
     #[test]
@@ -366,13 +417,13 @@ mod tests {
         let mut backend = fake();
         let out = transcript(
             &mut backend,
-            "INIT\nSET\nrate=20\n.\nSPEAK\nSilav\n..dot\n.\nQUIT\n",
+            "INIT\nSET\nrate=20\n.\nSPEAK\nSilav\n..dot\n.\n",
         );
         assert_eq!(backend.spoken.len(), 1);
         assert_eq!(backend.spoken[0].0, "Silav\n.dot");
         assert_eq!(backend.spoken[0].1.rate, 20);
         assert!(out.contains("202 OK RECEIVING MESSAGE\n200 OK SPEAKING\n701 BEGIN\n705-bits=16"));
-        assert!(out.contains("\n705 AUDIO\n702 END\n210 OK QUIT\n"));
+        assert!(out.ends_with("\n705 AUDIO\n702 END\n"));
     }
 
     #[test]
@@ -419,10 +470,10 @@ mod tests {
 
     #[test]
     fn every_chunk_is_its_own_frame_between_begin_and_end() {
-        let out = transcript(&mut fake(), "INIT\nSPEAK\nx\n.\nQUIT\n");
+        let out = transcript(&mut fake(), "INIT\nSPEAK\nx\n.\n");
         assert_eq!(out.matches("705 AUDIO\n").count(), 2);
         assert!(out.contains("701 BEGIN\n705-bits=16"));
-        assert!(out.ends_with("705 AUDIO\n702 END\n210 OK QUIT\n"));
+        assert!(out.ends_with("705 AUDIO\n702 END\n"));
     }
 
     #[test]
@@ -431,9 +482,9 @@ mod tests {
             fail_midway: true,
             ..fake()
         };
-        let out = transcript(&mut backend, "INIT\nSPEAK\nx\n.\nQUIT\n");
+        let out = transcript(&mut backend, "INIT\nSPEAK\nx\n.\n");
         assert_eq!(out.matches("705 AUDIO\n").count(), 1);
-        assert!(out.ends_with("705 AUDIO\n702 END\n210 OK QUIT\n"));
+        assert!(out.ends_with("705 AUDIO\n702 END\n"));
     }
 
     #[test]

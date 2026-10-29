@@ -13,7 +13,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let stdin = io::stdin().lock();
+    let stdin = io::BufReader::new(io::stdin());
     let stdout = io::stdout().lock();
     match dengjen_speechd::run(engine::Engine::new(voices_dir), stdin, stdout) {
         Ok(()) => ExitCode::SUCCESS,
