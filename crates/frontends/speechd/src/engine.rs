@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use dengjen_speechd::{Audio, Backend, Settings, VoiceInfo};
+use dengjen_speechd::{Audio, Backend, Chunks, Settings, VoiceInfo};
 use dengjen_tts::{
     AudioOutputConfig, DengjenModel, DengjenSpeechSynthesizer, ModelType, StreamMode,
 };
@@ -127,14 +127,17 @@ impl Backend for Engine {
             .collect()
     }
 
-    fn synthesize(&mut self, text: &str, settings: &Settings) -> Result<Audio, String> {
+    fn synthesize<'a>(&'a mut self, text: &str, settings: &Settings) -> Result<Chunks<'a>, String> {
         let key =
             pick_voice(&installed_keys(&self.voices_dir), settings).ok_or("no voices installed")?;
         let synth = self.synthesizer(&key)?;
-        let rate = synth
+        let info = synth
             .audio_output_info()
-            .map_err(|error| error.to_string())?
-            .sample_rate;
+            .map_err(|error| error.to_string())?;
+        if info.num_channels != 1 {
+            return Err(format!("unsupported channel count {}", info.num_channels));
+        }
+        let sample_rate = info.sample_rate as u32;
         let output = AudioOutputConfig {
             rate: settings.engine_rate(),
             volume: settings.engine_volume(),
@@ -144,14 +147,14 @@ impl Backend for Engine {
         let stream = synth
             .synthesize_samples(text.to_owned(), Some(output), StreamMode::Lazy)
             .map_err(|error| error.to_string())?;
-        let mut samples = Vec::new();
-        for chunk in stream {
-            samples.extend(chunk.map_err(|error| error.to_string())?.to_i16_vec());
-        }
-        Ok(Audio {
-            sample_rate: rate as u32,
-            samples,
-        })
+        Ok(Box::new(stream.map(move |chunk| {
+            chunk
+                .map(|audio| Audio {
+                    sample_rate,
+                    samples: audio.to_i16_vec(),
+                })
+                .map_err(|error| error.to_string())
+        })))
     }
 }
 

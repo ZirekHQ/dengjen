@@ -9,5 +9,5 @@ mod reply;
 mod session;
 mod settings;
 
-pub use session::{run, Audio, Backend, VoiceInfo};
+pub use session::{run, Audio, Backend, Chunks, VoiceInfo};
 pub use settings::Settings;

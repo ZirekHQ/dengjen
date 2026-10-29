@@ -17,10 +17,13 @@ pub struct Audio {
     pub samples: Vec<i16>,
 }
 
+pub type Chunks<'a> = Box<dyn Iterator<Item = Result<Audio, String>> + 'a>;
+
 pub trait Backend {
     fn init(&mut self) -> Result<String, String>;
     fn voices(&self) -> Vec<VoiceInfo>;
-    fn synthesize(&mut self, text: &str, settings: &Settings) -> Result<Audio, String>;
+    /// Starts synthesis and yields audio chunk by chunk, so playback can begin before the text ends.
+    fn synthesize<'a>(&'a mut self, text: &str, settings: &Settings) -> Result<Chunks<'a>, String>;
 }
 
 #[derive(PartialEq, Eq)]
@@ -71,13 +74,12 @@ impl<B: Backend, R: BufRead, W: Write> Session<B, R, W> {
                 ))
             }
         }
-        let (code, message, ready) = match self.backend.init() {
-            Ok(message) => ("299 OK LOADED SUCCESSFULLY", message, true),
-            Err(message) => ("399 ERR CANT INIT MODULE", message, false),
+        let (code, status, message, ready) = match self.backend.init() {
+            Ok(message) => ("299", "OK LOADED SUCCESSFULLY", message, true),
+            Err(message) => ("399", "ERR CANT INIT MODULE", message, false),
         };
-        let prefix = &code[..3];
-        self.say(&format!("{prefix}-{message}"))?;
-        self.say(code)?;
+        self.say(&format!("{code}-{message}"))?;
+        self.say(&format!("{code} {status}"))?;
         self.output.flush()?;
         Ok(ready)
     }
@@ -160,17 +162,34 @@ impl<B: Backend, R: BufRead, W: Write> Session<B, R, W> {
     }
 
     fn speak_text(&mut self, text: &str) -> io::Result<()> {
-        match self.backend.synthesize(text, &self.settings) {
-            Err(_) => self.say(reply::CANT_SPEAK),
+        let chunks = match self.backend.synthesize(text, &self.settings) {
+            Ok(chunks) => chunks,
+            Err(error) => {
+                eprintln!("sd_dengjen: {error}");
+                return reply::line(&mut self.output, reply::CANT_SPEAK);
+            }
+        };
+        reply::line(&mut self.output, "200 OK SPEAKING")?;
+        reply::line(&mut self.output, "701 BEGIN")?;
+        stream_audio(chunks, &mut self.output)?;
+        reply::line(&mut self.output, "702 END")
+    }
+}
+
+fn stream_audio(chunks: Chunks<'_>, output: &mut impl Write) -> io::Result<()> {
+    for chunk in chunks {
+        match chunk {
             Ok(audio) => {
-                self.say("200 OK SPEAKING")?;
-                self.say("701 BEGIN")?;
-                self.output
-                    .write_all(&reply::audio_frame(&audio.samples, audio.sample_rate))?;
-                self.say("702 END")
+                output.write_all(&reply::audio_frame(&audio.samples, audio.sample_rate))?;
+                output.flush()?;
+            }
+            Err(error) => {
+                eprintln!("sd_dengjen: {error}");
+                break;
             }
         }
     }
+    Ok(())
 }
 
 fn matches_language(requested: &str, language: &str) -> bool {
@@ -231,6 +250,7 @@ mod tests {
     struct Fake {
         fail_init: bool,
         fail_speak: bool,
+        fail_midway: bool,
         spoken: Vec<(String, Settings)>,
     }
 
@@ -238,6 +258,7 @@ mod tests {
         Fake {
             fail_init: false,
             fail_speak: false,
+            fail_midway: false,
             spoken: Vec::new(),
         }
     }
@@ -260,15 +281,27 @@ mod tests {
             vec![voice("ku_TR-x", "ku-TR"), voice("en_GB-y", "en-GB")]
         }
 
-        fn synthesize(&mut self, text: &str, settings: &Settings) -> Result<Audio, String> {
+        fn synthesize<'a>(
+            &'a mut self,
+            text: &str,
+            settings: &Settings,
+        ) -> Result<Chunks<'a>, String> {
             self.spoken.push((text.to_owned(), settings.clone()));
             if self.fail_speak {
                 return Err("boom".into());
             }
-            Ok(Audio {
-                sample_rate: 22050,
-                samples: vec![1, 2],
-            })
+            let chunk = || {
+                Ok(Audio {
+                    sample_rate: 22050,
+                    samples: vec![1, 2],
+                })
+            };
+            let second = if self.fail_midway {
+                Err("boom".to_owned())
+            } else {
+                chunk()
+            };
+            Ok(Box::new([chunk(), second].into_iter()))
         }
     }
 
@@ -382,6 +415,25 @@ mod tests {
             out,
             "299-ready\n299 OK LOADED SUCCESSFULLY\n300 ERR UNKNOWN COMMAND\n210 OK QUIT\n"
         );
+    }
+
+    #[test]
+    fn every_chunk_is_its_own_frame_between_begin_and_end() {
+        let out = transcript(&mut fake(), "INIT\nSPEAK\nx\n.\nQUIT\n");
+        assert_eq!(out.matches("705 AUDIO\n").count(), 2);
+        assert!(out.contains("701 BEGIN\n705-bits=16"));
+        assert!(out.ends_with("705 AUDIO\n702 END\n210 OK QUIT\n"));
+    }
+
+    #[test]
+    fn a_failure_mid_stream_keeps_the_audio_so_far_and_still_ends() {
+        let mut backend = Fake {
+            fail_midway: true,
+            ..fake()
+        };
+        let out = transcript(&mut backend, "INIT\nSPEAK\nx\n.\nQUIT\n");
+        assert_eq!(out.matches("705 AUDIO\n").count(), 1);
+        assert!(out.ends_with("705 AUDIO\n702 END\n210 OK QUIT\n"));
     }
 
     #[test]
