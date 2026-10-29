@@ -4,7 +4,7 @@ use crate::lines::{Interrupt, Lines};
 use crate::protocol::{self, Command, Message};
 use crate::reply;
 use crate::settings::Settings;
-use crate::ssml;
+use crate::ssml::{self, Piece};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VoiceInfo {
@@ -164,36 +164,81 @@ impl<B: Backend, W: Write> Session<B, W> {
         let Some(lines) = protocol::read_block(|| self.input.next_line())? else {
             return Ok(Flow::Quit);
         };
-        match message_text(kind, &lines) {
+        match message_pieces(kind, &lines) {
             Err(error) => self.say(error)?,
-            Ok(text) => self.speak_text(&text)?,
+            Ok(pieces) => self.speak_pieces(pieces)?,
         }
         Ok(Flow::Continue)
     }
 
-    fn speak_text(&mut self, text: &str) -> io::Result<()> {
-        let chunks = match self.backend.synthesize(text, &self.settings) {
-            Ok(chunks) => chunks,
-            Err(error) => {
-                eprintln!("sd_dengjen: {error}");
-                return reply::line(&mut self.output, reply::CANT_SPEAK);
+    fn speak_pieces(&mut self, pieces: Vec<Piece>) -> io::Result<()> {
+        let mut started = false;
+        let mut ending = "702 END";
+        for piece in pieces {
+            match self.play(piece, &mut started)? {
+                Played::Continue => {}
+                Played::Interrupted(interrupt) => {
+                    ending = interrupt.event();
+                    break;
+                }
+                Played::Failed => break,
             }
-        };
-        reply::line(&mut self.output, "200 OK SPEAKING")?;
-        reply::line(&mut self.output, "701 BEGIN")?;
-        let ending = stream_audio(chunks, &mut self.output, &mut self.input)?;
-        reply::line(&mut self.output, ending.map_or("702 END", Interrupt::event))
+        }
+        self.say(if started { ending } else { reply::CANT_SPEAK })
     }
+
+    fn play(&mut self, piece: Piece, started: &mut bool) -> io::Result<Played> {
+        match piece {
+            Piece::Mark(name) => {
+                begin(&mut self.output, started)?;
+                match self.input.interrupt() {
+                    Some(interrupt) => Ok(Played::Interrupted(interrupt)),
+                    None => send_mark(&mut self.output, &name).map(|()| Played::Continue),
+                }
+            }
+            Piece::Text(text) => match self.backend.synthesize(&text, &self.settings) {
+                Ok(chunks) => {
+                    begin(&mut self.output, started)?;
+                    stream_audio(chunks, &mut self.output, &mut self.input)
+                }
+                Err(error) => {
+                    eprintln!("sd_dengjen: {error}");
+                    Ok(Played::Failed)
+                }
+            },
+        }
+    }
+}
+
+enum Played {
+    Continue,
+    Interrupted(Interrupt),
+    Failed,
+}
+
+fn begin(output: &mut impl Write, started: &mut bool) -> io::Result<()> {
+    if !*started {
+        reply::line(output, "200 OK SPEAKING")?;
+        reply::line(output, "701 BEGIN")?;
+        *started = true;
+    }
+    Ok(())
+}
+
+fn send_mark(output: &mut impl Write, name: &str) -> io::Result<()> {
+    reply::line(output, &format!("700-{name}"))?;
+    reply::line(output, "700 INDEX MARK")?;
+    output.flush()
 }
 
 fn stream_audio(
     chunks: Chunks<'_>,
     output: &mut impl Write,
     input: &mut Lines,
-) -> io::Result<Option<Interrupt>> {
+) -> io::Result<Played> {
     for chunk in chunks {
         if let Some(interrupt) = input.interrupt() {
-            return Ok(Some(interrupt));
+            return Ok(Played::Interrupted(interrupt));
         }
         match chunk {
             Ok(audio) => {
@@ -202,11 +247,11 @@ fn stream_audio(
             }
             Err(error) => {
                 eprintln!("sd_dengjen: {error}");
-                break;
+                return Ok(Played::Failed);
             }
         }
     }
-    Ok(None)
+    Ok(Played::Continue)
 }
 
 fn matches_language(requested: &str, language: &str) -> bool {
@@ -248,18 +293,21 @@ fn debug_reply(line: &str) -> &'static str {
     }
 }
 
-fn message_text(kind: Message, lines: &[String]) -> Result<String, &'static str> {
-    let text = match kind {
-        Message::Text => ssml::plain_text(&lines.join("\n")),
-        _ => lines.join("\n"),
+fn message_pieces(kind: Message, lines: &[String]) -> Result<Vec<Piece>, &'static str> {
+    let text = lines.join("\n");
+    let pieces = match kind {
+        _ if text.is_empty() => return Err(reply::CANT_SPEAK),
+        Message::SoundIcon => return Err(reply::CANT_SPEAK),
+        Message::Text => ssml::pieces(&text),
+        _ if lines.len() > 1 => return Err(reply::MULTILINE),
+        Message::Char | Message::Key if text == "space" => vec![Piece::Text(" ".to_owned())],
+        _ => vec![Piece::Text(text)],
     };
-    match kind {
-        _ if text.is_empty() => Err(reply::CANT_SPEAK),
-        Message::SoundIcon => Err(reply::CANT_SPEAK),
-        Message::Text => Ok(text),
-        _ if lines.len() > 1 => Err(reply::MULTILINE),
-        Message::Char | Message::Key if text == "space" => Ok(" ".to_owned()),
-        _ => Ok(text),
+    let speakable = pieces.iter().any(|piece| matches!(piece, Piece::Text(_)));
+    if speakable {
+        Ok(pieces)
+    } else {
+        Err(reply::CANT_SPEAK)
     }
 }
 
@@ -347,11 +395,35 @@ mod tests {
     }
 
     #[test]
-    fn ssml_from_the_server_is_spoken_as_plain_text() {
+    fn ssml_marks_follow_the_audio_of_the_text_before_them() {
         let mut backend = fake();
-        let input = "INIT\nSPEAK\n<speak>Silav.<mark name=\"__spd_0\"/> a &amp; b</speak>\n.\n";
-        transcript(&mut backend, input);
-        assert_eq!(backend.spoken[0].0, "Silav. a & b");
+        let input = "INIT\nSPEAK\n<speak>Silav.<mark name=\"__spd_0\"/> a &amp; b<mark name=\"__spd_1\"/></speak>\n.\n";
+        let out = transcript(&mut backend, input);
+        let spoken: Vec<&str> = backend
+            .spoken
+            .iter()
+            .map(|(text, _)| text.as_str())
+            .collect();
+        assert_eq!(spoken, ["Silav.", "a & b"]);
+        assert!(out.contains("705 AUDIO\n700-__spd_0\n700 INDEX MARK\n705-bits=16"));
+        assert!(out.ends_with("705 AUDIO\n700-__spd_1\n700 INDEX MARK\n702 END\n"));
+    }
+
+    #[test]
+    fn an_interrupt_withholds_the_marks_after_it() {
+        let input = "INIT\nSPEAK\n<speak>a<mark name=\"m\"/>b</speak>\n.\nSTOP\n";
+        let out = transcript(&mut fake(), input);
+        assert!(out.ends_with("701 BEGIN\n703 STOP\n"));
+        assert!(!out.contains("700-"));
+    }
+
+    #[test]
+    fn a_message_of_only_marks_cant_speak() {
+        let out = transcript(
+            &mut fake(),
+            "INIT\nSPEAK\n<speak><mark name=\"m\"/></speak>\n.\n",
+        );
+        assert!(out.ends_with("202 OK RECEIVING MESSAGE\n301 ERROR CANT SPEAK\n"));
     }
 
     #[test]

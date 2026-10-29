@@ -1,25 +1,50 @@
 const SEPARATING_TAGS: [&str; 3] = ["s", "p", "break"];
 
-pub(crate) fn plain_text(text: &str) -> String {
-    if !text.trim_start().starts_with("<speak") {
-        return text.to_owned();
-    }
-    decode_entities(&strip_tags(text)).trim().to_owned()
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Piece {
+    Text(String),
+    Mark(String),
 }
 
-fn strip_tags(text: &str) -> String {
-    let mut pieces = text.split('<');
-    let head = pieces.next().unwrap_or_default();
-    pieces.fold(head.to_owned(), |mut out, piece| {
-        if let Some(end) = tag_end(piece) {
-            let (tag, rest) = piece.split_at(end);
-            if separates(tag) {
-                out.push(' ');
+pub(crate) fn pieces(text: &str) -> Vec<Piece> {
+    if !text.trim_start().starts_with("<speak") {
+        return vec![Piece::Text(text.to_owned())];
+    }
+    let mut parts = text.split('<');
+    let mut current = parts.next().unwrap_or_default().to_owned();
+    let mut out = Vec::new();
+    for part in parts {
+        let Some(end) = tag_end(part) else { continue };
+        let (tag, rest) = part.split_at(end);
+        match mark_name(tag) {
+            Some(name) => {
+                flush(&mut out, &mut current);
+                out.push(Piece::Mark(name));
             }
-            out.push_str(rest);
+            None if separates(tag) => current.push(' '),
+            None => {}
         }
-        out
-    })
+        current.push_str(rest);
+    }
+    flush(&mut out, &mut current);
+    out
+}
+
+fn flush(out: &mut Vec<Piece>, current: &mut String) {
+    let text = decode_entities(current).trim().to_owned();
+    current.clear();
+    if !text.is_empty() {
+        out.push(Piece::Text(text));
+    }
+}
+
+fn mark_name(tag: &str) -> Option<String> {
+    let attributes = tag.strip_prefix("mark")?;
+    attributes.starts_with(char::is_whitespace).then_some(())?;
+    let value = attributes.split_once("name=")?.1;
+    let quote = value.chars().next().filter(|c| matches!(c, '"' | '\''))?;
+    let (name, _) = value.get(1..)?.split_once(quote)?;
+    (!name.is_empty() && !name.contains(char::is_control)).then(|| name.to_owned())
 }
 
 fn tag_end(piece: &str) -> Option<usize> {
@@ -93,8 +118,27 @@ fn numeric(digits: &str) -> Option<char> {
 mod tests {
     use super::*;
 
-    fn words(text: &str) -> String {
-        plain_text(text)
+    fn text(value: &str) -> Piece {
+        Piece::Text(value.to_owned())
+    }
+
+    fn mark(value: &str) -> Piece {
+        Piece::Mark(value.to_owned())
+    }
+
+    fn spoken(ssml: &str) -> String {
+        pieces(ssml)
+            .into_iter()
+            .filter_map(|piece| match piece {
+                Piece::Text(text) => Some(text),
+                Piece::Mark(_) => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn words(ssml: &str) -> String {
+        spoken(ssml)
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
@@ -102,25 +146,39 @@ mod tests {
 
     #[test]
     fn plain_text_passes_through_untouched() {
-        assert_eq!(plain_text("a < b and c > d"), "a < b and c > d");
+        assert_eq!(pieces("a < b and c > d"), vec![text("a < b and c > d")]);
     }
 
     #[test]
-    fn ssml_loses_its_tags_and_marks() {
-        let ssml = r#"<speak>Silav.<mark name="__spd_0"/> Navê min Berfîn e.<mark name="__spd_1"/></speak>"#;
-        assert_eq!(plain_text(ssml), "Silav. Navê min Berfîn e.");
+    fn marks_split_the_text_in_order() {
+        let ssml = r#"<speak>Silav.<mark name="__spd_0"/> Navê min Berfîn e.<mark name='__spd_1'/></speak>"#;
+        assert_eq!(
+            pieces(ssml),
+            vec![
+                text("Silav."),
+                mark("__spd_0"),
+                text("Navê min Berfîn e."),
+                mark("__spd_1")
+            ]
+        );
+    }
+
+    #[test]
+    fn malformed_marks_are_dropped() {
+        let ssml = "<speak>a<mark/><mark name=\"\"/><mark name=x/><marker name=\"m\"/>b</speak>";
+        assert_eq!(pieces(ssml), vec![text("ab")]);
     }
 
     #[test]
     fn escaped_markup_becomes_spoken_text_not_tags() {
         let ssml = "<speak>a &amp; b &lt;i&gt; &quot;c&quot; &apos;d&apos; &amp;lt;</speak>";
-        assert_eq!(plain_text(ssml), "a & b <i> \"c\" 'd' &lt;");
+        assert_eq!(spoken(ssml), "a & b <i> \"c\" 'd' &lt;");
     }
 
     #[test]
     fn a_quoted_angle_bracket_does_not_end_the_tag() {
         let ssml = r#"<speak><sub alias="a > b">word</sub> <x y='>'/>end</speak>"#;
-        assert_eq!(plain_text(ssml), "word end");
+        assert_eq!(spoken(ssml), "word end");
     }
 
     #[test]
@@ -133,20 +191,17 @@ mod tests {
             words("<speak><p>One</p><p>Two</p>Three<break/>Four</speak>"),
             "One Two Three Four"
         );
-        assert_eq!(
-            plain_text("<speak>co<emphasis>ld</emphasis></speak>"),
-            "cold"
-        );
+        assert_eq!(spoken("<speak>co<emphasis>ld</emphasis></speak>"), "cold");
     }
 
     #[test]
     fn numeric_references_decode_once() {
         let ssml = "<speak>caf&#233; &#xE9; &amp;#233; &#xD800; &#zz; &bogus;</speak>";
-        assert_eq!(plain_text(ssml), "café é &#233; &#xD800; &#zz; &bogus;");
+        assert_eq!(spoken(ssml), "café é &#233; &#xD800; &#zz; &bogus;");
     }
 
     #[test]
     fn an_unclosed_tag_is_dropped() {
-        assert_eq!(plain_text("<speak>a<b"), "a");
+        assert_eq!(spoken("<speak>a<b"), "a");
     }
 }
