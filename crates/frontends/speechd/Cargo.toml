@@ -1,0 +1,37 @@
+[package]
+name = "dengjen-speechd"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "Speech Dispatcher output module for the dengjen speech synthesis engine"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "dengjen_speechd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sd_dengjen"
+path = "src/main.rs"
+
+[features]
+default = ["espeak", "kurmanji"]
+espeak = ["dengjen-tts-piper/espeak"]
+kurmanji = ["dengjen-tts-piper/kurmanji"]
+ort-dylib = ["ort/load-dynamic"]
+
+[dependencies]
+dengjen-tts.workspace = true
+dengjen-tts-core = { workspace = true, features = ["ort-providers"] }
+dengjen-tts-piper.workspace = true
+dirs = "7"
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
+
+[dependencies.ort]
+version = "=2.0.0-rc.15"
+default-features = false
+features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]
