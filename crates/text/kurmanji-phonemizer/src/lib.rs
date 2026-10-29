@@ -55,9 +55,11 @@ fn token_to_ipa(token: &Token, clause_final: bool) -> String {
     match token {
         Token::Boundary(_) => String::new(),
         Token::Word(word) => compound_to_ipa(word, clause_final),
-        Token::Time { hour, minute } => {
-            phrase_to_ipa(&phrases::time_words(*hour, *minute), clause_final)
-        }
+        Token::Time {
+            hour,
+            minute,
+            second,
+        } => phrase_to_ipa(&phrases::clock_words(*hour, *minute, *second), clause_final),
         Token::Date { day, month, year } => phrase_to_ipa(
             &phrases::date_words(*day, *month, *year).unwrap_or_default(),
             clause_final,

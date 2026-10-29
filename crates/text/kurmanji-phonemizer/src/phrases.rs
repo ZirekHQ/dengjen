@@ -44,6 +44,34 @@ pub(crate) fn time_words(hour: usize, minute: usize) -> Vec<String> {
         .collect()
 }
 
+fn with_seconds(hour: usize, minute: usize, second: usize) -> Vec<String> {
+    let minutes = match minute {
+        0 => Vec::new(),
+        m => [
+            vec!["û".to_string()],
+            spelled(m),
+            vec!["deqîqe".to_string()],
+        ]
+        .concat(),
+    };
+    [
+        vec!["saet".to_string()],
+        spelled(twelve_hour(hour)),
+        minutes,
+        vec!["û".to_string()],
+        spelled(second),
+        vec!["saniye".to_string()],
+    ]
+    .concat()
+}
+
+pub(crate) fn clock_words(hour: usize, minute: usize, second: Option<usize>) -> Vec<String> {
+    match second {
+        Some(s) if s > 0 => with_seconds(hour, minute, s),
+        _ => time_words(hour, minute),
+    }
+}
+
 fn ezafe(mut words: Vec<String>) -> Vec<String> {
     if let Some(last) = words.pop() {
         words.push(with_suffix(&last, "ê", "yê"));
@@ -62,7 +90,7 @@ pub(crate) fn date_words(day: usize, month: usize, year: usize) -> Option<Vec<St
     )
 }
 
-fn fraction_word(fraction: &str) -> Option<&'static str> {
+pub(crate) fn fraction_word(fraction: &str) -> Option<&'static str> {
     match fraction.trim_end_matches('0') {
         "5" => Some("nîv"),
         "25" => Some("çaryek"),
@@ -70,11 +98,14 @@ fn fraction_word(fraction: &str) -> Option<&'static str> {
     }
 }
 
+pub(crate) fn whole_number(integer: &str) -> Option<usize> {
+    let whole: usize = integer.parse().ok()?;
+    (whole.to_string() == integer && cardinal_words(whole).is_some()).then_some(whole)
+}
+
 pub(crate) fn fraction_words(integer: &str, fraction: &str) -> Option<Vec<String>> {
     let word = fraction_word(fraction)?.to_string();
-    let whole: usize = integer.parse().ok()?;
-    (whole.to_string() == integer).then_some(())?;
-    cardinal_words(whole)?;
+    let whole = whole_number(integer)?;
     Some(match whole {
         0 => vec![word],
         _ => [spelled(whole), vec!["û".to_string(), word]].concat(),
@@ -109,6 +140,17 @@ mod tests {
         assert_eq!(said(time_words(10, 10)), "saet deh û deh deqîqe");
         assert_eq!(said(time_words(4, 40)), "saet çar û çil deqîqe");
         assert_eq!(said(time_words(8, 41)), "saet heşt û çil û yek deqîqe");
+    }
+
+    #[test]
+    fn seconds_follow_the_hour_and_minutes() {
+        assert_eq!(
+            said(clock_words(12, 10, Some(15))),
+            "saet diwanzde û deh deqîqe û panzde saniye"
+        );
+        assert_eq!(said(clock_words(9, 0, Some(5))), "saet neh û pênc saniye");
+        assert_eq!(said(clock_words(9, 30, Some(0))), "saet neh û nîv");
+        assert_eq!(said(clock_words(9, 30, None)), "saet neh û nîv");
     }
 
     #[test]

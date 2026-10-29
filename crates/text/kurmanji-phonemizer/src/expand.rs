@@ -1,3 +1,6 @@
+use std::borrow::Cow;
+
+use crate::phrases;
 use crate::tokens::{Break, Token};
 
 type Step<'a> = (Vec<Token<'a>>, usize);
@@ -21,8 +24,40 @@ fn title(word: &str) -> Option<&'static str> {
     }
 }
 
+fn fraction_before_unit<'a>(
+    integer: &Cow<'a, str>,
+    fraction: &str,
+    unit: &'static str,
+) -> Option<Vec<Token<'a>>> {
+    let word = phrases::fraction_word(fraction)?;
+    Some(match phrases::whole_number(integer)? {
+        0 => vec![Token::Word(word), Token::Word(unit)],
+        _ => vec![
+            Token::Number {
+                integer: integer.clone(),
+                fraction: None,
+            },
+            Token::Word(unit),
+            Token::Word("û"),
+            Token::Word(word),
+        ],
+    })
+}
+
 fn step<'a>(rest: &[Token<'a>]) -> Step<'a> {
     match rest {
+        [Token::Number {
+            integer,
+            fraction: Some(fraction),
+        }, Token::Word(unit), ..]
+            if unit_after_number(unit)
+                .and_then(|spoken| fraction_before_unit(integer, fraction, spoken))
+                .is_some() =>
+        {
+            let spoken = unit_after_number(unit).unwrap_or_default();
+            let tokens = fraction_before_unit(integer, fraction, spoken).unwrap_or_default();
+            (tokens, 2)
+        }
         [Token::Currency(c), Token::Minus, number @ Token::Number { .. }, ..] => {
             (vec![Token::Minus, number.clone(), Token::Word(c.word())], 3)
         }

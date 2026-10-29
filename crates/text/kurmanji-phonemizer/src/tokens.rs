@@ -21,6 +21,7 @@ pub(crate) enum Token<'a> {
     Time {
         hour: usize,
         minute: usize,
+        second: Option<usize>,
     },
     Date {
         day: usize,
@@ -268,7 +269,8 @@ mod tests {
             tokenize("10:30"),
             vec![Token::Time {
                 hour: 10,
-                minute: 30
+                minute: 30,
+                second: None
             }]
         );
         assert_eq!(
@@ -286,10 +288,10 @@ mod tests {
     }
 
     #[test]
-    fn a_colon_run_of_three_numbers_is_not_a_time() {
+    fn a_colon_run_of_four_numbers_is_not_a_time() {
         assert_eq!(
-            tokenize("12:10:15"),
-            vec![number("12"), number("10"), number("15")]
+            tokenize("12:10:15:20"),
+            vec![number("12"), number("10"), number("15"), number("20")]
         );
         assert_eq!(
             tokenize("at:10:30"),
@@ -297,7 +299,8 @@ mod tests {
                 Token::Word("at"),
                 Token::Time {
                     hour: 10,
-                    minute: 30
+                    minute: 30,
+                    second: None
                 }
             ]
         );
