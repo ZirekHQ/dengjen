@@ -4,8 +4,9 @@
 (`spd-say`, screen readers such as Orca) can use any installed Piper voice, including the Kurmanji
 voice. The module runs as a separate process, so nothing links against Speech Dispatcher.
 
-It has been run against a real `speech-dispatcher` server with `spd-say` and the Python client. It
-has not been tried with Orca.
+It has been run against a real `speech-dispatcher` server with `spd-say`, the Python client and
+Orca. The Orca run was headless: Orca spoke through the module, echoed typed characters and
+interrupted speech cleanly. Moving the caret with the arrow keys and key echo were not checked.
 
 == Install
 
@@ -69,8 +70,11 @@ installs into. Speech Dispatcher starts the module, so `DENGJEN_VOICES_DIR` only
 is set in the server's environment.
 
 A request picks the voice by name (`synthesis_voice`), then by language (`ku` matches
-`ku_TR-berfin_renas-medium`), then falls back to the first installed voice. `INIT` fails with a clear
-message when no voice is installed.
+`ku_TR-berfin_renas-medium`), then falls back to the first installed voice in sorted key order. `INIT`
+fails with a clear message when no voice is installed.
+
+Orca requests language `C`, so it gets that fallback voice. With several voices installed, pick the
+Kurmanji one in Orca's voice settings.
 
 The Kurmanji voice needs no eSpeak data. A voice that phonemizes with eSpeak-ng finds `espeak-ng-data`
 next to the module binary, or in the directory named by `DENGJEN_ESPEAKNG_DATA_DIRECTORY`.
