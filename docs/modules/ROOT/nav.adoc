@@ -6,6 +6,7 @@
 * xref:usage.adoc[Usage]
 * xref:voices.adoc[Choosing and tuning a model backend]
 * xref:voice-manager.adoc[Voice manager]
+* xref:speech-dispatcher.adoc[Speech Dispatcher module]
 * xref:speech-recognition.adoc[Speech recognition]
 * xref:streaming.adoc[Streaming synthesis and the gRPC frontend]
 * xref:phonemizers.adoc[Phonemizer language coverage]
