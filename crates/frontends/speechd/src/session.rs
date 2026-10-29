@@ -4,6 +4,7 @@ use crate::lines::{Interrupt, Lines};
 use crate::protocol::{self, Command, Message};
 use crate::reply;
 use crate::settings::Settings;
+use crate::ssml;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VoiceInfo {
@@ -248,7 +249,10 @@ fn debug_reply(line: &str) -> &'static str {
 }
 
 fn message_text(kind: Message, lines: &[String]) -> Result<String, &'static str> {
-    let text = lines.join("\n");
+    let text = match kind {
+        Message::Text => ssml::plain_text(&lines.join("\n")),
+        _ => lines.join("\n"),
+    };
     match kind {
         _ if text.is_empty() => Err(reply::CANT_SPEAK),
         Message::SoundIcon => Err(reply::CANT_SPEAK),
@@ -340,6 +344,14 @@ mod tests {
         let out = transcript(&mut fake(), "INIT\nSPEAK\nx\n.\nSTOP\nQUIT\n");
         assert!(out.contains("701 BEGIN\n703 STOP\n210 OK QUIT\n"));
         assert!(!out.contains("705 AUDIO"));
+    }
+
+    #[test]
+    fn ssml_from_the_server_is_spoken_as_plain_text() {
+        let mut backend = fake();
+        let input = "INIT\nSPEAK\n<speak>Silav.<mark name=\"__spd_0\"/> a &amp; b</speak>\n.\n";
+        transcript(&mut backend, input);
+        assert_eq!(backend.spoken[0].0, "Silav. a & b");
     }
 
     #[test]

@@ -9,6 +9,7 @@ mod protocol;
 mod reply;
 mod session;
 mod settings;
+mod ssml;
 
 pub use session::{run, Audio, Backend, Chunks, VoiceInfo};
 pub use settings::Settings;
