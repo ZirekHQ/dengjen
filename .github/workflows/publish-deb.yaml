@@ -66,11 +66,19 @@ jobs:
               | sed "s/^\.TH DENGJEN /.TH ${name^^} /" \
               | gzip -9n > "$man_dir/$name.1.gz"
           done
-      - name: build the package
+      - name: build the Speech Dispatcher module
+        run: |
+          set -euo pipefail
+          cargo build --release --locked -p dengjen-speechd
+          # cargo-deb resolves non-release asset paths against the crate directory.
+          mkdir -p crates/frontends/speechd/target
+          cp -r crates/frontends/cli/target/espeak crates/frontends/speechd/target/espeak
+      - name: build the packages
         run: |
           set -euo pipefail
           cargo install cargo-deb --version 3.8.0 --locked
           cargo deb -p dengjen-tts-cli --no-build
+          cargo deb -p dengjen-speechd --no-build
       - name: smoke test in a clean container
         run: |
           set -euo pipefail
@@ -92,6 +100,12 @@ jobs:
             DENGJEN_VOICES_DIR=/tmp/voices DENGJEN_CATALOGUE_URL=http://127.0.0.1:9/voices.json \
               dengjen voices list || status=$?
             test "$status" -eq 1
+            # With no voices installed, INIT must fail with 399.
+            test -x /usr/lib/speech-dispatcher-modules/sd_dengjen
+            grep -q AddModule /etc/speech-dispatcher/clients/dengjen.conf
+            test -f /usr/lib/speech-dispatcher-modules/espeak-ng-data/phontab
+            printf "INIT\nQUIT\n" | DENGJEN_VOICES_DIR=/tmp/voices \
+              /usr/lib/speech-dispatcher-modules/sd_dengjen | grep -q "^399 ERR CANT INIT MODULE"
           '
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

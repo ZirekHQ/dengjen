@@ -9,6 +9,22 @@ has not been tried with Orca.
 
 == Install
 
+=== Debian and Ubuntu package
+
+Release pages attach `dengjen-speechd_<version>_amd64.deb` and `dengjen-speechd_<version>_arm64.deb`.
+The package installs the module with its own `espeak-ng-data` and registers it, so no configuration
+is needed:
+
+[source,sh]
+----
+sudo apt install ./dengjen-speechd_<version>_amd64.deb
+----
+
+Install a voice with `dengjen voices install ku_TR-berfin_renas-medium` (the `dengjen` package),
+then restart Speech Dispatcher and run the checks below.
+
+=== From source
+
 Build the module and install a voice:
 
 [source,sh]
@@ -28,7 +44,11 @@ printf '# sd_dengjen has no module options.\n' | sudo tee /etc/speech-dispatcher
 printf 'AddModule "dengjen" "sd_dengjen" "dengjen.conf"\n' | sudo tee -a /etc/speech-dispatcher/speechd.conf
 ----
 
-Restart Speech Dispatcher, then check that the module and voice are visible:
+Restart Speech Dispatcher.
+
+=== Check the install
+
+The module and voice should be visible:
 
 [source,sh]
 ----
