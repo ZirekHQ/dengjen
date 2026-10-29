@@ -31,6 +31,21 @@ dengjen-tts-piper.workspace = true
 dirs = "7"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
+[package.metadata.deb]
+name = "dengjen-speechd"
+section = "sound"
+priority = "optional"
+depends = "$auto, speech-dispatcher"
+maintainer = "austek <13117393+austek@users.noreply.github.com>"
+extended-description = "Speech Dispatcher output module that speaks with dengjen voices, including Kurmanji."
+assets = [
+    ["target/release/sd_dengjen", "usr/lib/speech-dispatcher-modules/sd_dengjen", "755"],
+    # The module looks for espeak-ng-data beside its executable.
+    ["target/espeak/espeak-ng-data/**/*", "usr/lib/speech-dispatcher-modules/espeak-ng-data/", "644"],
+    ["debian/dengjen.conf", "etc/speech-dispatcher/modules/dengjen.conf", "644"],
+    ["README.md", "usr/share/doc/dengjen-speechd/README.md", "644"],
+]
+
 [dependencies.ort]
 version = "=2.0.0-rc.15"
 default-features = false
