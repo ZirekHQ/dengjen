@@ -59,10 +59,12 @@ pub(crate) fn read_line(input: &mut impl BufRead) -> io::Result<Option<String>> 
     Ok(Some(line.trim_end_matches(['\n', '\r']).to_owned()))
 }
 
-pub(crate) fn read_block(input: &mut impl BufRead) -> io::Result<Option<Vec<String>>> {
+pub(crate) fn read_block(
+    mut next_line: impl FnMut() -> io::Result<Option<String>>,
+) -> io::Result<Option<Vec<String>>> {
     let mut lines = Vec::new();
     loop {
-        match read_line(input)? {
+        match next_line()? {
             None => return Ok(None),
             Some(line) if line == "." => return Ok(Some(lines)),
             Some(line) => lines.push(line.strip_prefix('.').map_or(line.clone(), str::to_owned)),
@@ -113,7 +115,7 @@ mod tests {
     fn a_block_ends_at_a_lone_dot_and_unescapes_leading_dots() {
         let mut input = "a\n..b\r\n.\nnext\n".as_bytes();
         assert_eq!(
-            read_block(&mut input).unwrap(),
+            read_block(|| read_line(&mut input)).unwrap(),
             Some(vec!["a".to_owned(), ".b".to_owned()])
         );
         assert_eq!(read_line(&mut input).unwrap().as_deref(), Some("next"));
@@ -121,7 +123,8 @@ mod tests {
 
     #[test]
     fn a_block_cut_by_eof_is_none() {
-        assert_eq!(read_block(&mut "a\n".as_bytes()).unwrap(), None);
+        let mut input = "a\n".as_bytes();
+        assert_eq!(read_block(|| read_line(&mut input)).unwrap(), None);
     }
 
     #[test]
