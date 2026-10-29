@@ -43,7 +43,6 @@ assets = [
     # The module looks for espeak-ng-data beside its executable.
     ["target/espeak/espeak-ng-data/**/*", "usr/lib/speech-dispatcher-modules/espeak-ng-data/", "644"],
     ["debian/dengjen.conf", "etc/speech-dispatcher/modules/dengjen.conf", "644"],
-    ["debian/register.conf", "etc/speech-dispatcher/clients/dengjen.conf", "644"],
     ["README.md", "usr/share/doc/dengjen-speechd/README.md", "644"],
 ]
 

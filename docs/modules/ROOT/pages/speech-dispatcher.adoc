@@ -11,13 +11,13 @@ has not been tried with Orca.
 
 === Debian and Ubuntu package
 
-Release pages attach `dengjen-speechd_<version>_amd64.deb` and `dengjen-speechd_<version>_arm64.deb`.
-The package installs the module with its own `espeak-ng-data` and registers it, so no configuration
-is needed:
+Release pages attach `dengjen-speechd_<version>-1_amd64.deb` and `dengjen-speechd_<version>-1_arm64.deb`.
+The package installs the module with its own `espeak-ng-data`. Speech Dispatcher finds it on its own,
+so no configuration is needed:
 
 [source,sh]
 ----
-sudo apt install ./dengjen-speechd_<version>_amd64.deb
+sudo apt install ./dengjen-speechd_<version>-1_amd64.deb
 ----
 
 Install a voice with `dengjen voices install ku_TR-berfin_renas-medium` (the `dengjen` package),
@@ -33,18 +33,23 @@ cargo build --release -p dengjen-speechd
 dengjen voices install ku_TR-berfin_renas-medium
 ----
 
-Copy the binary into the module directory and register it. These paths are Debian and Ubuntu's;
-other distributions use their own `libexec/speech-dispatcher-modules` directory, and Speech Dispatcher
-also searches `~/.local/libexec/speech-dispatcher-modules`.
+Copy the binary into the module directory and give it a configuration file. These paths are Debian
+and Ubuntu's; other distributions use their own `libexec/speech-dispatcher-modules` directory, and
+Speech Dispatcher also searches `~/.local/libexec/speech-dispatcher-modules`.
 
 [source,sh]
 ----
 sudo install -m 755 target/release/sd_dengjen /usr/lib/speech-dispatcher-modules/
 printf '# sd_dengjen has no module options.\n' | sudo tee /etc/speech-dispatcher/modules/dengjen.conf
-printf 'AddModule "dengjen" "sd_dengjen" "dengjen.conf"\n' | sudo tee -a /etc/speech-dispatcher/speechd.conf
 ----
 
 Restart Speech Dispatcher.
+
+Speech Dispatcher detects the module from the binary and its configuration file, and keeps loading
+the other installed modules such as `espeak-ng`. Do not add an `AddModule` line unless your
+`speechd.conf` already lists modules explicitly: the first `AddModule` line turns detection off, and
+then only the listed modules load. If it does list them, add
+`AddModule "dengjen" "sd_dengjen" "dengjen.conf"` next to them.
 
 === Check the install
 

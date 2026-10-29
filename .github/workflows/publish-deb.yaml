@@ -102,7 +102,7 @@ jobs:
             test "$status" -eq 1
             # With no voices installed, INIT must fail with 399.
             test -x /usr/lib/speech-dispatcher-modules/sd_dengjen
-            grep -q AddModule /etc/speech-dispatcher/clients/dengjen.conf
+            test -f /etc/speech-dispatcher/modules/dengjen.conf
             test -f /usr/lib/speech-dispatcher-modules/espeak-ng-data/phontab
             printf "INIT\nQUIT\n" | DENGJEN_VOICES_DIR=/tmp/voices \
               /usr/lib/speech-dispatcher-modules/sd_dengjen | grep -q "^399 ERR CANT INIT MODULE"
