@@ -1,0 +1,65 @@
+= Speech Dispatcher module
+
+`sd_dengjen` is a Speech Dispatcher output module. Applications that speak through Speech Dispatcher
+(`spd-say`, screen readers such as Orca) can use any installed Piper voice, including the Kurmanji
+voice. The module runs as a separate process, so nothing links against Speech Dispatcher.
+
+It has been run against a real `speech-dispatcher` server with `spd-say` and the Python client. It
+has not been tried with Orca.
+
+== Install
+
+Build the module and install a voice:
+
+[source,sh]
+----
+cargo build --release -p dengjen-speechd
+dengjen voices install ku_TR-berfin_renas-medium
+----
+
+Copy the binary into the module directory and register it. These paths are Debian and Ubuntu's;
+other distributions use their own `libexec/speech-dispatcher-modules` directory, and Speech Dispatcher
+also searches `~/.local/libexec/speech-dispatcher-modules`.
+
+[source,sh]
+----
+sudo install -m 755 target/release/sd_dengjen /usr/lib/speech-dispatcher-modules/
+printf '# sd_dengjen has no module options.\n' | sudo tee /etc/speech-dispatcher/modules/dengjen.conf
+printf 'AddModule "dengjen" "sd_dengjen" "dengjen.conf"\n' | sudo tee -a /etc/speech-dispatcher/speechd.conf
+----
+
+Restart Speech Dispatcher, then check that the module and voice are visible:
+
+[source,sh]
+----
+spd-say -O                          # lists dengjen
+spd-say -o dengjen -L               # lists the installed voices
+spd-say -o dengjen -l ku "Silav"
+----
+
+== Voices
+
+The module reads voices from `~/.local/share/dengjen/voices`, the same directory `dengjen voices`
+installs into. Speech Dispatcher starts the module, so `DENGJEN_VOICES_DIR` only takes effect when it
+is set in the server's environment.
+
+A request picks the voice by name (`synthesis_voice`), then by language (`ku` matches
+`ku_TR-berfin_renas-medium`), then falls back to the first installed voice. `INIT` fails with a clear
+message when no voice is installed.
+
+The Kurmanji voice needs no eSpeak data. A voice that phonemizes with eSpeak-ng finds `espeak-ng-data`
+next to the module binary, or in the directory named by `DENGJEN_ESPEAKNG_DATA_DIRECTORY`.
+
+== Settings
+
+Rate, pitch and volume use Speech Dispatcher's -100 to 100 scale. Rate and pitch 0 are the voice's
+normal speed and pitch. Volume 0 is full volume; negative values make it quieter.
+
+== Behaviour
+
+* Audio goes back through the server (`audio_output_method=server`), so the server's audio output
+  settings decide where it plays.
+* The module reads sentences one at a time and reports an index mark after each. `STOP` and `QUIT`
+  end the speech within one sentence. `PAUSE` stops it, and the server resumes from the last sentence
+  played.
+* Sound icons are refused with `301 ERROR CANT SPEAK`.
