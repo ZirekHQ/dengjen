@@ -20,7 +20,7 @@ pub(crate) enum Command {
     Set,
     Audio,
     Loglevel,
-    Debug,
+    Debug(String),
     Quit,
     Unknown,
 }
@@ -37,7 +37,7 @@ pub(crate) fn parse_command(line: &str) -> Command {
         "AUDIO" => Command::Audio,
         "LOGLEVEL" => Command::Loglevel,
         "QUIT" => Command::Quit,
-        _ if line.starts_with("DEBUG") => Command::Debug,
+        _ if line.starts_with("DEBUG") => Command::Debug(line.to_owned()),
         _ if line.starts_with("LIST VOICES") => list_voices(line),
         _ => Command::Unknown,
     }
@@ -85,7 +85,10 @@ mod tests {
         assert_eq!(parse_command("CHAR"), Command::Speak(Message::Char));
         assert_eq!(parse_command("STOP"), Command::Stop);
         assert_eq!(parse_command("QUIT"), Command::Quit);
-        assert_eq!(parse_command("DEBUG ON /tmp/x"), Command::Debug);
+        assert_eq!(
+            parse_command("DEBUG ON /tmp/x"),
+            Command::Debug("DEBUG ON /tmp/x".into())
+        );
         assert_eq!(parse_command("NOPE"), Command::Unknown);
         assert_eq!(parse_command("speak"), Command::Unknown);
     }

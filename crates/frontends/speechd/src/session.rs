@@ -85,27 +85,23 @@ impl<B: Backend, R: BufRead, W: Write> Session<B, R, W> {
     fn dispatch(&mut self, command: Command) -> io::Result<Flow> {
         match command {
             Command::Speak(kind) => return self.speak(kind),
-            Command::Set => return self.settings_block(203, "", true),
-            Command::Audio => return self.audio(),
+            Command::Set => return self.settings_block(Block::Settings),
+            Command::Audio => return self.settings_block(Block::Audio),
+            Command::Loglevel => return self.settings_block(Block::LogLevel),
+            Command::Debug(line) => self.say(debug_reply(&line))?,
             Command::ListVoices { language, variant } => self.list_voices(language, variant)?,
             Command::Quit => {
                 self.say("210 OK QUIT")?;
                 return Ok(Flow::Quit);
             }
             Command::Stop | Command::Pause => {}
-            Command::Loglevel | Command::Debug => {}
             Command::Unknown => self.say(reply::UNKNOWN)?,
         }
         Ok(Flow::Continue)
     }
 
-    fn audio(&mut self) -> io::Result<Flow> {
-        let flow = self.settings_block(207, "AUDIO ", false)?;
-        Ok(flow)
-    }
-
-    fn settings_block(&mut self, ack: u16, kind: &str, store: bool) -> io::Result<Flow> {
-        self.say(&format!("{ack} OK RECEIVING {kind}SETTINGS"))?;
+    fn settings_block(&mut self, block: Block) -> io::Result<Flow> {
+        self.say(block.opening())?;
         let Some(lines) = protocol::read_block(&mut self.input)? else {
             return Ok(Flow::Quit);
         };
@@ -113,22 +109,18 @@ impl<B: Backend, R: BufRead, W: Write> Session<B, R, W> {
             .iter()
             .fold(None, |error, line| match protocol::parse_assignment(line) {
                 None => Some(reply::BAD_SYNTAX),
-                Some((name, value)) if self.accepts(name, value, store) => error,
+                Some((name, value)) if self.accepts(block, name, value) => error,
                 Some(_) => Some(reply::BAD_PARAM),
             });
-        match error {
-            Some(error) => self.say(error)?,
-            None if store => self.say("203 OK SETTINGS RECEIVED")?,
-            None => self.say("203 OK AUDIO INITIALIZED")?,
-        }
+        self.say(error.unwrap_or_else(|| block.done()))?;
         Ok(Flow::Continue)
     }
 
-    fn accepts(&mut self, name: &str, value: &str, store: bool) -> bool {
-        if store {
-            self.settings.apply(name, value).is_ok()
-        } else {
-            name == "audio_output_method" && value == "server"
+    fn accepts(&mut self, block: Block, name: &str, value: &str) -> bool {
+        match block {
+            Block::Settings => self.settings.apply(name, value).is_ok(),
+            Block::Audio => name == "audio_output_method" && value == "server",
+            Block::LogLevel => name == "log_level" && value.parse::<i32>().is_ok(),
         }
     }
 
@@ -186,10 +178,45 @@ fn matches_language(requested: &str, language: &str) -> bool {
     requested.eq_ignore_ascii_case(language) || requested.eq_ignore_ascii_case(primary)
 }
 
+#[derive(Clone, Copy)]
+enum Block {
+    Settings,
+    Audio,
+    LogLevel,
+}
+
+impl Block {
+    fn opening(self) -> &'static str {
+        match self {
+            Block::Settings => "203 OK RECEIVING SETTINGS",
+            Block::Audio => "207 OK RECEIVING AUDIO SETTINGS",
+            Block::LogLevel => "207 OK RECEIVING LOGLEVEL SETTINGS",
+        }
+    }
+
+    fn done(self) -> &'static str {
+        match self {
+            Block::Settings => "203 OK SETTINGS RECEIVED",
+            Block::Audio => "203 OK AUDIO INITIALIZED",
+            Block::LogLevel => "203 OK LOGLEVEL SET",
+        }
+    }
+}
+
+fn debug_reply(line: &str) -> &'static str {
+    let mut words = line.split_whitespace().skip(1);
+    match (words.next(), words.next()) {
+        (Some("ON"), Some(_)) => "200 OK DEBUGGING ON",
+        (Some("OFF"), _) => "200 OK DEBUGGING OFF",
+        _ => reply::BAD_SYNTAX,
+    }
+}
+
 fn message_text(kind: Message, lines: &[String]) -> Result<String, &'static str> {
     let text = lines.join("\n");
     match kind {
         _ if text.is_empty() => Err(reply::CANT_SPEAK),
+        Message::SoundIcon => Err(reply::CANT_SPEAK),
         Message::Text => Ok(text),
         _ if lines.len() > 1 => Err(reply::MULTILINE),
         Message::Char | Message::Key if text == "space" => Ok(" ".to_owned()),
@@ -355,6 +382,27 @@ mod tests {
             out,
             "299-ready\n299 OK LOADED SUCCESSFULLY\n300 ERR UNKNOWN COMMAND\n210 OK QUIT\n"
         );
+    }
+
+    #[test]
+    fn loglevel_and_debug_are_acknowledged() {
+        let out = transcript(
+            &mut fake(),
+            "INIT\nLOGLEVEL\nlog_level=3\n.\nLOGLEVEL\nlog_level=x\n.\nDEBUG ON /tmp/f\nDEBUG OFF\nDEBUG\nQUIT\n",
+        );
+        assert!(out.contains("207 OK RECEIVING LOGLEVEL SETTINGS\n203 OK LOGLEVEL SET\n"));
+        assert!(out.contains(
+            "207 OK RECEIVING LOGLEVEL SETTINGS\n303 ERROR INVALID PARAMETER OR VALUE\n"
+        ));
+        assert!(out.contains("200 OK DEBUGGING ON\n200 OK DEBUGGING OFF\n302 ERROR BAD SYNTAX\n"));
+    }
+
+    #[test]
+    fn sound_icons_are_refused_instead_of_spoken() {
+        let mut backend = fake();
+        let out = transcript(&mut backend, "INIT\nSOUND_ICON\nbell\n.\nQUIT\n");
+        assert!(out.contains("202 OK RECEIVING MESSAGE\n301 ERROR CANT SPEAK\n"));
+        assert!(backend.spoken.is_empty());
     }
 
     #[test]
