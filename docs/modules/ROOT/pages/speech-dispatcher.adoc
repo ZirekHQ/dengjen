@@ -6,7 +6,10 @@ voice. The module runs as a separate process, so nothing links against Speech Di
 
 It has been run against a real `speech-dispatcher` server with `spd-say`, the Python client and
 Orca. The Orca run was headless: Orca spoke through the module, echoed typed characters and
-interrupted speech cleanly. Moving the caret with the arrow keys and key echo were not checked.
+interrupted speech cleanly. A second headless run moved the caret with the arrow keys and typed
+keys: Orca asked the server for the line, character and key-echo messages, and the module stayed
+up through the interrupts between them. That run used emulated CPU instructions, so it does not show the speech
+timing.
 
 == Install
 
@@ -23,6 +26,12 @@ sudo apt install ./dengjen-speechd_<version>-1_amd64.deb
 
 Install a voice with `dengjen voices install ku_TR-berfin_renas-medium` (the `dengjen` package),
 then restart Speech Dispatcher and run the checks below.
+
+=== Flatpak
+
+There is no Flatpak. Speech Dispatcher has no extension point for output modules, and the host
+server starts each module itself, so a sandboxed module cannot register with it. Use the package or
+build from source.
 
 === From source
 
