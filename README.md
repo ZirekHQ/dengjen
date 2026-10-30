@@ -2,7 +2,7 @@
 
 [Project board](https://github.com/orgs/ZirekHQ/projects/1) — live roadmap and status for this repo's issues.
 
-A cross-platform Rust engine for neural TTS models.
+A cross-platform Rust engine for neural speech models: text to speech and speech recognition.
 
 ## Features
 
@@ -12,6 +12,7 @@ A cross-platform Rust engine for neural TTS models.
 * **Streaming synthesis**: chunked output (`chunk_size`/`chunk_padding`) and a realtime gRPC stream
 * **Prosody control**: rate, pitch, and volume via a Rust port of [Sonic](https://github.com/waywardgeek/sonic) in `dengjen-audio-ops`
 * **Synthesis modes**: lazy, parallel, and batched, selectable per request; realtime for the voices that support it
+* **Speech recognition**: offline Kurmanji recognition in `dengjen-stt`, on [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) with Omnilingual CTC models (300M int8 by default, 1B int8 for higher accuracy). Reachable through the C API (`libdengjen-stt`), the gRPC `Recognize` RPC, the Go `stt` package, the Android AAR, and the Apple XCFramework's opt-in `stt` build. Recognition is offline: there are no streaming partial results.
 * **Bindings**: native Rust, C-API (`libdengjen`), Python (`pydengjen`), Go and Java bindings over the C API (see `bindings/go` and `bindings/java`), gRPC (any language over the wire), and a CLI
 
 RHVoice-style formant/statistical synthesis is a different synthesis paradigm from
