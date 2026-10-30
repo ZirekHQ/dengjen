@@ -45,3 +45,7 @@ Working state lives in `.staging/`, `.locks/`, `.old/` and `.trash/`, each names
   that stalls for 30 seconds (`UreqTransport::with_stall_timeout` changes that); one request is
   cut after an hour, and the next install resumes it.
 - The C API is `libdengjen-voices` (`crates/frontends/capi-voices`).
+
+## Support
+
+This crate is part of [Zirek](https://github.com/ZirekHQ). 💖 [Support on Open Collective](https://opencollective.com/zirek)

@@ -8,3 +8,7 @@ Shared runtime primitives for the dengjen speech engines.
 - `panic_message`: renders a caught panic payload as text.
 
 With the `ort-providers` feature, the crate also owns the process-wide ONNX Runtime environment: `environment`, `session_builder`, `install_environment` and `execution_providers`. The `cuda`, `directml` and `coreml` features register those accelerators ahead of the CPU provider; with none enabled, ONNX Runtime stays on its CPU provider.
+
+## Support
+
+This crate is part of [Zirek](https://github.com/ZirekHQ). 💖 [Support on Open Collective](https://opencollective.com/zirek)

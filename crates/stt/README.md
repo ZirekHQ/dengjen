@@ -14,3 +14,7 @@ verify_model(dir, entry.model_sha256)?;
 verify_tokens(dir, entry.tokens_sha256)?;
 let recognizer = Recognizer::new(dir, RecognizerConfig::default())?;
 ```
+
+## Support
+
+This crate is part of [Zirek](https://github.com/ZirekHQ). 💖 [Support on Open Collective](https://opencollective.com/zirek)

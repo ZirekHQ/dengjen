@@ -24,3 +24,7 @@ Stress follows eSpeak-ng after [espeak-ng#2500](https://github.com/espeak-ng/esp
 - `DENGJEN_KU_MAX_MISMATCH`: mismatching corpus lines to tolerate (default 0).
 
 Known gap: all-caps acronyms that eSpeak-ng spells letter by letter inside running text (`ISO`, `UEFA`) are read as words.
+
+## Support
+
+This crate is part of [Zirek](https://github.com/ZirekHQ). 💖 [Support on Open Collective](https://opencollective.com/zirek)
