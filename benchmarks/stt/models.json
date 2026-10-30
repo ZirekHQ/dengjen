@@ -5,6 +5,8 @@
   {"id": "umit/w2v-bert-kmr-common-voice", "backend": "hf-ctc"},
   {"id": "amedcj/whisper-kurmanji", "backend": "hf-whisper"},
   {"id": "samil24/whisper-small-kurmanji-v10", "backend": "hf-whisper"},
+  {"id": "rickettswa/whisper-small-kmr-cv", "backend": "hf-whisper", "feature_extractor": "openai/whisper-small"},
+  {"id": "rickettswa/whisper-small-kmr-cv-2", "backend": "hf-whisper", "feature_extractor": "openai/whisper-small"},
   {"id": "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12", "backend": "sherpa-ctc", "model_file": "model.int8.onnx"},
   {"id": "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-int8-2025-11-12", "backend": "sherpa-ctc", "model_file": "model.int8.onnx"}
 ]

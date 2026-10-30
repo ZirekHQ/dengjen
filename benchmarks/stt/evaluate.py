@@ -86,7 +86,12 @@ def hf_ctc_transcriber(spec):
 def hf_whisper_transcriber(spec):
     from transformers import pipeline
 
-    asr = pipeline("automatic-speech-recognition", model=spec["id"], device=-1)
+    asr = pipeline(
+        "automatic-speech-recognition",
+        model=spec["id"],
+        feature_extractor=spec.get("feature_extractor"),
+        device=-1,
+    )
     return lambda audio: asr(
         {"raw": audio, "sampling_rate": SAMPLE_RATE},
         chunk_length_s=30,
