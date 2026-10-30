@@ -91,4 +91,4 @@ normal speed and pitch. Volume 0 is full volume; negative values make it quieter
 * The module reads sentences one at a time and reports an index mark after each. `STOP` and `QUIT`
   end the speech within one sentence. `PAUSE` stops it, and the server resumes from the last sentence
   played.
-* Sound icons are refused with `301 ERROR CANT SPEAK`.
+* Sound icons are spoken by name; the module plays no icon audio.

@@ -297,7 +297,6 @@ fn message_pieces(kind: Message, lines: &[String]) -> Result<Vec<Piece>, &'stati
     let text = lines.join("\n");
     let pieces = match kind {
         _ if text.is_empty() => return Err(reply::CANT_SPEAK),
-        Message::SoundIcon => return Err(reply::CANT_SPEAK),
         Message::Text => ssml::pieces(&text),
         _ if lines.len() > 1 => return Err(reply::MULTILINE),
         Message::Char | Message::Key if text == "space" => vec![Piece::Text(" ".to_owned())],
@@ -585,11 +584,22 @@ mod tests {
     }
 
     #[test]
-    fn sound_icons_are_refused_instead_of_spoken() {
+    fn sound_icons_are_spoken_by_name() {
         let mut backend = fake();
-        let out = transcript(&mut backend, "INIT\nSOUND_ICON\nbell\n.\nQUIT\n");
-        assert!(out.contains("202 OK RECEIVING MESSAGE\n301 ERROR CANT SPEAK\n"));
-        assert!(backend.spoken.is_empty());
+        let out = transcript(&mut backend, "INIT\nSOUND_ICON\nbell\n.\n");
+        assert!(out.contains("202 OK RECEIVING MESSAGE\n"));
+        assert_eq!(backend.spoken[0].0, "bell");
+        assert!(out.ends_with("\n705 AUDIO\n702 END\n"));
+    }
+
+    #[test]
+    fn key_is_one_line_and_space_is_a_space() {
+        let mut backend = fake();
+        let out = transcript(&mut backend, "INIT\nKEY\nspace\n.\nKEY\nenter\n.\n");
+        assert_eq!(backend.spoken[0].0, " ");
+        assert_eq!(backend.spoken[1].0, "enter");
+        assert!(!out.contains("301"));
+        assert_eq!(out.matches("702 END\n").count(), 2);
     }
 
     #[test]
