@@ -9,7 +9,8 @@ python benchmarks/stt/evaluate.py --set cv --limit 300 --out results.json
 
 `--set` is `cv` (Common Voice 22, `kmr` test split) or `kobani` (FLEURS-style
 [northern-kurdish-fleurs](https://huggingface.co/datasets/aranemini/northern-kurdish-fleurs) test split).
-`requirements.txt` is the hashed lock of `requirements.in` (`uv pip compile --universal --generate-hashes`).
+`requirements.txt` is the hashed lock of `requirements.in`; rerun the `uv pip compile` command in its header
+to regenerate it. Renovate parses that header, so keep the `--option=value` form.
 `--only <substring>` filters models; `models.json` lists them. The `STT benchmark` workflow runs both
 sets on ubuntu and macOS via `workflow_dispatch`; its `only` input passes `--only`, e.g. `1B-ctc` to
 score one model without waiting behind the slow ones.
@@ -49,8 +50,8 @@ The 1B Kobani row comes from a dispatch with `only=1B-ctc` on 2026-10-30; both r
 - `samil24` falls from 9.6% (CV) to 48.4% (Kobani), which hints that its training data overlaps the
   Common Voice test split (unverified). Prefer the Kobani figure.
 - Omnilingual 1B is the best out-of-domain model (41.0% Kobani WER, 11.8% CER) with no fine-tuning,
-  but no existing model reaches a usable WER, so fine-tuning is likely needed. Omnilingual 300M is the
-  smallest and fastest of the models with usable WER, at 53.6% Kobani WER.
+  but even that is too inaccurate for dictation, so fine-tuning is likely needed. Omnilingual 300M is the
+  smallest and fastest of the four models under 60% Kobani WER, at 53.6%.
 - `salamhasan/wav2vec2-large-xlsr-kurmanji` is gated and unscored.
 - RTF is from GitHub-hosted runners, not phones.
 - The Kobani dataset card declares no licence; confirm terms before redistributing derived models.
