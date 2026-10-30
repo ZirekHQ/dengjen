@@ -11,7 +11,8 @@ python benchmarks/stt/evaluate.py --set cv --limit 300 --out results.json
 [northern-kurdish-fleurs](https://huggingface.co/datasets/aranemini/northern-kurdish-fleurs) test split).
 `requirements.txt` is the hashed lock of `requirements.in` (`uv pip compile --universal --generate-hashes`).
 `--only <substring>` filters models; `models.json` lists them. The `STT benchmark` workflow runs both
-sets on ubuntu and macOS via `workflow_dispatch`.
+sets on ubuntu and macOS via `workflow_dispatch`; its `only` input passes `--only`, e.g. `1B-ctc` to
+score one model without waiting behind the slow ones.
 
 Measured 2026-10-15 on GitHub-hosted ubuntu-latest and macos-latest runners (first 300 clips).
 RTF ranges span the two runners.

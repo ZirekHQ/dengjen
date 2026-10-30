@@ -7,6 +7,10 @@ on:
         description: Number of test clips
         type: string
         default: "300"
+      only:
+        description: Substring filter on the model id (empty scores every model)
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -46,7 +50,8 @@ jobs:
         env:
           TEST_SET: ${{ matrix.test_set }}
           LIMIT: ${{ inputs.limit || '300' }}
-        run: python benchmarks/stt/evaluate.py --set "$TEST_SET" --limit "$LIMIT" --out results.json
+          ONLY: ${{ inputs.only }}
+        run: python benchmarks/stt/evaluate.py --set "$TEST_SET" --limit "$LIMIT" ${ONLY:+--only "$ONLY"} --out results.json
       - name: Summarise
         if: always()
         run: |
