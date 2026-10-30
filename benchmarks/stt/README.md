@@ -15,7 +15,7 @@ to regenerate it. Renovate parses that header, so keep the `--option=value` form
 sets on ubuntu and macOS via `workflow_dispatch`; its `only` input passes `--only`, e.g. `1B-ctc` to
 score one model without waiting behind the slow ones.
 
-Measured 2026-10-15 on GitHub-hosted ubuntu-latest and macos-latest runners (first 300 clips).
+All rows except the 1B Kobani row were measured 2026-10-15 on GitHub-hosted ubuntu-latest and macos-latest runners (first 300 clips).
 RTF ranges span the two runners.
 
 ## Results (Common Voice)
