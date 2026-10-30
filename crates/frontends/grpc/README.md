@@ -28,3 +28,7 @@ The server caps its resource use. Each cap reads an environment variable; unset,
 | `DENGJEN_GRPC_STT_MODEL_SHA256` | Expected SHA-256 of `model.int8.onnx`. |
 
 Set both or neither. The server verifies the checksum and loads the model at startup and exits on failure. With neither set, `Recognize` returns `FAILED_PRECONDITION`. Empty audio, audio shorter than 25 ms, an odd byte count or a sample rate that is zero or above `i32::MAX` returns `INVALID_ARGUMENT`. A failed decode returns `INTERNAL`.
+
+## Support
+
+This crate is part of [Zirek](https://github.com/ZirekHQ). 💖 [Support on Open Collective](https://opencollective.com/zirek)

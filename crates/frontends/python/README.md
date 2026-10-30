@@ -21,3 +21,7 @@ with pydengjen.Recognizer(model_dir, model_sha256) as recognizer:
 Failures raise `pydengjen.SttError`, a `DengjenException` whose `.code` is the `libdengjen-stt`
 error code. Other wheels, and builds without the `stt` feature, have no `Recognizer`.
 
+
+## Support
+
+This crate is part of [Zirek](https://github.com/ZirekHQ). 💖 [Support on Open Collective](https://opencollective.com/zirek)

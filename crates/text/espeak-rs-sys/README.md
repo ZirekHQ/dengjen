@@ -19,3 +19,7 @@ docs.rs builds without network access, so with `DOCS_RS` set `build.rs` uses the
 ## Dependencies
 
 - [espeak-ng](https://github.com/espeak-ng/espeak-ng)
+
+## Support
+
+This crate is part of [Zirek](https://github.com/ZirekHQ). 💖 [Support on Open Collective](https://opencollective.com/zirek)
