@@ -32,7 +32,22 @@
       "datasourceTemplate": "git-refs"
     }
   ],
+  "pip-compile": {
+    "managerFilePatterns": [
+      "/^benchmarks/stt/requirements\\.txt$/"
+    ]
+  },
   "packageRules": [
+    {
+      "description": "the STT benchmark lock is compiled from requirements.in, so pip-compile bumps the .in and recompiles instead of editing the hashed .txt",
+      "matchManagers": [
+        "pip_requirements"
+      ],
+      "matchFileNames": [
+        "benchmarks/stt/requirements.txt"
+      ],
+      "enabled": false
+    },
     {
       "description": "dtolnay/rust-toolchain pins a rolling branch, which the git-refs custom manager tracks",
       "matchManagers": [
