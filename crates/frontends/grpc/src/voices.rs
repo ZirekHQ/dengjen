@@ -6,6 +6,7 @@ use dengjen_voices::{
 };
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::Status;
 
@@ -100,15 +101,23 @@ pub(crate) fn install_voice(
 ) -> ReceiverStream<Result<Progress, Status>> {
     let (sender, receiver) = tokio::sync::mpsc::channel(PROGRESS_BUFFER);
     tokio::task::spawn_blocking(move || {
+        let mut dropped = None;
         let outcome = store.install(
             &key,
             &mut |progress| {
-                let _ = sender.try_send(Ok(progress));
+                dropped = match sender.try_send(Ok(progress)) {
+                    Err(TrySendError::Full(_)) => Some(progress),
+                    _ => None,
+                };
             },
             &|| sender.is_closed(),
         );
-        if let Err(error) = outcome {
-            let _ = sender.blocking_send(Err(voice_status(error)));
+        let last = match outcome {
+            Ok(()) => dropped.map(Ok),
+            Err(error) => Some(Err(voice_status(error))),
+        };
+        if let Some(item) = last {
+            let _ = sender.blocking_send(item);
         }
     });
     ReceiverStream::new(receiver)
@@ -353,6 +362,55 @@ pub(crate) mod tests {
         let installed = list_installed(store).await.unwrap();
         let keys: Vec<&str> = installed.iter().map(|voice| voice.key.as_str()).collect();
         assert_eq!(keys, [KEY]);
+    }
+
+    struct BurstStore {
+        emitted: std::sync::mpsc::SyncSender<()>,
+    }
+
+    impl VoiceStore for BurstStore {
+        fn fetch_catalogue(&self) -> VoiceResult<usize> {
+            Err(VoiceError::NoCatalogue)
+        }
+
+        fn list(&self, _language: Option<&str>) -> VoiceResult<Vec<Voice>> {
+            Err(VoiceError::NoCatalogue)
+        }
+
+        fn installed(&self) -> VoiceResult<Vec<InstalledVoice>> {
+            Err(VoiceError::NoCatalogue)
+        }
+
+        fn remove(&self, _key: &str) -> VoiceResult<()> {
+            Err(VoiceError::NoCatalogue)
+        }
+
+        fn install(
+            &self,
+            _key: &str,
+            on_progress: &mut dyn FnMut(Progress),
+            _cancelled: &dyn Fn() -> bool,
+        ) -> VoiceResult<()> {
+            for done in 1..=100 {
+                on_progress(Progress { done, total: 100 });
+            }
+            let _ = self.emitted.send(());
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_successful_install_always_ends_with_the_final_progress_update() {
+        use tokio_stream::StreamExt;
+        let (emitted, all_emitted) = std::sync::mpsc::sync_channel(1);
+        let stream = install_voice(Arc::new(BurstStore { emitted }), KEY.to_owned());
+        tokio::task::spawn_blocking(move || all_emitted.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let items: Vec<_> = stream.collect().await;
+        let last = items.last().expect("progress updates").as_ref().unwrap();
+        assert_eq!((last.done, last.total), (100, 100));
     }
 
     #[tokio::test]
