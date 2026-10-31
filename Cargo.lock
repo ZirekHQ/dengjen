@@ -992,6 +992,7 @@ dependencies = [
  "dengjen-tts-kokoro",
  "dengjen-tts-melotts",
  "dengjen-tts-piper",
+ "dengjen-voices",
  "log",
  "ort",
  "prost",

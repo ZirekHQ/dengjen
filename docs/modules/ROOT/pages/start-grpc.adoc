@@ -230,7 +230,24 @@ fails with `UNIMPLEMENTED: Streaming synthesis is not supported for this model`.
 
 |`Recognize`
 |Takes `pcm_s16le` (mono 16-bit little-endian PCM) and `sample_rate`, and returns the transcript `text`. Available in builds with the `stt` feature and a configured model.
+
+|`FetchCatalogue`
+|Downloads the voice catalogue, caches it, and returns the voice count.
+
+|`ListVoices`
+|Returns the catalogue's voices, optionally filtered by a language code or family such as `ku`.
+
+|`ListInstalledVoices`
+|Returns the voices installed on disk.
+
+|`InstallVoice`
+|Streams `InstallProgress` while it downloads, verifies and installs a voice. Dropping the stream cancels it, and the next call resumes.
+
+|`RemoveVoice`
+|Removes an installed voice.
 |===
+
+The voice manager RPCs need `DENGJEN_GRPC_VOICES_DIR`, `DENGJEN_GRPC_VOICES_CATALOGUE_URL` and `DENGJEN_GRPC_VOICES_FILES_BASE_URL`, set together, in the server's environment. Without them they return `FAILED_PRECONDITION`. After `InstallVoice` finishes, call `LoadVoice` with the voice's config file. The voice's files keep their catalogue file names inside `<DENGJEN_GRPC_VOICES_DIR>/<model type>/<key>/`, where `<model type>` is `piper` unless `DENGJEN_GRPC_VOICES_MODEL_TYPE` sets another value. A Piper voice's config is `<key>.onnx.json` there.
 
 `SynthesisRequest.synthesis_mode` picks `MODE_LAZY`, `MODE_PARALLEL` or `MODE_BATCHED`. See
 xref:streaming.adoc[Streaming synthesis and the gRPC frontend] for how the modes differ.

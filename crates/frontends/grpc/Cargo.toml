@@ -34,6 +34,7 @@ dengjen-tts-piper.workspace = true
 dengjen-tts-kokoro.workspace = true
 dengjen-tts-melotts.workspace = true
 dengjen-stt = { workspace = true, optional = true }
+dengjen-voices.workspace = true
 prost = "0.14.0"
 tokio = { version = "1.41.1", features = ["macros", "rt-multi-thread", "sync"] }
 tokio-stream = "0.1.16"

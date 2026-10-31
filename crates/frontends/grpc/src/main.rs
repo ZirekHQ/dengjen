@@ -14,22 +14,26 @@ use dengjen_tts_core::{
 };
 mod limits;
 mod recognition;
+mod voices;
 
 use grpc::dengjen_grpc_server::{DengjenGrpc, DengjenGrpcServer};
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
+use tokio_stream::{Stream, StreamExt};
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use xxhash_rust::xxh3::xxh3_64;
 
 use limits::Limits;
 use recognition::{pcm_s16le_to_f32, RecognitionError, Transcriber};
+use voices::VoiceStore;
 
 const DEFAULT_DENGJEN_GRPC_SERVER_PORT: u16 = 49314;
 
@@ -107,6 +111,28 @@ impl From<DengjenGrpcError> for Status {
     }
 }
 
+fn catalogue_voice(voice: dengjen_voices::Voice) -> grpc::CatalogueVoice {
+    grpc::CatalogueVoice {
+        total_bytes: voice.total_bytes(),
+        key: voice.key,
+        name: voice.name,
+        language_code: voice.language.code,
+        language_family: voice.language.family,
+        quality: voice.quality,
+        num_speakers: voice.num_speakers,
+    }
+}
+
+fn installed_voice_info(voice: dengjen_voices::InstalledVoice) -> grpc::InstalledVoiceInfo {
+    grpc::InstalledVoiceInfo {
+        key: voice.key,
+        model_type: voice.model_type,
+        name: voice.name,
+        language: voice.language,
+        description: voice.description,
+    }
+}
+
 /// A loaded voice, backed by a speech synthesizer wrapping some `DengjenModel`.
 struct Voice(Arc<DengjenSpeechSynthesizer>);
 
@@ -131,6 +157,7 @@ struct DengjenGrpcService(
     RwLock<HashMap<String, Voice>>,
     Capacity,
     Option<Arc<dyn Transcriber>>,
+    Option<Arc<dyn VoiceStore>>,
 );
 
 /// Server-wide caps plus the semaphore that enforces the concurrency cap.
@@ -157,12 +184,24 @@ impl DengjenGrpcService {
                 recognition,
             },
             None,
+            None,
         )
     }
 
     fn with_transcriber(mut self, transcriber: Option<Arc<dyn Transcriber>>) -> Self {
         self.2 = transcriber;
         self
+    }
+
+    fn with_voice_store(mut self, store: Option<Arc<dyn VoiceStore>>) -> Self {
+        self.3 = store;
+        self
+    }
+
+    fn voice_store(&self) -> DengjenGrpcResult<Arc<dyn VoiceStore>> {
+        self.3.clone().ok_or_else(|| {
+            DengjenGrpcError::FailedPrecondition("No voice catalogue is configured".to_string())
+        })
     }
 
     fn transcriber(&self) -> DengjenGrpcResult<Arc<dyn Transcriber>> {
@@ -789,6 +828,64 @@ impl DengjenGrpc for DengjenGrpcService {
         Ok(Response::new(grpc::RecognizeResponse { text }))
     }
 
+    async fn fetch_catalogue(
+        &self,
+        _request: Request<grpc::Empty>,
+    ) -> Result<Response<grpc::CatalogueInfo>, Status> {
+        let count = voices::fetch_catalogue(self.voice_store()?).await?;
+        Ok(Response::new(grpc::CatalogueInfo {
+            voice_count: u32::try_from(count).unwrap_or(u32::MAX),
+        }))
+    }
+
+    async fn list_voices(
+        &self,
+        request: Request<grpc::ListVoicesRequest>,
+    ) -> Result<Response<grpc::VoiceList>, Status> {
+        let language = request
+            .into_inner()
+            .language
+            .filter(|language| !language.trim().is_empty());
+        let found = voices::list_voices(self.voice_store()?, language).await?;
+        Ok(Response::new(grpc::VoiceList {
+            voices: found.into_iter().map(catalogue_voice).collect(),
+        }))
+    }
+
+    async fn list_installed_voices(
+        &self,
+        _request: Request<grpc::Empty>,
+    ) -> Result<Response<grpc::InstalledVoiceList>, Status> {
+        let installed = voices::list_installed(self.voice_store()?).await?;
+        Ok(Response::new(grpc::InstalledVoiceList {
+            voices: installed.into_iter().map(installed_voice_info).collect(),
+        }))
+    }
+
+    type InstallVoiceStream =
+        Pin<Box<dyn Stream<Item = Result<grpc::InstallProgress, Status>> + Send>>;
+    async fn install_voice(
+        &self,
+        request: Request<grpc::InstallVoiceRequest>,
+    ) -> Result<Response<Self::InstallVoiceStream>, Status> {
+        let store = self.voice_store()?;
+        let progress = voices::install_voice(store, request.into_inner().key).map(|update| {
+            update.map(|progress| grpc::InstallProgress {
+                done_bytes: progress.done,
+                total_bytes: progress.total,
+            })
+        });
+        Ok(Response::new(Box::pin(progress)))
+    }
+
+    async fn remove_voice(
+        &self,
+        request: Request<grpc::RemoveVoiceRequest>,
+    ) -> Result<Response<grpc::Empty>, Status> {
+        voices::remove_voice(self.voice_store()?, request.into_inner().key).await?;
+        Ok(Response::new(grpc::Empty {}))
+    }
+
     async fn synthesize_utterance_realtime(
         &self,
         request: Request<grpc::SynthesisRequest>,
@@ -884,6 +981,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::env::var(name).ok()
         })?)?;
 
+    let voice_store = voices::open_store(voices::voices_config_from_lookup(|name| {
+        std::env::var(name).ok()
+    })?)?;
+
     let addr = SocketAddr::new(
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         resolve_listen_port(),
@@ -896,7 +997,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let limits = Limits::from_env();
     log::info!("Dengjen GRPC limits: {limits:?}");
-    let service = DengjenGrpcService::with_limits(limits).with_transcriber(transcriber);
+    let service = DengjenGrpcService::with_limits(limits)
+        .with_transcriber(transcriber)
+        .with_voice_store(voice_store);
     let server = DengjenGrpcServer::new(service)
         .max_decoding_message_size(limits.max_message_bytes)
         .max_encoding_message_size(limits.max_message_bytes);
@@ -2307,5 +2410,101 @@ mod recognize_rpc_tests {
         let status: Status = DengjenGrpcError::from(RecognitionError::Failed).into();
         assert_eq!(status.code(), tonic::Code::Internal);
         assert!(!status.message().contains('/'));
+    }
+}
+
+#[cfg(test)]
+mod voice_manager_rpc_tests {
+    use super::*;
+    use crate::voices::tests::{fixture, KEY};
+    use tokio_stream::StreamExt;
+
+    fn configured() -> (DengjenGrpcService, tempfile::TempDir) {
+        let (store, dir) = fixture();
+        (DengjenGrpcService::new().with_voice_store(Some(store)), dir)
+    }
+
+    fn empty() -> Request<grpc::Empty> {
+        Request::new(grpc::Empty {})
+    }
+
+    fn install_request() -> Request<grpc::InstallVoiceRequest> {
+        Request::new(grpc::InstallVoiceRequest { key: KEY.into() })
+    }
+
+    fn remove_request() -> Request<grpc::RemoveVoiceRequest> {
+        Request::new(grpc::RemoveVoiceRequest { key: KEY.into() })
+    }
+
+    #[tokio::test]
+    async fn every_voice_manager_rpc_is_a_failed_precondition_when_unconfigured() {
+        let service = DengjenGrpcService::new();
+        let list = Request::new(grpc::ListVoicesRequest { language: None });
+        let codes = [
+            service
+                .fetch_catalogue(empty())
+                .await
+                .err()
+                .map(|s| s.code()),
+            service.list_voices(list).await.err().map(|s| s.code()),
+            service
+                .list_installed_voices(empty())
+                .await
+                .err()
+                .map(|s| s.code()),
+            service
+                .install_voice(install_request())
+                .await
+                .err()
+                .map(|s| s.code()),
+            service
+                .remove_voice(remove_request())
+                .await
+                .err()
+                .map(|s| s.code()),
+        ];
+        assert_eq!(codes, [Some(tonic::Code::FailedPrecondition); 5]);
+    }
+
+    #[tokio::test]
+    async fn listing_after_fetching_describes_each_voice() {
+        let (service, _dir) = configured();
+        let info = service.fetch_catalogue(empty()).await.unwrap().into_inner();
+        assert_eq!(info.voice_count, 1);
+        let request = Request::new(grpc::ListVoicesRequest {
+            language: Some("ku".into()),
+        });
+        let list = service.list_voices(request).await.unwrap().into_inner();
+        let expected = grpc::CatalogueVoice {
+            key: KEY.into(),
+            name: "test".into(),
+            language_code: "ku_TR".into(),
+            language_family: "ku".into(),
+            quality: "medium".into(),
+            num_speakers: 1,
+            total_bytes: 9,
+        };
+        assert_eq!(list.voices, [expected]);
+    }
+
+    #[tokio::test]
+    async fn an_installed_voice_streams_progress_is_listed_and_can_be_removed() {
+        let (service, _dir) = configured();
+        service.fetch_catalogue(empty()).await.unwrap();
+        let stream = service.install_voice(install_request()).await.unwrap();
+        let updates: Vec<_> = stream.into_inner().collect().await;
+        let last = updates.last().expect("a progress update").as_ref().unwrap();
+        assert_eq!((last.done_bytes, last.total_bytes), (9, 9));
+        let installed = service.list_installed_voices(empty()).await.unwrap();
+        let keys: Vec<&str> = installed
+            .get_ref()
+            .voices
+            .iter()
+            .map(|v| v.key.as_str())
+            .collect();
+        assert_eq!(keys, [KEY]);
+        service.remove_voice(remove_request()).await.unwrap();
+        let after = service.list_installed_voices(empty()).await.unwrap();
+        assert!(after.get_ref().voices.is_empty());
     }
 }
