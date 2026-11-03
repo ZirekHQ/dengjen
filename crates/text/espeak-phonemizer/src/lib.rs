@@ -155,6 +155,9 @@ fn phonemize_line(
 
 fn select_voice(_espeak: &ESpeakLock<'_>, language: &str) -> ESpeakResult<()> {
     let rejected = || ESpeakError(format!("eSpeak-ng has no voice named `{language}`"));
+    if !variant_fits_espeak_buffer(language) {
+        return Err(rejected());
+    }
     let voice = CString::new(language).map_err(|_| rejected())?;
 
     // SAFETY: the pointer addresses `voice`'s NUL-terminated buffer, and `voice` is still alive
@@ -167,6 +170,16 @@ fn select_voice(_espeak: &ESpeakLock<'_>, language: &str) -> ESpeakResult<()> {
     } else {
         Err(rejected())
     }
+}
+
+// eSpeak-ng's `ExtractVoiceVariantName` sprintf's the `+variant` suffix, behind a 3-byte `!v/`
+// prefix, into a 40-byte static buffer without a bound check (espeak-ng/espeak-ng#2638).
+const MAX_VARIANT_SUFFIX_BYTES: usize = 36;
+
+fn variant_fits_espeak_buffer(language: &str) -> bool {
+    language
+        .split_once('+')
+        .is_none_or(|(_, suffix)| suffix.len() <= MAX_VARIANT_SUFFIX_BYTES)
 }
 
 fn phoneme_mode(phoneme_separator: Option<char>) -> ffi::c_int {
@@ -250,6 +263,21 @@ mod tests {
 
     const TEXT_ALICE: &str =
         "Who are you? said the Caterpillar. Replied Alice , rather shyly, I hardly know, sir!";
+
+    #[test]
+    fn oversized_voice_variant_is_rejected_not_overflowed() {
+        let language = format!("q.{}", "+".repeat(40));
+        assert!(text_to_phonemes("q", &language, None, false, false).is_err());
+    }
+
+    #[test]
+    fn variant_suffix_limit_is_inclusive() {
+        let at_limit = format!("en+{}", "a".repeat(MAX_VARIANT_SUFFIX_BYTES));
+        let over_limit = format!("en+{}", "a".repeat(MAX_VARIANT_SUFFIX_BYTES + 1));
+        assert!(variant_fits_espeak_buffer(&at_limit));
+        assert!(!variant_fits_espeak_buffer(&over_limit));
+        assert!(variant_fits_espeak_buffer("en-US"));
+    }
 
     #[test]
     fn basic_english_text_produces_expected_phonemes() -> ESpeakResult<()> {
