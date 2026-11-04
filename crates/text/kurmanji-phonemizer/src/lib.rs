@@ -70,8 +70,10 @@ fn spells_acronyms(tokens: &[Token]) -> bool {
         .fold((0_usize, 0_usize), |(upper, lower), c| {
             if c.is_uppercase() {
                 (upper + 1, lower)
-            } else {
+            } else if c.is_lowercase() {
                 (upper, lower + 1)
+            } else {
+                (upper, lower)
             }
         });
     lower > 3 && upper <= lower
@@ -206,6 +208,11 @@ mod tests {
     fn a_pronoun_alone_before_a_comma_keeps_its_stress() {
         assert_eq!(sentences("Ez, bi nivîsa"), vec!["ˈɛz,bɪ nɪvˈisa."]);
         assert_eq!(sentences("Ez bi nivîsa"), vec!["ɛz bɪ nɪvˈisa."]);
+    }
+
+    #[test]
+    fn uncased_letters_do_not_count_as_lowercase() {
+        assert_eq!(sentences("ISO سلاو")[0], sentences("ISO")[0]);
     }
 
     #[test]
