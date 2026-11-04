@@ -1,7 +1,7 @@
 use dengjen_kurmanji_phonemizer::text_to_kurmanji_phonemes;
 use std::process::Command;
 
-const MAX_REPORTED: usize = 20;
+const MAX_REPORTED: usize = 100;
 
 fn espeak_ipa(line: &str, data_path: Option<&str>) -> Option<String> {
     let mut command = Command::new("espeak-ng");
@@ -9,7 +9,7 @@ fn espeak_ipa(line: &str, data_path: Option<&str>) -> Option<String> {
     if let Some(path) = data_path {
         command.arg(format!("--path={path}"));
     }
-    let output = command.arg(line).output().ok()?;
+    let output = command.arg("--").arg(line).output().ok()?;
     output.status.success().then(|| {
         String::from_utf8_lossy(&output.stdout)
             .split_whitespace()
@@ -83,6 +83,54 @@ fn parity_with_espeak_on_integer_sweep() {
     );
 }
 
+fn parse_corpus_column(raw: &str) -> usize {
+    match raw.parse::<usize>() {
+        Ok(column) if column >= 1 => column,
+        _ => panic!("DENGJEN_KU_CORPUS_COLUMN is a 1-based column number, got {raw:?}"),
+    }
+}
+
+fn corpus_column() -> Option<usize> {
+    match std::env::var("DENGJEN_KU_CORPUS_COLUMN") {
+        Ok(raw) => Some(parse_corpus_column(&raw)),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(error) => panic!("DENGJEN_KU_CORPUS_COLUMN is unreadable: {error}"),
+    }
+}
+
+fn corpus_lines(raw: &str, column: Option<usize>) -> Vec<&str> {
+    let mut lines: Vec<&str> = match column {
+        Some(index) => raw
+            .lines()
+            .skip(1)
+            .filter_map(|row| row.split('\t').nth(index - 1))
+            .collect(),
+        None => raw.lines().collect(),
+    };
+    lines.retain(|line| !line.trim().is_empty());
+    lines.sort_unstable();
+    lines.dedup();
+    lines
+}
+
+#[test]
+#[should_panic(expected = "1-based")]
+fn column_zero_is_rejected() {
+    parse_corpus_column("0");
+}
+
+#[test]
+#[should_panic(expected = "1-based")]
+fn a_non_numeric_column_is_rejected() {
+    parse_corpus_column("2x");
+}
+
+#[test]
+fn column_mode_skips_the_header_and_picks_the_column() {
+    let raw = "id\ttext\n1\tb\n2\ta\n3\ta\n";
+    assert_eq!(corpus_lines(raw, Some(2)), vec!["a", "b"]);
+}
+
 #[test]
 fn parity_with_espeak_on_corpus() {
     let Ok(corpus_path) = std::env::var("DENGJEN_KU_CORPUS") else {
@@ -91,9 +139,14 @@ fn parity_with_espeak_on_corpus() {
     };
     let data_path = std::env::var("DENGJEN_KU_ESPEAK_PATH").ok();
     let corpus = std::fs::read_to_string(corpus_path).unwrap();
-    let diffs: Vec<String> = corpus
-        .lines()
-        .filter(|line| !line.trim().is_empty())
+    let column = corpus_column();
+    let lines = corpus_lines(&corpus, column);
+    assert!(
+        !lines.is_empty(),
+        "no corpus lines selected; check DENGJEN_KU_CORPUS_COLUMN"
+    );
+    let diffs: Vec<String> = lines
+        .into_iter()
         .filter_map(|line| {
             let want = espeak_ipa(line, data_path.as_deref())
                 .unwrap_or_else(|| panic!("espeak-ng failed on {line:?}"));

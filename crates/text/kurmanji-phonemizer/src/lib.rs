@@ -92,7 +92,7 @@ fn clause_to_ipa(tokens: &[Token]) -> String {
     tokens
         .iter()
         .enumerate()
-        .map(|(i, token)| token_to_ipa(token, tokens.len() > 1 && i == last))
+        .map(|(i, token)| token_to_ipa(token, i == last))
         .filter(|ipa| !ipa.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
@@ -165,6 +165,12 @@ mod tests {
 
     fn sentences(text: &str) -> Vec<String> {
         text_to_kurmanji_phonemes(text).unwrap().to_vec()
+    }
+
+    #[test]
+    fn a_pronoun_alone_before_a_comma_keeps_its_stress() {
+        assert_eq!(sentences("Ez, bi nivîsa"), vec!["ˈɛz,bɪ nɪvˈisa."]);
+        assert_eq!(sentences("Ez bi nivîsa"), vec!["ɛz bɪ nɪvˈisa."]);
     }
 
     #[test]

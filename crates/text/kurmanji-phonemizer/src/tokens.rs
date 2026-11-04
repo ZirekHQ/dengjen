@@ -77,9 +77,13 @@ fn is_token_start(c: char) -> bool {
         || currency_symbol(c).is_some()
 }
 
+fn is_word_joiner(c: char) -> bool {
+    matches!(c, '-' | '\'' | '’')
+}
+
 fn word_run(text: &str) -> (&str, &str) {
     let span_len = text
-        .find(|c| !is_word_char(c) && c != '-')
+        .find(|c| !is_word_char(c) && !is_word_joiner(c))
         .unwrap_or(text.len());
     let chars: Vec<(usize, char)> = text
         .get(..span_len)
@@ -91,7 +95,9 @@ fn word_run(text: &str) -> (&str, &str) {
             .is_some_and(|(_, c)| is_word_char(*c))
     };
     let belongs = |k: usize| match chars.get(k) {
-        Some((_, '-')) => is_word_at(k.checked_sub(1)) && is_word_at(Some(k + 1)),
+        Some((_, c)) if is_word_joiner(*c) => {
+            is_word_at(k.checked_sub(1)) && is_word_at(Some(k + 1))
+        }
         _ => is_word_at(Some(k)),
     };
     let kept = (0..chars.len()).take_while(|k| belongs(*k)).count();
@@ -238,6 +244,13 @@ mod tests {
                 number("2"),
             ]
         );
+    }
+
+    #[test]
+    fn apostrophes_between_letters_stay_inside_the_word() {
+        assert_eq!(tokenize("Qur’anê"), vec![Token::Word("Qur’anê")]);
+        assert_eq!(tokenize("Sen'an"), vec![Token::Word("Sen'an")]);
+        assert_eq!(tokenize("'ez'").len(), 1);
     }
 
     #[test]
