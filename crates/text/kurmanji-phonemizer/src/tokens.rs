@@ -110,10 +110,18 @@ fn word_step(chars: &[(usize, char)], k: usize) -> Option<usize> {
     }
 }
 
+/// Length of the prefix that can belong to one word: marks count only inside a `?` run.
+fn word_span_len(text: &str) -> usize {
+    let mut in_question_run = false;
+    text.find(|c: char| {
+        in_question_run = c == '?' || (in_question_run && is_mark_run_char(c));
+        !(is_word_char(c) || is_word_joiner(c) || in_question_run)
+    })
+    .unwrap_or(text.len())
+}
+
 fn word_run(text: &str) -> (&str, &str) {
-    let span_len = text
-        .find(|c| !is_word_char(c) && !is_word_joiner(c) && !is_mark_run_char(c))
-        .unwrap_or(text.len());
+    let span_len = word_span_len(text);
     let chars: Vec<(usize, char)> = text
         .get(..span_len)
         .unwrap_or_default()
@@ -398,6 +406,23 @@ mod tests {
             tokenize("a?! b").get(..2),
             Some(&[Token::Word("a"), Token::Boundary(Break::Question)][..])
         );
+    }
+
+    #[test]
+    fn word_span_stops_at_marks_outside_a_question_run() {
+        assert_eq!(word_span_len("a!a!a!a!"), 1);
+        assert_eq!(word_span_len("a?!,b!c"), 5);
+        assert_eq!(word_span_len("ab, cd"), 2);
+    }
+
+    #[test]
+    fn long_runs_of_glued_marks_tokenize_to_one_word_each() {
+        let text = "a!".repeat(5000);
+        let words = tokenize(&text)
+            .into_iter()
+            .filter(|token| matches!(token, Token::Word(_)))
+            .count();
+        assert_eq!(words, 5000);
     }
 
     #[test]
