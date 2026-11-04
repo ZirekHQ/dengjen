@@ -1,7 +1,7 @@
 use dengjen_kurmanji_phonemizer::text_to_kurmanji_phonemes;
 use std::process::Command;
 
-const MAX_REPORTED: usize = 20;
+const MAX_REPORTED: usize = 100;
 
 fn espeak_ipa(line: &str, data_path: Option<&str>) -> Option<String> {
     let mut command = Command::new("espeak-ng");
@@ -9,7 +9,7 @@ fn espeak_ipa(line: &str, data_path: Option<&str>) -> Option<String> {
     if let Some(path) = data_path {
         command.arg(format!("--path={path}"));
     }
-    let output = command.arg(line).output().ok()?;
+    let output = command.arg("--").arg(line).output().ok()?;
     output.status.success().then(|| {
         String::from_utf8_lossy(&output.stdout)
             .split_whitespace()
@@ -83,6 +83,21 @@ fn parity_with_espeak_on_integer_sweep() {
     );
 }
 
+fn corpus_lines(raw: &str, column: Option<usize>) -> Vec<&str> {
+    let mut lines: Vec<&str> = match column {
+        Some(index) => raw
+            .lines()
+            .skip(1)
+            .filter_map(|row| row.split('\t').nth(index.saturating_sub(1)))
+            .collect(),
+        None => raw.lines().collect(),
+    };
+    lines.retain(|line| !line.trim().is_empty());
+    lines.sort_unstable();
+    lines.dedup();
+    lines
+}
+
 #[test]
 fn parity_with_espeak_on_corpus() {
     let Ok(corpus_path) = std::env::var("DENGJEN_KU_CORPUS") else {
@@ -91,9 +106,11 @@ fn parity_with_espeak_on_corpus() {
     };
     let data_path = std::env::var("DENGJEN_KU_ESPEAK_PATH").ok();
     let corpus = std::fs::read_to_string(corpus_path).unwrap();
-    let diffs: Vec<String> = corpus
-        .lines()
-        .filter(|line| !line.trim().is_empty())
+    let column = std::env::var("DENGJEN_KU_CORPUS_COLUMN")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok());
+    let diffs: Vec<String> = corpus_lines(&corpus, column)
+        .into_iter()
         .filter_map(|line| {
             let want = espeak_ipa(line, data_path.as_deref())
                 .unwrap_or_else(|| panic!("espeak-ng failed on {line:?}"));
