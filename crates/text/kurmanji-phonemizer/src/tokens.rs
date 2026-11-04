@@ -394,7 +394,10 @@ mod tests {
     fn marks_after_a_question_mark_between_letters_vanish_too() {
         assert_eq!(tokenize("a?!b"), vec![Token::Word("a?!b")]);
         assert_eq!(tokenize("a?.,b"), vec![Token::Word("a?.,b")]);
-        assert_eq!(tokenize("a?! b").len(), 2);
+        assert_eq!(
+            tokenize("a?! b").get(..2),
+            Some(&[Token::Word("a"), Token::Boundary(Break::Question)][..])
+        );
     }
 
     #[test]
