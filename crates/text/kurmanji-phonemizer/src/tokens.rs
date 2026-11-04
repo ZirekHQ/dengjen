@@ -79,7 +79,7 @@ fn is_token_start(c: char) -> bool {
 }
 
 fn is_word_joiner(c: char) -> bool {
-    matches!(c, '-' | '\'' | '’')
+    matches!(c, '-' | '\'' | '’' | '?')
 }
 
 fn word_run(text: &str) -> (&str, &str) {
@@ -143,6 +143,10 @@ fn clause_may_end(after: &str) -> bool {
         .is_none_or(|n| n.is_whitespace() || is_bracket(n))
 }
 
+fn marks_end_clause(after: &str) -> bool {
+    clause_may_end(after.trim_start_matches(['.', '!', '?']))
+}
+
 fn ends_sentence(after_period: &str) -> bool {
     clause_may_end(after_period) && !after_period.trim_start().starts_with(char::is_lowercase)
 }
@@ -150,8 +154,8 @@ fn ends_sentence(after_period: &str) -> bool {
 fn break_for(c: char, after: &str) -> Option<Break> {
     match c {
         _ if is_ellipsis(c, after) => Some(Break::Ellipsis),
-        '?' => Some(Break::Question),
-        '!' => Some(Break::Exclamation),
+        '?' if marks_end_clause(after) => Some(Break::Question),
+        '!' if marks_end_clause(after) => Some(Break::Exclamation),
         ',' | ';' if clause_may_end(after) => Some(Break::Comma),
         _ if is_extended_dash(c) && clause_may_end(after) => Some(Break::Comma),
         ':' if clause_may_end(after) => Some(Break::Colon),
@@ -349,15 +353,21 @@ mod tests {
     }
 
     #[test]
-    fn question_and_exclamation_always_break() {
+    fn question_and_exclamation_break_before_a_space_bracket_or_the_end() {
         assert_eq!(
-            tokenize("a?b").get(1),
+            tokenize("a? b").get(1),
             Some(&Token::Boundary(Break::Question))
         );
         assert_eq!(
             tokenize("a!").get(1),
             Some(&Token::Boundary(Break::Exclamation))
         );
+    }
+
+    #[test]
+    fn a_question_mark_between_letters_joins_them_and_an_exclamation_mark_splits_them() {
+        assert_eq!(tokenize("a?b"), vec![Token::Word("a?b")]);
+        assert_eq!(tokenize("a!b"), vec![Token::Word("a"), Token::Word("b")]);
     }
 
     #[test]

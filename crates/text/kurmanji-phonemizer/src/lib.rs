@@ -236,6 +236,12 @@ mod tests {
     }
 
     #[test]
+    fn a_question_mark_inside_a_word_is_dropped() {
+        assert_eq!(sentences("min a?b dît"), vec!["mˈɪn ˈab dˈit."]);
+        assert_eq!(sentences("min dît!te dît"), vec!["mˈɪn dˈit tɛ dˈit."]);
+    }
+
+    #[test]
     fn a_spaced_dash_is_a_comma_break() {
         assert_eq!(sentences("min dît — te dît"), vec!["mˈɪn dˈit,tɛ dˈit."]);
     }
