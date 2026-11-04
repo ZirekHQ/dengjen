@@ -9,6 +9,7 @@ pub(crate) enum Break {
     FullStop,
     Question,
     Exclamation,
+    Ellipsis,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -118,19 +119,42 @@ pub(crate) fn split_camel_case(word: &str) -> Vec<&str> {
         .collect()
 }
 
+const BRACKETS: &str = "()[]{}<>\"'`«»\u{300a}\u{300b}";
+
+fn is_bracket(c: char) -> bool {
+    BRACKETS.contains(c) || ('\u{2014}'..='\u{201f}').contains(&c)
+}
+
+fn is_extended_dash(c: char) -> bool {
+    matches!(
+        c,
+        '\u{2013}' | '\u{2014}' | '\u{2e3a}' | '\u{2e3b}' | '\u{fe31}' | '\u{fe32}'
+    )
+}
+
+fn is_ellipsis(c: char, after: &str) -> bool {
+    c == '\u{2026}' || (c == '.' && after.starts_with(".."))
+}
+
+fn clause_may_end(after: &str) -> bool {
+    after
+        .chars()
+        .next()
+        .is_none_or(|n| n.is_whitespace() || is_bracket(n))
+}
+
 fn ends_sentence(after_period: &str) -> bool {
-    let trimmed = after_period.trim_start();
-    trimmed.is_empty()
-        || (trimmed.len() < after_period.len() && trimmed.starts_with(char::is_uppercase))
+    clause_may_end(after_period) && !after_period.trim_start().starts_with(char::is_lowercase)
 }
 
 fn break_for(c: char, after: &str) -> Option<Break> {
-    let before_space_or_end = !after.starts_with(|n: char| !n.is_whitespace());
     match c {
+        _ if is_ellipsis(c, after) => Some(Break::Ellipsis),
         '?' => Some(Break::Question),
         '!' => Some(Break::Exclamation),
-        ',' | ';' if before_space_or_end => Some(Break::Comma),
-        ':' if before_space_or_end => Some(Break::Colon),
+        ',' | ';' if clause_may_end(after) => Some(Break::Comma),
+        _ if is_extended_dash(c) && clause_may_end(after) => Some(Break::Comma),
+        ':' if clause_may_end(after) => Some(Break::Colon),
         '.' if ends_sentence(after) => Some(Break::FullStop),
         _ => None,
     }
@@ -177,7 +201,12 @@ fn next_token(
     let first = text.chars().next()?;
     let after = after_first_char(text);
     if let Some(kind) = break_for(first, after) {
-        return Some((Token::Boundary(kind), after));
+        let rest = if kind == Break::Ellipsis {
+            after.trim_start_matches('.')
+        } else {
+            after
+        };
+        return Some((Token::Boundary(kind), rest));
     }
     if let Some(currency) = currency_symbol(first) {
         return Some((Token::Currency(currency), after));
@@ -372,6 +401,48 @@ mod tests {
 
     #[test]
     fn brackets_quotes_and_dashes_are_ignored() {
-        assert_eq!(tokenize("(a) \"b\" — c").len(), 3);
+        assert_eq!(tokenize("(a) \"b\" c").len(), 3);
+    }
+
+    #[test]
+    fn spaced_extended_dashes_break_like_a_comma() {
+        assert_eq!(
+            tokenize("a — b"),
+            vec![
+                Token::Word("a"),
+                Token::Boundary(Break::Comma),
+                Token::Word("b")
+            ]
+        );
+        assert_eq!(tokenize("a—b").len(), 2);
+    }
+
+    #[test]
+    fn three_dots_or_an_ellipsis_break_without_ending_the_sentence() {
+        let ellipsis = vec![
+            Token::Word("a"),
+            Token::Boundary(Break::Ellipsis),
+            Token::Word("B"),
+        ];
+        assert_eq!(tokenize("a... B"), ellipsis);
+        assert_eq!(tokenize("a…B"), ellipsis);
+        assert_eq!(tokenize("a.... B"), ellipsis);
+        assert_eq!(tokenize("a.. b").len(), 2);
+    }
+
+    #[test]
+    fn a_closing_quote_lets_a_clause_mark_break() {
+        assert_eq!(
+            tokenize("a,” b").get(1),
+            Some(&Token::Boundary(Break::Comma))
+        );
+        assert_eq!(
+            tokenize("a.” b").get(1),
+            Some(&Token::Boundary(Break::FullStop))
+        );
+        assert_eq!(
+            tokenize("a. “b").get(1),
+            Some(&Token::Boundary(Break::FullStop))
+        );
     }
 }

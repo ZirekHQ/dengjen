@@ -19,6 +19,8 @@ fn base_letter(c: char) -> Option<char> {
 fn fold_to_hawar(c: char) -> Option<char> {
     if is_hawar_letter(c) {
         Some(c)
+    } else if matches!(c, '\'' | '’') {
+        Some('\'')
     } else if c.is_alphabetic() {
         base_letter(c)
     } else {
@@ -55,6 +57,12 @@ mod tests {
         assert_eq!(normalize("Çoğürlük"), "çogürlük");
         assert_eq!(normalize("Diyarbakır"), "diyarbakir");
         assert_eq!(normalize("Łódź"), "lodz");
+    }
+
+    #[test]
+    fn both_apostrophes_normalize_to_one() {
+        assert_eq!(normalize("Qur’anê"), "qur'anê");
+        assert_eq!(normalize("Qur'anê"), "qur'anê");
     }
 
     #[test]
