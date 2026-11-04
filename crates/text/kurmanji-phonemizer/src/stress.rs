@@ -55,12 +55,27 @@ const LETTER_NAMES: &[(char, &str, Option<&str>)] = &[
     ('r', "r", Some("e")),
     ('s', "s", Some("e")),
     ('ş', "ʃ", Some("e")),
-    ('t', "t", Some("ˈɛ")),
+    ('t', "t", Some("ɛ")),
     ('v', "v", Some("e")),
     ('w', "w", Some("e")),
     ('x', "x", Some("e")),
     ('z', "z", Some("e")),
 ];
+
+const ACRONYM_ONLY_NAMES: &[(char, &str, &str)] = &[
+    ('a', "", "a"),
+    ('e', "", "ɛ"),
+    ('ê', "", "e"),
+    ('i', "", "ɪ"),
+    ('î', "", "i"),
+    ('o', "", "o"),
+    ('u', "", "u"),
+    ('û', "", "u"),
+    ('y', "j", "e"),
+];
+
+const SPELLING_GROUP: usize = 3;
+const MAX_UNSPLIT_LETTERS: usize = 4;
 
 const OVERRIDES: &[(&str, &str)] = &[("anji", "anʒˌɪ"), ("hwd", "hˌɛr wɛki dˈɪn")];
 
@@ -92,10 +107,41 @@ fn is_unstressed(word: &str, clause_final: bool) -> bool {
     UNSTRESSED.contains(&word) || (!clause_final && UNSTRESSED_UNLESS_CLAUSE_FINAL.contains(&word))
 }
 
+fn is_listed_stem(stem: &str, clause_final: bool) -> bool {
+    UNSTRESSED.contains(&stem) || (UNSTRESSED_UNLESS_CLAUSE_FINAL.contains(&stem) && !clause_final)
+}
+
+/// One unstressed suffix on a listed stem marks the first vowel secondary; plural
+/// `-an` marks only the last vowel secondary. `None` when the stem is unlisted, or
+/// is a clause-final pronoun that regains full stress.
+fn listed_stem_marks(word: &str, nuclei: usize, clause_final: bool) -> Option<Marks> {
+    let stem = strip_unstressed_suffixes(word);
+    let suffix_marks = || {
+        (unstressed_suffix_count(word) == 1 && is_listed_stem(&stem, clause_final))
+            .then(|| vec![(0, SECONDARY)])
+    };
+    let plural_marks = || {
+        let plural_stem = word.strip_suffix("an")?;
+        is_listed_stem(plural_stem, clause_final)
+            .then(|| vec![(nuclei.saturating_sub(1), SECONDARY)])
+    };
+    suffix_marks().or_else(plural_marks)
+}
+
+fn is_first_syllable_stem(word: &str) -> bool {
+    let stem = strip_unstressed_suffixes(word);
+    FIRST_SYLLABLE.contains(&stem.as_str())
+        || stem
+            .strip_suffix("an")
+            .is_some_and(|plural| FIRST_SYLLABLE.contains(&plural))
+}
+
 fn stress_marks(word: &str, nuclei: usize, clause_final: bool) -> Marks {
     if is_unstressed(word, clause_final) {
         Vec::new()
-    } else if FIRST_SYLLABLE.contains(&strip_unstressed_suffixes(word).as_str()) {
+    } else if let Some(marks) = listed_stem_marks(word, nuclei, clause_final) {
+        marks
+    } else if is_first_syllable_stem(word) {
         first_syllable_marks(stem_nuclei(word, nuclei))
     } else {
         default_marks(stem_nuclei(word, nuclei))
@@ -126,27 +172,79 @@ fn render(segments: &[Segment], marks: &Marks) -> String {
         .collect()
 }
 
-fn letter_name(letter: char) -> Option<(&'static str, Option<&'static str>)> {
+fn letter_name(letter: char, with_vowels: bool) -> Option<LetterName> {
     LETTER_NAMES
         .iter()
         .find(|(l, _, _)| *l == letter)
         .map(|(_, onset, vowel)| (*onset, *vowel))
+        .or_else(|| {
+            ACRONYM_ONLY_NAMES
+                .iter()
+                .filter(|_| with_vowels)
+                .find(|(l, _, _)| *l == letter)
+                .map(|(_, onset, vowel)| (*onset, Some(*vowel)))
+        })
 }
 
-fn spell_letters(word: &str) -> Option<String> {
-    let names: Vec<_> = word.chars().map(letter_name).collect::<Option<_>>()?;
+type LetterName = (&'static str, Option<&'static str>);
+
+/// eSpeak-ng spells a long letter run in groups of three, each with its own
+/// final stress, and leaves a remainder of up to four letters whole.
+fn spelling_groups(names: &[LetterName]) -> Vec<&[LetterName]> {
+    let splits = names
+        .len()
+        .saturating_sub(MAX_UNSPLIT_LETTERS)
+        .div_ceil(SPELLING_GROUP);
+    let (heads, tail) = names.split_at(splits * SPELLING_GROUP);
+    heads
+        .chunks(SPELLING_GROUP)
+        .chain(std::iter::once(tail))
+        .collect()
+}
+
+fn spell_group(names: &[LetterName]) -> String {
     let last_voiced = names.iter().rposition(|(_, vowel)| vowel.is_some());
-    let spelled = names
+    names
         .iter()
         .enumerate()
         .map(|(i, (onset, vowel))| match vowel {
-            Some(v) if v.starts_with(PRIMARY) => format!("{onset}{v}"),
             Some(v) if Some(i) == last_voiced => format!("{onset}{PRIMARY}{v}"),
             Some(v) => format!("{onset}{SECONDARY}{v}"),
             None => (*onset).to_string(),
         })
-        .collect();
-    Some(spelled)
+        .collect()
+}
+
+fn spell_letters(word: &str, with_vowels: bool) -> Option<String> {
+    let names: Vec<_> = word
+        .chars()
+        .map(|letter| letter_name(letter, with_vowels))
+        .collect::<Option<_>>()?;
+    Some(
+        spelling_groups(&names)
+            .into_iter()
+            .map(spell_group)
+            .collect(),
+    )
+}
+
+/// Spells `word` letter by letter with vowel letter names, or `None` if any letter has no name.
+pub(crate) fn acronym_to_ipa(word: &str) -> Option<String> {
+    spell_letters(&normalize(word), true)
+}
+
+fn rules_to_ipa(word: &str) -> String {
+    let segments = word_to_segments(word);
+    let nuclei = segments.iter().filter(|s| s.is_vowel).count();
+    render(&segments, &default_marks(stem_nuclei(word, nuclei)))
+}
+
+/// A consonant-only start before an apostrophe (`tv'ya`) is spelled out and
+/// the rest read by the plain letter rules, as eSpeak-ng does.
+fn spelled_prefix_split(word: &str) -> Option<String> {
+    let (prefix, rest) = word.split_once('\'')?;
+    let spelled = spell_letters(prefix, false).filter(|_| prefix.chars().count() > 1)?;
+    Some(format!("{spelled}{}", rules_to_ipa(rest)))
 }
 
 /// IPA for one word. `clause_final` restores stress on pronouns and particles;
@@ -156,7 +254,7 @@ pub(crate) fn word_to_ipa(word: &str, clause_final: bool) -> String {
     if let Some((_, ipa)) = OVERRIDES.iter().find(|(w, _)| *w == word) {
         return (*ipa).to_string();
     }
-    if let Some(spelled) = spell_letters(&word) {
+    if let Some(spelled) = spell_letters(&word, false).or_else(|| spelled_prefix_split(&word)) {
         return spelled;
     }
     let segments = word_to_segments(&word);
@@ -226,5 +324,53 @@ mod tests {
         assert_eq!(word_to_ipa("ez", false), "ɛz");
         assert_eq!(word_to_ipa("ez", true), "ˈɛz");
         assert_eq!(word_to_ipa("bi", true), "bɪ");
+    }
+
+    #[test]
+    fn a_listed_stem_with_one_suffix_is_secondary() {
+        assert_eq!(word_to_ipa("wanê", false), "wˌane");
+        assert_eq!(word_to_ipa("kirê", false), "kˌɪre");
+        assert_eq!(word_to_ipa("wanêê", false), "wˈanee");
+    }
+
+    #[test]
+    fn clause_final_restores_only_the_plus_flagged_stems() {
+        assert_eq!(word_to_ipa("wanê", true), "wˈane");
+        assert_eq!(word_to_ipa("kirê", true), "kˌɪre");
+    }
+
+    #[test]
+    fn plural_an_after_a_listed_stem_is_secondary() {
+        assert_eq!(word_to_ipa("wanan", false), "wanˌan");
+        assert_eq!(word_to_ipa("dostan", false), "dostˈan");
+    }
+
+    #[test]
+    fn first_syllable_stems_keep_their_stress_before_plural_an() {
+        assert_eq!(word_to_ipa("hilbijartinan", false), "hˈɪlbɪʒˌartɪnˌan");
+    }
+
+    #[test]
+    fn long_letter_runs_are_spelled_in_groups_of_three() {
+        assert_eq!(word_to_ipa("bdtvw", false), "bˌedˌɛtˈɛvˌewˈe");
+        assert_eq!(word_to_ipa("bdtvwz", false), "bˌedˌɛtˈɛvˌewˌezˈe");
+        assert_eq!(word_to_ipa("bdtvwzx", false), "bˌedˌɛtˈɛvˌewˌezˌexˈe");
+    }
+
+    #[test]
+    fn a_spelled_prefix_before_an_apostrophe_leaves_the_rest_to_the_rules() {
+        assert_eq!(word_to_ipa("tv'ya", false), "tˌɛvˈejˈa");
+    }
+
+    #[test]
+    fn an_apostrophe_keeps_r_from_flapping() {
+        assert_eq!(word_to_ipa("Qur’anê", false), "qʊrˈane");
+    }
+
+    #[test]
+    fn acronyms_are_spelled_with_vowel_letter_names() {
+        assert_eq!(acronym_to_ipa("ISO").as_deref(), Some("ˌɪsˌeˈo"));
+        assert_eq!(acronym_to_ipa("YB").as_deref(), Some("jˌebˈe"));
+        assert_eq!(acronym_to_ipa("ÖB"), None);
     }
 }

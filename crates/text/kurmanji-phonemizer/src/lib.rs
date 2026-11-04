@@ -51,10 +51,45 @@ fn phrase_to_ipa(words: &[String], clause_final: bool) -> String {
         .join(" ")
 }
 
-fn token_to_ipa(token: &Token, clause_final: bool) -> String {
+fn is_short_acronym(word: &str) -> bool {
+    (2..=3).contains(&word.chars().count()) && word.chars().all(char::is_uppercase)
+}
+
+/// eSpeak-ng spells a short all-capitals word only inside running lowercase
+/// text: more than three lowercase letters in the clause, and no more capitals
+/// than lowercase letters.
+fn spells_acronyms(tokens: &[Token]) -> bool {
+    let (upper, lower) = tokens
+        .iter()
+        .filter_map(|token| match token {
+            Token::Word(word) => Some(word.chars()),
+            _ => None,
+        })
+        .flatten()
+        .filter(|c| c.is_alphabetic())
+        .fold((0_usize, 0_usize), |(upper, lower), c| {
+            if c.is_uppercase() {
+                (upper + 1, lower)
+            } else if c.is_lowercase() {
+                (upper, lower + 1)
+            } else {
+                (upper, lower)
+            }
+        });
+    lower > 3 && upper <= lower
+}
+
+fn word_to_ipa(word: &str, clause_final: bool, spell_acronyms: bool) -> String {
+    (spell_acronyms && is_short_acronym(word))
+        .then(|| stress::acronym_to_ipa(word))
+        .flatten()
+        .unwrap_or_else(|| compound_to_ipa(word, clause_final))
+}
+
+fn token_to_ipa(token: &Token, clause_final: bool, spell_acronyms: bool) -> String {
     match token {
         Token::Boundary(_) => String::new(),
-        Token::Word(word) => compound_to_ipa(word, clause_final),
+        Token::Word(word) => word_to_ipa(word, clause_final, spell_acronyms),
         Token::Time {
             hour,
             minute,
@@ -89,10 +124,11 @@ fn token_to_ipa(token: &Token, clause_final: bool) -> String {
 
 fn clause_to_ipa(tokens: &[Token]) -> String {
     let last = tokens.len().saturating_sub(1);
+    let spell_acronyms = spells_acronyms(tokens);
     tokens
         .iter()
         .enumerate()
-        .map(|(i, token)| token_to_ipa(token, i == last))
+        .map(|(i, token)| token_to_ipa(token, i == last, spell_acronyms))
         .filter(|ipa| !ipa.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
@@ -118,6 +154,7 @@ fn break_suffix(kind: Option<Break>) -> &'static str {
         Some(Break::Comma) => ",",
         Some(Break::Question) => "?",
         Some(Break::Exclamation) => "!",
+        Some(Break::Ellipsis) => "",
         Some(Break::Colon | Break::FullStop) | None => ".",
     }
 }
@@ -171,6 +208,57 @@ mod tests {
     fn a_pronoun_alone_before_a_comma_keeps_its_stress() {
         assert_eq!(sentences("Ez, bi nivîsa"), vec!["ˈɛz,bɪ nɪvˈisa."]);
         assert_eq!(sentences("Ez bi nivîsa"), vec!["ɛz bɪ nɪvˈisa."]);
+    }
+
+    #[test]
+    fn uncased_letters_do_not_count_as_lowercase() {
+        assert_eq!(sentences("ISO سلاو")[0], sentences("ISO")[0]);
+    }
+
+    #[test]
+    fn short_capitals_in_running_lowercase_text_are_spelled() {
+        assert_eq!(
+            sentences("ISO sed kes hatin")[0],
+            "ˌɪsˌeˈo sˈɛd kˈɛs hatˈɪn."
+        );
+        assert_eq!(sentences("ISO sed")[0], "ɪsˈo sˈɛd.");
+        assert_eq!(
+            sentences("UEFA sed kes hatin")[0],
+            "ʊˈɛfa sˈɛd kˈɛs hatˈɪn."
+        );
+    }
+
+    #[test]
+    fn an_ellipsis_joins_the_clauses_without_a_suffix() {
+        assert_eq!(sentences("min dît… te dît"), vec!["mˈɪn dˈittɛ dˈit."]);
+        assert_eq!(sentences("min dît..."), vec!["mˈɪn dˈit"]);
+    }
+
+    #[test]
+    fn a_period_before_a_quote_ends_the_sentence() {
+        assert_eq!(
+            sentences("min dît. “te dît"),
+            vec!["mˈɪn dˈit.", "tɛ dˈit."]
+        );
+    }
+
+    #[test]
+    fn a_question_mark_inside_a_word_is_dropped() {
+        assert_eq!(sentences("min a?b dît"), vec!["mˈɪn ˈab dˈit."]);
+        assert_eq!(sentences("min dît!te dît"), vec!["mˈɪn dˈit tɛ dˈit."]);
+    }
+
+    #[test]
+    fn a_spaced_dash_is_a_comma_break() {
+        assert_eq!(sentences("min dît — te dît"), vec!["mˈɪn dˈit,tɛ dˈit."]);
+    }
+
+    #[test]
+    fn capitals_are_counted_per_clause() {
+        assert_eq!(
+            sentences("ISO sed kes hatin, DNA"),
+            vec!["ˌɪsˌeˈo sˈɛd kˈɛs hatˈɪn,dnˈa."]
+        );
     }
 
     #[test]

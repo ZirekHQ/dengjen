@@ -833,6 +833,7 @@ name = "dengjen-espeak-phonemizer"
 version = "3.0.4"
 dependencies = [
  "dengjen-espeak-rs-sys",
+ "dengjen-kurmanji-phonemizer",
  "ffi-support",
  "once_cell",
  "workspace-hack",

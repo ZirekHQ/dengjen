@@ -9,6 +9,7 @@ pub(crate) enum Break {
     FullStop,
     Question,
     Exclamation,
+    Ellipsis,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,27 +82,55 @@ fn is_word_joiner(c: char) -> bool {
     matches!(c, '-' | '\'' | '’')
 }
 
+fn is_mark_run_char(c: char) -> bool {
+    matches!(c, '?' | '!' | '.' | ',')
+}
+
+/// Index after the char at `k` when it belongs to the word, or `None` when the word ends there.
+/// A joiner needs a letter on both sides; a `?` and the marks after it vanish between letters.
+fn word_step(chars: &[(usize, char)], k: usize) -> Option<usize> {
+    let letter_at = |i: Option<usize>| {
+        i.and_then(|i| chars.get(i))
+            .is_some_and(|(_, c)| is_word_char(*c))
+    };
+    let (_, c) = chars.get(k)?;
+    let after_marks = || {
+        (k..chars.len())
+            .find(|i| chars.get(*i).is_some_and(|(_, m)| !is_mark_run_char(*m)))
+            .unwrap_or(chars.len())
+    };
+    if is_word_char(*c) {
+        Some(k + 1)
+    } else if is_word_joiner(*c) {
+        (letter_at(k.checked_sub(1)) && letter_at(Some(k + 1))).then_some(k + 1)
+    } else if *c == '?' && letter_at(k.checked_sub(1)) {
+        Some(after_marks()).filter(|end| letter_at(Some(*end)))
+    } else {
+        None
+    }
+}
+
+/// Length of the prefix that can belong to one word: marks count only inside a `?` run.
+fn word_span_len(text: &str) -> usize {
+    let mut in_question_run = false;
+    text.find(|c: char| {
+        in_question_run = c == '?' || (in_question_run && is_mark_run_char(c));
+        !(is_word_char(c) || is_word_joiner(c) || in_question_run)
+    })
+    .unwrap_or(text.len())
+}
+
 fn word_run(text: &str) -> (&str, &str) {
-    let span_len = text
-        .find(|c| !is_word_char(c) && !is_word_joiner(c))
-        .unwrap_or(text.len());
+    let span_len = word_span_len(text);
     let chars: Vec<(usize, char)> = text
         .get(..span_len)
         .unwrap_or_default()
         .char_indices()
         .collect();
-    let is_word_at = |k: Option<usize>| {
-        k.and_then(|k| chars.get(k))
-            .is_some_and(|(_, c)| is_word_char(*c))
-    };
-    let belongs = |k: usize| match chars.get(k) {
-        Some((_, c)) if is_word_joiner(*c) => {
-            is_word_at(k.checked_sub(1)) && is_word_at(Some(k + 1))
-        }
-        _ => is_word_at(Some(k)),
-    };
-    let kept = (0..chars.len()).take_while(|k| belongs(*k)).count();
-    text.split_at(chars.get(kept).map_or(span_len, |(i, _)| *i))
+    let end = std::iter::successors(Some(0), |k| word_step(&chars, *k))
+        .last()
+        .unwrap_or(0);
+    text.split_at(chars.get(end).map_or(span_len, |(i, _)| *i))
 }
 
 pub(crate) fn split_camel_case(word: &str) -> Vec<&str> {
@@ -118,19 +147,46 @@ pub(crate) fn split_camel_case(word: &str) -> Vec<&str> {
         .collect()
 }
 
+const BRACKETS: &str = "()[]{}<>\"'`«»\u{300a}\u{300b}";
+
+fn is_bracket(c: char) -> bool {
+    BRACKETS.contains(c) || ('\u{2014}'..='\u{201f}').contains(&c)
+}
+
+fn is_extended_dash(c: char) -> bool {
+    matches!(
+        c,
+        '\u{2013}' | '\u{2014}' | '\u{2e3a}' | '\u{2e3b}' | '\u{fe31}' | '\u{fe32}'
+    )
+}
+
+fn is_ellipsis(c: char, after: &str) -> bool {
+    c == '\u{2026}' || (c == '.' && after.starts_with(".."))
+}
+
+fn clause_may_end(after: &str) -> bool {
+    after
+        .chars()
+        .next()
+        .is_none_or(|n| n.is_whitespace() || is_bracket(n))
+}
+
+fn marks_end_clause(after: &str) -> bool {
+    clause_may_end(after.trim_start_matches(['.', '!', '?']))
+}
+
 fn ends_sentence(after_period: &str) -> bool {
-    let trimmed = after_period.trim_start();
-    trimmed.is_empty()
-        || (trimmed.len() < after_period.len() && trimmed.starts_with(char::is_uppercase))
+    clause_may_end(after_period) && !after_period.trim_start().starts_with(char::is_lowercase)
 }
 
 fn break_for(c: char, after: &str) -> Option<Break> {
-    let before_space_or_end = !after.starts_with(|n: char| !n.is_whitespace());
     match c {
-        '?' => Some(Break::Question),
-        '!' => Some(Break::Exclamation),
-        ',' | ';' if before_space_or_end => Some(Break::Comma),
-        ':' if before_space_or_end => Some(Break::Colon),
+        _ if is_ellipsis(c, after) => Some(Break::Ellipsis),
+        '?' if marks_end_clause(after) => Some(Break::Question),
+        '!' if marks_end_clause(after) => Some(Break::Exclamation),
+        ',' | ';' if clause_may_end(after) => Some(Break::Comma),
+        _ if is_extended_dash(c) && clause_may_end(after) => Some(Break::Comma),
+        ':' if clause_may_end(after) => Some(Break::Colon),
         '.' if ends_sentence(after) => Some(Break::FullStop),
         _ => None,
     }
@@ -177,7 +233,12 @@ fn next_token(
     let first = text.chars().next()?;
     let after = after_first_char(text);
     if let Some(kind) = break_for(first, after) {
-        return Some((Token::Boundary(kind), after));
+        let rest = if kind == Break::Ellipsis {
+            after.trim_start_matches('.')
+        } else {
+            after
+        };
+        return Some((Token::Boundary(kind), rest));
     }
     if let Some(currency) = currency_symbol(first) {
         return Some((Token::Currency(currency), after));
@@ -320,15 +381,48 @@ mod tests {
     }
 
     #[test]
-    fn question_and_exclamation_always_break() {
+    fn question_and_exclamation_break_before_a_space_bracket_or_the_end() {
         assert_eq!(
-            tokenize("a?b").get(1),
+            tokenize("a? b").get(1),
             Some(&Token::Boundary(Break::Question))
         );
         assert_eq!(
             tokenize("a!").get(1),
             Some(&Token::Boundary(Break::Exclamation))
         );
+    }
+
+    #[test]
+    fn a_question_mark_between_letters_joins_them_and_an_exclamation_mark_splits_them() {
+        assert_eq!(tokenize("a?b"), vec![Token::Word("a?b")]);
+        assert_eq!(tokenize("a!b"), vec![Token::Word("a"), Token::Word("b")]);
+    }
+
+    #[test]
+    fn marks_after_a_question_mark_between_letters_vanish_too() {
+        assert_eq!(tokenize("a?!b"), vec![Token::Word("a?!b")]);
+        assert_eq!(tokenize("a?.,b"), vec![Token::Word("a?.,b")]);
+        assert_eq!(
+            tokenize("a?! b").get(..2),
+            Some(&[Token::Word("a"), Token::Boundary(Break::Question)][..])
+        );
+    }
+
+    #[test]
+    fn word_span_stops_at_marks_outside_a_question_run() {
+        assert_eq!(word_span_len("a!a!a!a!"), 1);
+        assert_eq!(word_span_len("a?!,b!c"), 5);
+        assert_eq!(word_span_len("ab, cd"), 2);
+    }
+
+    #[test]
+    fn long_runs_of_glued_marks_tokenize_to_one_word_each() {
+        let text = "a!".repeat(5000);
+        let words = tokenize(&text)
+            .into_iter()
+            .filter(|token| matches!(token, Token::Word(_)))
+            .count();
+        assert_eq!(words, 5000);
     }
 
     #[test]
@@ -372,6 +466,48 @@ mod tests {
 
     #[test]
     fn brackets_quotes_and_dashes_are_ignored() {
-        assert_eq!(tokenize("(a) \"b\" — c").len(), 3);
+        assert_eq!(tokenize("(a) \"b\" c").len(), 3);
+    }
+
+    #[test]
+    fn spaced_extended_dashes_break_like_a_comma() {
+        assert_eq!(
+            tokenize("a — b"),
+            vec![
+                Token::Word("a"),
+                Token::Boundary(Break::Comma),
+                Token::Word("b")
+            ]
+        );
+        assert_eq!(tokenize("a—b").len(), 2);
+    }
+
+    #[test]
+    fn three_dots_or_an_ellipsis_break_without_ending_the_sentence() {
+        let ellipsis = vec![
+            Token::Word("a"),
+            Token::Boundary(Break::Ellipsis),
+            Token::Word("B"),
+        ];
+        assert_eq!(tokenize("a... B"), ellipsis);
+        assert_eq!(tokenize("a…B"), ellipsis);
+        assert_eq!(tokenize("a.... B"), ellipsis);
+        assert_eq!(tokenize("a.. b").len(), 2);
+    }
+
+    #[test]
+    fn a_closing_quote_lets_a_clause_mark_break() {
+        assert_eq!(
+            tokenize("a,” b").get(1),
+            Some(&Token::Boundary(Break::Comma))
+        );
+        assert_eq!(
+            tokenize("a.” b").get(1),
+            Some(&Token::Boundary(Break::FullStop))
+        );
+        assert_eq!(
+            tokenize("a. “b").get(1),
+            Some(&Token::Boundary(Break::FullStop))
+        );
     }
 }
