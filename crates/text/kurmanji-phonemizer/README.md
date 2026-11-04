@@ -19,6 +19,7 @@ Stress follows eSpeak-ng after [espeak-ng#2500](https://github.com/espeak-ng/esp
 `tests/golden*.tsv` pin expected output and run everywhere. `tests/parity.rs` diffs against a local `espeak-ng` and skips itself when its inputs are unset:
 
 - `DENGJEN_KU_CORPUS`: a text file, one sentence per line.
+- `DENGJEN_KU_CORPUS_COLUMN`: a 1-based column number. Treats the corpus as a TSV with a header row and compares that column, for example `4` for the `sentence` column of a Common Voice `test.tsv`. Lines are sorted and deduplicated.
 - `DENGJEN_KU_SWEEP_MAX`: compare every integer up to this value.
 - `DENGJEN_KU_ESPEAK_PATH`: directory holding an `espeak-ng-data` built from the current upstream `ku_rules` and `ku_list`.
 - `DENGJEN_KU_MAX_MISMATCH`: mismatching corpus lines to tolerate (default 0).
