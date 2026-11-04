@@ -79,30 +79,50 @@ fn is_token_start(c: char) -> bool {
 }
 
 fn is_word_joiner(c: char) -> bool {
-    matches!(c, '-' | '\'' | '’' | '?')
+    matches!(c, '-' | '\'' | '’')
+}
+
+fn is_mark_run_char(c: char) -> bool {
+    matches!(c, '?' | '!' | '.' | ',')
+}
+
+/// Index after the char at `k` when it belongs to the word, or `None` when the word ends there.
+/// A joiner needs a letter on both sides; a `?` and the marks after it vanish between letters.
+fn word_step(chars: &[(usize, char)], k: usize) -> Option<usize> {
+    let letter_at = |i: Option<usize>| {
+        i.and_then(|i| chars.get(i))
+            .is_some_and(|(_, c)| is_word_char(*c))
+    };
+    let (_, c) = chars.get(k)?;
+    let after_marks = || {
+        (k..chars.len())
+            .find(|i| chars.get(*i).is_some_and(|(_, m)| !is_mark_run_char(*m)))
+            .unwrap_or(chars.len())
+    };
+    if is_word_char(*c) {
+        Some(k + 1)
+    } else if is_word_joiner(*c) {
+        (letter_at(k.checked_sub(1)) && letter_at(Some(k + 1))).then_some(k + 1)
+    } else if *c == '?' && letter_at(k.checked_sub(1)) {
+        Some(after_marks()).filter(|end| letter_at(Some(*end)))
+    } else {
+        None
+    }
 }
 
 fn word_run(text: &str) -> (&str, &str) {
     let span_len = text
-        .find(|c| !is_word_char(c) && !is_word_joiner(c))
+        .find(|c| !is_word_char(c) && !is_word_joiner(c) && !is_mark_run_char(c))
         .unwrap_or(text.len());
     let chars: Vec<(usize, char)> = text
         .get(..span_len)
         .unwrap_or_default()
         .char_indices()
         .collect();
-    let is_word_at = |k: Option<usize>| {
-        k.and_then(|k| chars.get(k))
-            .is_some_and(|(_, c)| is_word_char(*c))
-    };
-    let belongs = |k: usize| match chars.get(k) {
-        Some((_, c)) if is_word_joiner(*c) => {
-            is_word_at(k.checked_sub(1)) && is_word_at(Some(k + 1))
-        }
-        _ => is_word_at(Some(k)),
-    };
-    let kept = (0..chars.len()).take_while(|k| belongs(*k)).count();
-    text.split_at(chars.get(kept).map_or(span_len, |(i, _)| *i))
+    let end = std::iter::successors(Some(0), |k| word_step(&chars, *k))
+        .last()
+        .unwrap_or(0);
+    text.split_at(chars.get(end).map_or(span_len, |(i, _)| *i))
 }
 
 pub(crate) fn split_camel_case(word: &str) -> Vec<&str> {
@@ -368,6 +388,13 @@ mod tests {
     fn a_question_mark_between_letters_joins_them_and_an_exclamation_mark_splits_them() {
         assert_eq!(tokenize("a?b"), vec![Token::Word("a?b")]);
         assert_eq!(tokenize("a!b"), vec![Token::Word("a"), Token::Word("b")]);
+    }
+
+    #[test]
+    fn marks_after_a_question_mark_between_letters_vanish_too() {
+        assert_eq!(tokenize("a?!b"), vec![Token::Word("a?!b")]);
+        assert_eq!(tokenize("a?.,b"), vec![Token::Word("a?.,b")]);
+        assert_eq!(tokenize("a?! b").len(), 2);
     }
 
     #[test]
