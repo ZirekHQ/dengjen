@@ -23,8 +23,22 @@ use std::sync::{Arc, Mutex, RwLock};
 
 const MIN_CHUNK_SIZE: isize = 44;
 const MAX_CHUNK_SIZE: usize = 1024;
-const CHUNK_CROSSFADE_SAMPLES: usize = 42;
 const DEFAULT_HOP_LENGTH: usize = 256;
+/// Mel frames of context the decoder needs on each side of a chunk for its output to match a
+/// one-shot decode of the whole utterance.
+///
+/// The VITS/HiFi-GAN decoder's receptive field spans many frames. With less context than that,
+/// the samples near each chunk edge come out different from a one-shot decode, and the seam
+/// between two chunks is audible. Measured on Piper medium, high, low and multi-speaker voices
+/// (`nl_BE-nathalie`, `de_DE-thorsten`, `cs_CZ-jirka`, `nl_NL-mls`; +RT exports): with 3 frames
+/// the RMS error around a seam is about as large as the signal itself; with 20 frames it drops
+/// to about 1% (median) of the signal, i.e. the seam is effectively gone.
+const MIN_DECODER_CONTEXT_FRAMES: usize = 20;
+
+/// The padding actually used: a caller's `chunk_padding`, raised to the decoder's minimum context.
+fn effective_chunk_padding(requested: usize) -> usize {
+    requested.max(MIN_DECODER_CONTEXT_FRAMES)
+}
 
 pub struct VitsStreamingModel {
     synth_config: RwLock<PiperSynthesisConfig>,
@@ -193,7 +207,7 @@ impl DengjenModel for VitsStreamingModel {
             Arc::clone(&self.decoder_model),
             encoder_outputs,
             chunk_size,
-            chunk_padding,
+            effective_chunk_padding(chunk_padding),
             self.config.hop_length.unwrap_or(DEFAULT_HOP_LENGTH),
             cancel_token,
         )?))
@@ -340,18 +354,21 @@ impl SpeechStreamer {
     }
 }
 
+/// Cuts the decoder context off a chunk's audio and returns the samples unchanged.
+///
+/// No fade is applied: the kept regions of consecutive chunks tile the utterance exactly, and
+/// with enough decoder context (see [`MIN_DECODER_CONTEXT_FRAMES`]) their edges already match
+/// a one-shot decode. Fading each chunk to silence at both ends would put a dip at every seam.
 fn trim_chunk_padding(
     waveform: ArrayView<f32, Dim<IxDynImpl>>,
     audio_index: ndarray::Slice,
 ) -> DengjenResult<AudioSamples> {
-    let mut samples: AudioSamples = waveform
+    Ok(waveform
         .slice_axis(Axis(2), audio_index)
         .as_slice()
         .ok_or_else(|| DengjenError::with_message("Invalid model audio output"))?
         .to_vec()
-        .into();
-    samples.crossfade(CHUNK_CROSSFADE_SAMPLES);
-    Ok(samples)
+        .into())
 }
 
 impl Iterator for SpeechStreamer {
@@ -514,6 +531,45 @@ mod tests {
         assert_eq!(mel_index.end, None);
         assert_eq!(audio_index.end, None);
         assert!(chunker.next().is_none());
+    }
+
+    #[test]
+    fn effective_chunk_padding_raises_small_padding_to_the_decoder_context() {
+        assert_eq!(effective_chunk_padding(0), MIN_DECODER_CONTEXT_FRAMES);
+        assert_eq!(effective_chunk_padding(3), MIN_DECODER_CONTEXT_FRAMES);
+        assert_eq!(effective_chunk_padding(32), 32);
+    }
+
+    #[test]
+    fn adaptive_mel_chunker_kept_audio_tiles_the_utterance_without_gaps_or_overlap() {
+        for (num_frames, chunk_size, padding) in
+            [(766, 55, 20), (5000, 55, 20), (300, 72, 3), (2000, 100, 32)]
+        {
+            let hop = 256;
+            let mut next_expected = 0;
+            for (mel, audio) in AdaptiveMelChunker::new(num_frames, chunk_size, padding, hop) {
+                let mel_end = mel.end.unwrap_or(num_frames);
+                let kept_start = mel.start + audio.start / hop;
+                let kept_end = mel_end + audio.end.map_or(0, |end| end / hop);
+                assert_eq!(
+                    kept_start, next_expected,
+                    "gap or overlap at frame {next_expected} \
+                     (num_frames {num_frames}, chunk {chunk_size}, padding {padding})"
+                );
+                assert!(kept_end > kept_start);
+                next_expected = kept_end;
+            }
+            assert_eq!(next_expected, num_frames);
+        }
+    }
+
+    #[test]
+    fn trim_chunk_padding_keeps_the_edge_samples_at_full_amplitude() {
+        let waveform = Array::from_elem(IxDyn(&[1, 1, 4096]), 0.5_f32);
+        let trimmed =
+            trim_chunk_padding(waveform.view(), ndarray::Slice::new(256, Some(-256), 1)).unwrap();
+        assert_eq!(trimmed.len(), 4096 - 512);
+        assert!(trimmed.as_slice().iter().all(|&s| s == 0.5));
     }
 
     #[test]
