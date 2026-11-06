@@ -171,23 +171,8 @@ impl AudioOutputConfig {
             return Ok(samples);
         }
         let input = samples.into_vec();
-        let (rate, channels, _) =
-            Self::sonic_stream_dimensions(input.len(), sample_rate, num_channels)?;
-        let mut stream = SonicStream::new(rate, channels)?;
-
-        if let Some(pct) = self.rate {
-            let speed = utils::percent_to_param(pct, SPEED_PARAM_RANGE.min, SPEED_PARAM_RANGE.max);
-            stream.set_speed(speed);
-        }
-        if let Some(pct) = self.volume.filter(|&pct| pct != 0) {
-            let volume =
-                utils::percent_to_param(pct, VOLUME_PARAM_RANGE.min, VOLUME_PARAM_RANGE.max);
-            stream.set_volume(volume);
-        }
-        if let Some(pct) = self.pitch {
-            let pitch = utils::percent_to_param(pct, PITCH_PARAM_RANGE.min, PITCH_PARAM_RANGE.max);
-            stream.set_pitch(pitch);
-        }
+        Self::sonic_stream_dimensions(input.len(), sample_rate, num_channels)?;
+        let mut stream = self.sonic_stream(sample_rate, num_channels)?;
 
         stream.write(&input);
         stream.flush();
@@ -204,6 +189,26 @@ impl AudioOutputConfig {
             output.fill(0.0);
         }
         Ok(output.into())
+    }
+
+    /// A sonic stream set up with this config's rate, volume and pitch.
+    fn sonic_stream(&self, sample_rate: usize, num_channels: usize) -> DengjenResult<SonicStream> {
+        let (rate, channels, _) = Self::sonic_stream_dimensions(0, sample_rate, num_channels)?;
+        let mut stream = SonicStream::new(rate, channels)?;
+        if let Some(pct) = self.rate {
+            let speed = utils::percent_to_param(pct, SPEED_PARAM_RANGE.min, SPEED_PARAM_RANGE.max);
+            stream.set_speed(speed);
+        }
+        if let Some(pct) = self.volume.filter(|&pct| pct != 0) {
+            let volume =
+                utils::percent_to_param(pct, VOLUME_PARAM_RANGE.min, VOLUME_PARAM_RANGE.max);
+            stream.set_volume(volume);
+        }
+        if let Some(pct) = self.pitch {
+            let pitch = utils::percent_to_param(pct, PITCH_PARAM_RANGE.min, PITCH_PARAM_RANGE.max);
+            stream.set_pitch(pitch);
+        }
+        Ok(stream)
     }
 
     fn sonic_stream_dimensions(
@@ -249,6 +254,51 @@ impl AudioOutputConfig {
             })?;
         let silence = vec![0f32; sample_count];
         self.apply_to_raw_samples(silence.into(), sample_rate, num_channels)
+    }
+}
+
+/// Applies an [`AudioOutputConfig`] to one sentence whose audio arrives in chunks.
+///
+/// Sonic's time-stretching works on pitch periods and keeps state between writes. Running each
+/// chunk through its own freshly created and flushed stream resets that state at every chunk
+/// seam and pads every chunk's end, which is audible whenever the rate or pitch is not 1x. One
+/// stream per sentence, flushed once at the end, gives the same audio as shaping the whole
+/// sentence at once.
+struct StreamShaper {
+    stream: SonicStream,
+    mute: bool,
+}
+
+impl StreamShaper {
+    fn new(
+        config: &AudioOutputConfig,
+        sample_rate: usize,
+        num_channels: usize,
+    ) -> DengjenResult<Self> {
+        Ok(Self {
+            stream: config.sonic_stream(sample_rate, num_channels)?,
+            mute: config.volume == Some(0),
+        })
+    }
+
+    /// Feeds one chunk and returns whatever shaped audio is ready (possibly none yet).
+    fn push(&mut self, samples: &AudioSamples) -> AudioSamples {
+        self.stream.write(samples.as_slice());
+        self.take_available()
+    }
+
+    /// Flushes the stream at the end of the sentence and returns the remaining audio.
+    fn finish(mut self) -> AudioSamples {
+        self.stream.flush();
+        self.take_available()
+    }
+
+    fn take_available(&mut self) -> AudioSamples {
+        let mut output = self.stream.read(self.stream.samples_available());
+        if self.mute {
+            output.fill(0.0);
+        }
+        output.into()
     }
 }
 
@@ -785,22 +835,35 @@ impl RealtimeSpeechStream {
         num_channels: usize,
         cancel_token: &CancellationToken,
     ) -> Result<(), SendError<DengjenResult<AudioSamples>>> {
+        let mut shaper = match output_config
+            .map(|config| StreamShaper::new(config, sample_rate, num_channels))
+            .transpose()
+        {
+            Ok(shaper) => shaper,
+            Err(err) => return tx.send(Err(err)),
+        };
         for chunk in stream {
             if cancel_token.is_cancelled() {
                 return Ok(());
             }
-            let shaped = match (chunk, output_config) {
-                (Ok(samples), Some(config)) => {
-                    config.apply_to_raw_samples(samples, sample_rate, num_channels)
-                }
+            let shaped = match (chunk, shaper.as_mut()) {
+                (Ok(samples), Some(shaper)) => Ok(shaper.push(&samples)),
                 (Ok(samples), None) => Ok(samples),
                 (Err(err), _) => Err(err),
             };
+            if matches!(&shaped, Ok(samples) if samples.is_empty()) {
+                continue;
+            }
             tx.send(shaped)?;
         }
 
         if cancel_token.is_cancelled() {
             return Ok(());
+        }
+        if let Some(tail) = shaper.map(StreamShaper::finish) {
+            if !tail.is_empty() {
+                tx.send(Ok(tail))?;
+            }
         }
         let Some(config) = output_config else {
             return Ok(());
@@ -1446,6 +1509,120 @@ mod audio_output_config_tests {
 
     fn sine_samples(n: usize) -> Vec<f32> {
         (0..n).map(|i| (i as f32 * 0.01).sin() * 0.5).collect()
+    }
+
+    /// A voiced-speech-like test signal: a 125 Hz tone with two harmonics, slowly gliding.
+    fn voiced_samples(n: usize, sample_rate: f32) -> Vec<f32> {
+        (0..n)
+            .map(|i| {
+                let t = i as f32 / sample_rate;
+                let f0 = 125.0 + 25.0 * (t * 2.0).sin();
+                let phase = std::f32::consts::TAU * f0 * t;
+                0.3 * phase.sin() + 0.15 * (2.0 * phase).sin() + 0.05 * (3.0 * phase).sin()
+            })
+            .collect()
+    }
+
+    fn shape_in_chunks(
+        config: &AudioOutputConfig,
+        input: &[f32],
+        chunk_lens: &[usize],
+    ) -> Vec<f32> {
+        let mut shaper = StreamShaper::new(config, 22050, 1).unwrap();
+        let mut output = Vec::new();
+        let mut rest = input;
+        for &len in chunk_lens.iter().cycle() {
+            if rest.is_empty() {
+                break;
+            }
+            let (chunk, tail) = rest.split_at(len.min(rest.len()));
+            output.extend_from_slice(shaper.push(&AudioSamples::from(chunk.to_vec())).as_slice());
+            rest = tail;
+        }
+        output.extend_from_slice(shaper.finish().as_slice());
+        output
+    }
+
+    /// Largest sample-to-sample step: a click at a chunk seam shows up as a step far larger than
+    /// anything the smooth test signal contains.
+    fn max_step(samples: &[f32]) -> f32 {
+        samples
+            .windows(2)
+            .map(|pair| (pair[1] - pair[0]).abs())
+            .fold(0.0, f32::max)
+    }
+
+    #[test]
+    fn stream_shaper_keeps_chunk_seams_as_smooth_as_whole_sentence_shaping() {
+        // Chunk lengths of a realtime Piper stream (55-frame base chunk, hop 256).
+        let chunk_lens = [14080, 28928, 43008];
+        let input = voiced_samples(3 * 22050, 22050.0);
+        for (rate, pitch) in [
+            (Some(40), None),
+            (Some(100), None),
+            (Some(20), None),
+            (Some(5), None),
+            (None, Some(70)),
+            (Some(100), Some(30)),
+        ] {
+            let config = AudioOutputConfig {
+                rate,
+                volume: None,
+                pitch,
+                appended_silence_ms: None,
+            };
+            let whole = config
+                .apply_to_raw_samples(AudioSamples::from(input.clone()), 22050, 1)
+                .unwrap();
+            let chunked = shape_in_chunks(&config, &input, &chunk_lens);
+            // Within 1 ms: at extreme speed-ups sonic's rounding differs by a few samples.
+            assert!(
+                chunked.len().abs_diff(whole.len()) <= 22050 / 1000,
+                "rate {rate:?}, pitch {pitch:?}: chunked shaping gave {} samples, whole {}",
+                chunked.len(),
+                whole.len()
+            );
+            // With a fresh, flushed sonic stream per chunk this step was 4-10x larger than the
+            // signal's own largest step (0.22-0.58 against 0.056).
+            assert!(
+                max_step(&chunked) <= max_step(whole.as_slice()) * 1.1,
+                "rate {rate:?}, pitch {pitch:?}: a chunk seam left a step of {} (whole sentence: {})",
+                max_step(&chunked),
+                max_step(whole.as_slice())
+            );
+        }
+    }
+
+    #[test]
+    fn stream_shaper_at_2_5x_matches_whole_sentence_shaping_exactly() {
+        let config = AudioOutputConfig {
+            rate: Some(40),
+            volume: None,
+            pitch: None,
+            appended_silence_ms: None,
+        };
+        let input = voiced_samples(3 * 22050, 22050.0);
+        let whole = config
+            .apply_to_raw_samples(AudioSamples::from(input.clone()), 22050, 1)
+            .unwrap();
+        assert_eq!(
+            shape_in_chunks(&config, &input, &[14080, 28928, 43008]).as_slice(),
+            whole.as_slice()
+        );
+    }
+
+    #[test]
+    fn stream_shaper_with_volume_zero_mutes_every_chunk() {
+        let config = AudioOutputConfig {
+            rate: Some(40),
+            volume: Some(0),
+            pitch: None,
+            appended_silence_ms: None,
+        };
+        let input = voiced_samples(22050, 22050.0);
+        let chunked = shape_in_chunks(&config, &input, &[5000]);
+        assert!(!chunked.is_empty());
+        assert!(chunked.iter().all(|&s| s == 0.0));
     }
 
     #[test]
