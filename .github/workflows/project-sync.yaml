@@ -10,7 +10,7 @@ permissions: {}
 
 jobs:
   sync:
-    uses: ZirekHQ/.github/.github/workflows/project-sync.yaml@d1a9afba33f3209c32ecf0f255ddcf12fc6b933f # main
+    uses: ZirekHQ/.github/.github/workflows/project-sync.yaml@a29814a788b914e57085df083f39395997bcf377 # main
     secrets:
       PROJECT_APP_CLIENT_ID: ${{ secrets.PROJECT_APP_CLIENT_ID }}
       PROJECT_APP_PRIVATE_KEY: ${{ secrets.PROJECT_APP_PRIVATE_KEY }}
