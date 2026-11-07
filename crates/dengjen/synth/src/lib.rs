@@ -310,6 +310,7 @@ impl StreamShaper {
         Ok(tail)
     }
 
+    /// Reads all audio sonic has ready, muted if the volume is 0.
     fn take_available(&mut self) -> AudioSamples {
         let mut output = self.stream.read(self.stream.samples_available());
         self.produced_output |= !output.is_empty();
@@ -1676,13 +1677,24 @@ mod audio_output_config_tests {
         assert!(shaper.finish().unwrap().is_empty());
     }
 
+    /// Runs `process_rt_stream` over `chunks` and returns everything it sent, plus how many items
+    /// had already been sent when it pulled the last input chunk.
     fn run_process_rt_stream(
         chunks: Vec<DengjenResult<AudioSamples>>,
         config: &AudioOutputConfig,
-    ) -> Vec<DengjenResult<AudioSamples>> {
+    ) -> (Vec<DengjenResult<AudioSamples>>, usize) {
         let (tx, rx) = flume::unbounded();
+        let probe = rx.clone();
+        let last = chunks.len().saturating_sub(1);
+        let sent_before_last = std::sync::atomic::AtomicUsize::new(0);
+        let observed = chunks.into_iter().enumerate().map(|(index, chunk)| {
+            if index == last {
+                sent_before_last.store(probe.len(), std::sync::atomic::Ordering::Relaxed);
+            }
+            chunk
+        });
         RealtimeSpeechStream::process_rt_stream(
-            Box::new(chunks.into_iter()),
+            Box::new(observed),
             &tx,
             Some(config),
             22050,
@@ -1691,7 +1703,7 @@ mod audio_output_config_tests {
         )
         .unwrap();
         drop(tx);
-        rx.iter().collect()
+        (rx.iter().collect(), sent_before_last.into_inner())
     }
 
     #[test]
@@ -1712,10 +1724,14 @@ mod audio_output_config_tests {
             Ok(AudioSamples::from(third.to_vec())),
         ];
 
-        let received: Vec<AudioSamples> = run_process_rt_stream(chunks, &config)
-            .into_iter()
-            .map(|chunk| chunk.unwrap())
-            .collect();
+        let (received, sent_before_last) = run_process_rt_stream(chunks, &config);
+        let received: Vec<AudioSamples> =
+            received.into_iter().map(|chunk| chunk.unwrap()).collect();
+
+        assert!(
+            sent_before_last > 0,
+            "shaped speech must go out while the sentence is still arriving, not after it"
+        );
 
         assert!(
             received.iter().all(|chunk| !chunk.is_empty()),
@@ -1747,7 +1763,8 @@ mod audio_output_config_tests {
             pitch: None,
             appended_silence_ms: None,
         };
-        let received = run_process_rt_stream(vec![Ok(AudioSamples::from(vec![0.25]))], &config);
+        let (received, _) =
+            run_process_rt_stream(vec![Ok(AudioSamples::from(vec![0.25]))], &config);
         assert_eq!(received.len(), 1);
         let Err(error) = &received[0] else {
             panic!("expected the no-audio error, got audio");
