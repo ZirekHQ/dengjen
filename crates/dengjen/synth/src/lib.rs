@@ -179,9 +179,7 @@ impl AudioOutputConfig {
 
         let available_frames = stream.samples_available();
         if available_frames == 0 {
-            return Err(DengjenError::OperationError(
-                "Sonic Error: failed to apply audio config. Invalid parameter value for rate, volume, or pitch".to_string(),
-            ));
+            return Err(sonic_produced_no_audio());
         }
 
         let mut output = stream.read(available_frames);
@@ -257,6 +255,14 @@ impl AudioOutputConfig {
     }
 }
 
+/// Sonic returned no audio at all for a non-empty input. In practice this happens when the input is
+/// only a sample or two long and the rate speeds it up.
+fn sonic_produced_no_audio() -> DengjenError {
+    DengjenError::OperationError(
+        "Sonic Error: failed to apply audio config. Invalid parameter value for rate, volume, or pitch".to_string(),
+    )
+}
+
 /// Applies an [`AudioOutputConfig`] to one sentence whose audio arrives in chunks.
 ///
 /// Sonic's time-stretching works on pitch periods and keeps state between writes. Running each
@@ -267,6 +273,8 @@ impl AudioOutputConfig {
 struct StreamShaper {
     stream: SonicStream,
     mute: bool,
+    wrote_input: bool,
+    produced_output: bool,
 }
 
 impl StreamShaper {
@@ -278,23 +286,33 @@ impl StreamShaper {
         Ok(Self {
             stream: config.sonic_stream(sample_rate, num_channels)?,
             mute: config.volume == Some(0),
+            wrote_input: false,
+            produced_output: false,
         })
     }
 
     /// Feeds one chunk and returns whatever shaped audio is ready (possibly none yet).
     fn push(&mut self, samples: &AudioSamples) -> AudioSamples {
+        self.wrote_input |= !samples.is_empty();
         self.stream.write(samples.as_slice());
         self.take_available()
     }
 
-    /// Flushes the stream at the end of the sentence and returns the remaining audio.
-    fn finish(mut self) -> AudioSamples {
+    /// Flushes the stream at the end of the sentence and returns the remaining audio. Fails like
+    /// [`AudioOutputConfig::apply_to_raw_samples`] when the sentence had audio but sonic returned
+    /// none of it.
+    fn finish(mut self) -> DengjenResult<AudioSamples> {
         self.stream.flush();
-        self.take_available()
+        let tail = self.take_available();
+        if self.wrote_input && !self.produced_output {
+            return Err(sonic_produced_no_audio());
+        }
+        Ok(tail)
     }
 
     fn take_available(&mut self) -> AudioSamples {
         let mut output = self.stream.read(self.stream.samples_available());
+        self.produced_output |= !output.is_empty();
         if self.mute {
             output.fill(0.0);
         }
@@ -861,8 +879,8 @@ impl RealtimeSpeechStream {
             return Ok(());
         }
         if let Some(tail) = shaper.map(StreamShaper::finish) {
-            if !tail.is_empty() {
-                tx.send(Ok(tail))?;
+            if !matches!(&tail, Ok(samples) if samples.is_empty()) {
+                tx.send(tail)?;
             }
         }
         let Some(config) = output_config else {
@@ -1539,7 +1557,7 @@ mod audio_output_config_tests {
             output.extend_from_slice(shaper.push(&AudioSamples::from(chunk.to_vec())).as_slice());
             rest = tail;
         }
-        output.extend_from_slice(shaper.finish().as_slice());
+        output.extend_from_slice(shaper.finish().unwrap().as_slice());
         output
     }
 
@@ -1623,6 +1641,118 @@ mod audio_output_config_tests {
         let chunked = shape_in_chunks(&config, &input, &[5000]);
         assert!(!chunked.is_empty());
         assert!(chunked.iter().all(|&s| s == 0.0));
+    }
+
+    #[test]
+    fn stream_shaper_reports_a_sentence_that_sonic_returns_no_audio_for() {
+        // A single sample sped up to 5.5x comes out as nothing; whole-sentence shaping
+        // (`apply_to_raw_samples`) reports that as an error, and so must the stream shaper.
+        let config = AudioOutputConfig {
+            rate: Some(100),
+            volume: None,
+            pitch: None,
+            appended_silence_ms: None,
+        };
+        let whole = config.apply_to_raw_samples(AudioSamples::from(vec![0.25]), 22050, 1);
+        let mut shaper = StreamShaper::new(&config, 22050, 1).unwrap();
+        assert!(shaper.push(&AudioSamples::from(vec![0.25])).is_empty());
+        let streamed = shaper.finish();
+        let (Err(whole), Err(streamed)) = (whole, streamed) else {
+            panic!("both whole-sentence and streamed shaping should fail");
+        };
+        assert_eq!(streamed.to_string(), whole.to_string());
+    }
+
+    #[test]
+    fn stream_shaper_does_not_report_a_sentence_without_audio() {
+        let config = AudioOutputConfig {
+            rate: Some(100),
+            volume: None,
+            pitch: None,
+            appended_silence_ms: None,
+        };
+        let mut shaper = StreamShaper::new(&config, 22050, 1).unwrap();
+        assert!(shaper.push(&AudioSamples::from(Vec::new())).is_empty());
+        assert!(shaper.finish().unwrap().is_empty());
+    }
+
+    fn run_process_rt_stream(
+        chunks: Vec<DengjenResult<AudioSamples>>,
+        config: &AudioOutputConfig,
+    ) -> Vec<DengjenResult<AudioSamples>> {
+        let (tx, rx) = flume::unbounded();
+        RealtimeSpeechStream::process_rt_stream(
+            Box::new(chunks.into_iter()),
+            &tx,
+            Some(config),
+            22050,
+            1,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        drop(tx);
+        rx.iter().collect()
+    }
+
+    #[test]
+    fn process_rt_stream_sends_the_shaped_sentence_then_its_tail_then_the_appended_silence() {
+        let config = AudioOutputConfig {
+            rate: Some(40),
+            volume: None,
+            pitch: None,
+            appended_silence_ms: Some(100),
+        };
+        let input = voiced_samples(3 * 22050, 22050.0);
+        let (first, rest) = input.split_at(14080);
+        let (second, third) = rest.split_at(28928);
+        let chunks = vec![
+            Ok(AudioSamples::from(first.to_vec())),
+            Ok(AudioSamples::from(Vec::new())),
+            Ok(AudioSamples::from(second.to_vec())),
+            Ok(AudioSamples::from(third.to_vec())),
+        ];
+
+        let received: Vec<AudioSamples> = run_process_rt_stream(chunks, &config)
+            .into_iter()
+            .map(|chunk| chunk.unwrap())
+            .collect();
+
+        assert!(
+            received.iter().all(|chunk| !chunk.is_empty()),
+            "empty reads must be skipped, not sent"
+        );
+        let (silence, speech) = received.split_last().unwrap();
+        assert_eq!(
+            silence.as_slice(),
+            config.generate_silence(100, 22050, 1).unwrap().as_slice(),
+            "the appended silence comes last"
+        );
+        // Without the flushed tail, or with the silence sent before it, the speech would not
+        // add up to the whole sentence shaped at once (exact at 2.5x).
+        let whole = config
+            .apply_to_raw_samples(AudioSamples::from(input.clone()), 22050, 1)
+            .unwrap();
+        let streamed: Vec<f32> = speech
+            .iter()
+            .flat_map(|chunk| chunk.as_slice().iter().copied())
+            .collect();
+        assert_eq!(streamed.as_slice(), whole.as_slice());
+    }
+
+    #[test]
+    fn process_rt_stream_reports_a_sentence_that_sonic_returns_no_audio_for() {
+        let config = AudioOutputConfig {
+            rate: Some(100),
+            volume: None,
+            pitch: None,
+            appended_silence_ms: None,
+        };
+        let received = run_process_rt_stream(vec![Ok(AudioSamples::from(vec![0.25]))], &config);
+        assert_eq!(received.len(), 1);
+        let Err(error) = &received[0] else {
+            panic!("expected the no-audio error, got audio");
+        };
+        assert!(error.to_string().contains("Invalid parameter value"));
     }
 
     #[test]
