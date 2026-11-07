@@ -24,15 +24,8 @@ use std::sync::{Arc, Mutex, RwLock};
 const MIN_CHUNK_SIZE: isize = 44;
 const MAX_CHUNK_SIZE: usize = 1024;
 const DEFAULT_HOP_LENGTH: usize = 256;
-/// Mel frames of context the decoder needs on each side of a chunk for its output to match a
-/// one-shot decode of the whole utterance.
-///
-/// The VITS/HiFi-GAN decoder's receptive field spans many frames. With less context than that,
-/// the samples near each chunk edge come out different from a one-shot decode, and the seam
-/// between two chunks is audible. Measured on Piper medium, high, low and multi-speaker voices
-/// (`nl_BE-nathalie`, `de_DE-thorsten`, `cs_CZ-jirka`, `nl_NL-mls`; +RT exports): with 3 frames
-/// the RMS error around a seam is about as large as the signal itself; with 20 frames it drops
-/// to about 1% (median) of the signal, i.e. the seam is effectively gone.
+/// Mel frames of context each chunk needs on both sides for its output to match a one-shot
+/// decode of the whole utterance.
 const MIN_DECODER_CONTEXT_FRAMES: usize = 20;
 
 /// The padding actually used: a caller's `chunk_padding`, raised to the decoder's minimum context.
@@ -316,14 +309,15 @@ impl SpeechStreamer {
             DengjenError::with_message("Invalid encoder output: expected a time axis".to_string())
         })?;
 
-        let one_shot = num_frames <= (chunk_size * 2 + chunk_padding * 2);
+        let mel_chunker = AdaptiveMelChunker::new(
+            num_frames as isize,
+            chunk_size as isize,
+            chunk_padding as isize,
+            hop_length as isize,
+        );
+        let one_shot = num_frames <= (mel_chunker.base_chunk_size * 2 + chunk_padding * 2);
         Ok(Self {
-            mel_chunker: AdaptiveMelChunker::new(
-                num_frames as isize,
-                chunk_size as isize,
-                chunk_padding as isize,
-                hop_length as isize,
-            ),
+            mel_chunker,
             decoder_model,
             encoder_outputs,
             one_shot,
@@ -398,10 +392,13 @@ struct AdaptiveMelChunker {
 }
 
 impl AdaptiveMelChunker {
+    /// `chunk_size` is raised to at least `chunk_padding`: every chunk after the first starts
+    /// its mel slice `chunk_padding` frames before the previous chunk's kept region ends, so a
+    /// first chunk narrower than the padding would need a slice that starts before frame 0.
     fn new(num_frames: isize, chunk_size: isize, chunk_padding: isize, hop_length: isize) -> Self {
         Self {
             num_frames,
-            base_chunk_size: chunk_size as usize,
+            base_chunk_size: chunk_size.max(chunk_padding).max(0) as usize,
             padding: chunk_padding,
             hop_length,
             cursor: Some(0),
@@ -542,12 +539,23 @@ mod tests {
 
     #[test]
     fn adaptive_mel_chunker_kept_audio_tiles_the_utterance_without_gaps_or_overlap() {
-        for (num_frames, chunk_size, padding) in
-            [(766, 55, 20), (5000, 55, 20), (300, 72, 3), (2000, 100, 32)]
-        {
+        for (num_frames, chunk_size, padding) in [
+            (766, 55, 20),
+            (5000, 55, 20),
+            (300, 72, 3),
+            (2000, 100, 32),
+            (300, 10, 20),
+            (766, 1, 20),
+            (200, 0, 20),
+        ] {
             let hop = 256;
             let mut next_expected = 0;
             for (mel, audio) in AdaptiveMelChunker::new(num_frames, chunk_size, padding, hop) {
+                assert!(
+                    mel.start >= 0,
+                    "mel slice starts before frame 0 \
+                     (num_frames {num_frames}, chunk {chunk_size}, padding {padding})"
+                );
                 let mel_end = mel.end.unwrap_or(num_frames);
                 let kept_start = mel.start + audio.start / hop;
                 let kept_end = mel_end + audio.end.map_or(0, |end| end / hop);

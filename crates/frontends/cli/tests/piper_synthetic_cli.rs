@@ -204,6 +204,10 @@ fn cli_streams_realtime_synthesis_from_a_synthetic_piper_voice() {
         "chunked (--chunk-size 20) and one-shot (--chunk-size 100) streaming runs should produce \
          identical audio: chunk seams must not change the decoded signal"
     );
+    assert!(
+        one_shot_output.stdout.iter().any(|&byte| byte != 0),
+        "expected non-silent streaming PCM, so the equality check above compares real audio"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
