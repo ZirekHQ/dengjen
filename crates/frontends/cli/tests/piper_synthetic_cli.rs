@@ -178,9 +178,10 @@ fn cli_synthesizes_batch_from_a_synthetic_piper_voice() {
 
 #[test]
 fn cli_streams_realtime_synthesis_from_a_synthetic_piper_voice() {
-    // ENCODER_NUM_FRAMES=200, chunk_padding=3 (from generate_synthetic_piper.py):
-    //   --chunk-size 20:  one_shot = 200 <= (20*2 + 3*2)  = 46  -> false (chunked)
-    //   --chunk-size 100: one_shot = 200 <= (100*2 + 3*2) = 206 -> true  (single decode)
+    // ENCODER_NUM_FRAMES=200 (from generate_synthetic_piper.py). The requested chunk_padding of 3
+    // is raised to the decoder's minimum context of 20 frames inside the streaming model:
+    //   --chunk-size 20:  one_shot = 200 <= (20*2 + 20*2)  = 80  -> false (chunked)
+    //   --chunk-size 100: one_shot = 200 <= (100*2 + 20*2) = 240 -> true  (single decode)
 
     let dir = std::env::temp_dir().join("dengjen_cli_piper_synthetic_streaming_test");
     std::fs::remove_dir_all(&dir).ok();
@@ -195,10 +196,17 @@ fn cli_streams_realtime_synthesis_from_a_synthetic_piper_voice() {
     let one_shot_output = run_streaming(&config_path, &input_path, "100");
     assert_streaming_success(&one_shot_output, "chunk-size=100 (one-shot)");
 
-    assert_ne!(
+    // Chunks are no longer faded at their edges, so the chunked path reproduces the one-shot
+    // decode. (This assertion used to be `assert_ne!`: the two runs differed only because every
+    // chunk was faded to silence at both ends.)
+    assert_eq!(
         chunked_output.stdout, one_shot_output.stdout,
-        "chunked (--chunk-size 20) and one-shot (--chunk-size 100) streaming runs produced \
-         byte-identical output; the decoder fixture should make these paths distinguishable"
+        "chunked (--chunk-size 20) and one-shot (--chunk-size 100) streaming runs should produce \
+         identical audio: chunk seams must not change the decoded signal"
+    );
+    assert!(
+        one_shot_output.stdout.iter().any(|&byte| byte != 0),
+        "expected non-silent streaming PCM, so the equality check above compares real audio"
     );
 
     std::fs::remove_dir_all(&dir).ok();
