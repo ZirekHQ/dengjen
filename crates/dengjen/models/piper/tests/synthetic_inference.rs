@@ -54,6 +54,65 @@ fn load_synthetic_model_with_speaker_map(
     model
 }
 
+/// Loads the synthetic encoder/decoder pair as a streaming (`VitsStreamingModel`) voice. The
+/// synthetic encoder always emits 200 mel frames and the decoder 256 samples per frame.
+fn load_synthetic_streaming_model(
+    dir_name: &str,
+) -> Arc<dyn dengjen_tts_core::DengjenModel + Send + Sync> {
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let dir = std::env::temp_dir().join(dir_name);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::copy(
+        fixtures.join("synthetic_piper_encoder.onnx"),
+        dir.join("encoder.onnx"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures.join("synthetic_piper_decoder.onnx"),
+        dir.join("decoder.onnx"),
+    )
+    .unwrap();
+    let config_path = dir.join("model.onnx.json");
+    std::fs::write(
+        &config_path,
+        synthetic_model_config_json(r#"{"default": 0}"#)
+            .replace(r#""streaming": false"#, r#""streaming": true"#),
+    )
+    .unwrap();
+
+    let model = dengjen_tts_piper::from_config_path(&config_path)
+        .expect("failed to load synthetic streaming Piper model");
+    std::fs::remove_dir_all(&dir).ok();
+    model
+}
+
+/// `stream_synthesis` raises a small `chunk_padding` to the decoder context floor of 20 frames,
+/// and a `chunk_size` below that to the padding. Over the fixture's 200 frames that gives kept
+/// chunks of 20, 60 and 120 frames; forwarding the requested padding of 3 would give 20, 43, 63
+/// and 74, and an unclamped `chunk_size` of 10 would slice from before frame 0.
+#[test]
+fn stream_synthesis_raises_small_padding_and_chunk_size_to_the_decoder_context() {
+    let model =
+        load_synthetic_streaming_model("dengjen_piper_synthetic_streaming_padding_floor_test");
+    for chunk_size in [20, 10] {
+        let lengths: Vec<usize> = model
+            .stream_synthesis(
+                "tɛst".to_string(),
+                chunk_size,
+                3,
+                dengjen_tts_core::CancellationToken::new(),
+            )
+            .expect("stream_synthesis should start")
+            .map(|chunk| chunk.expect("chunk should decode").len())
+            .collect();
+        assert_eq!(
+            lengths,
+            [20, 60, 120].map(|frames| frames * 256),
+            "chunk_size {chunk_size}, requested padding 3"
+        );
+    }
+}
+
 #[traced_test]
 #[test]
 fn speak_one_sentence_synthesizes_against_the_synthetic_fixture() {

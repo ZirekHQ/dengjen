@@ -23,8 +23,15 @@ use std::sync::{Arc, Mutex, RwLock};
 
 const MIN_CHUNK_SIZE: isize = 44;
 const MAX_CHUNK_SIZE: usize = 1024;
-const CHUNK_CROSSFADE_SAMPLES: usize = 42;
 const DEFAULT_HOP_LENGTH: usize = 256;
+/// Mel frames of context each chunk needs on both sides for its output to match a one-shot
+/// decode of the whole utterance.
+const MIN_DECODER_CONTEXT_FRAMES: usize = 20;
+
+/// The padding actually used: a caller's `chunk_padding`, raised to the decoder's minimum context.
+fn effective_chunk_padding(requested: usize) -> usize {
+    requested.max(MIN_DECODER_CONTEXT_FRAMES)
+}
 
 pub struct VitsStreamingModel {
     synth_config: RwLock<PiperSynthesisConfig>,
@@ -193,7 +200,7 @@ impl DengjenModel for VitsStreamingModel {
             Arc::clone(&self.decoder_model),
             encoder_outputs,
             chunk_size,
-            chunk_padding,
+            effective_chunk_padding(chunk_padding),
             self.config.hop_length.unwrap_or(DEFAULT_HOP_LENGTH),
             cancel_token,
         )?))
@@ -302,14 +309,15 @@ impl SpeechStreamer {
             DengjenError::with_message("Invalid encoder output: expected a time axis".to_string())
         })?;
 
-        let one_shot = num_frames <= (chunk_size * 2 + chunk_padding * 2);
+        let mel_chunker = AdaptiveMelChunker::new(
+            num_frames as isize,
+            chunk_size as isize,
+            chunk_padding as isize,
+            hop_length as isize,
+        );
+        let one_shot = num_frames <= (mel_chunker.base_chunk_size * 2 + chunk_padding * 2);
         Ok(Self {
-            mel_chunker: AdaptiveMelChunker::new(
-                num_frames as isize,
-                chunk_size as isize,
-                chunk_padding as isize,
-                hop_length as isize,
-            ),
+            mel_chunker,
             decoder_model,
             encoder_outputs,
             one_shot,
@@ -340,18 +348,21 @@ impl SpeechStreamer {
     }
 }
 
+/// Cuts the decoder context off a chunk's audio and returns the samples unchanged.
+///
+/// No fade is applied: the kept regions of consecutive chunks tile the utterance exactly, and
+/// with enough decoder context (see [`MIN_DECODER_CONTEXT_FRAMES`]) their edges already match
+/// a one-shot decode. Fading each chunk to silence at both ends would put a dip at every seam.
 fn trim_chunk_padding(
     waveform: ArrayView<f32, Dim<IxDynImpl>>,
     audio_index: ndarray::Slice,
 ) -> DengjenResult<AudioSamples> {
-    let mut samples: AudioSamples = waveform
+    Ok(waveform
         .slice_axis(Axis(2), audio_index)
         .as_slice()
         .ok_or_else(|| DengjenError::with_message("Invalid model audio output"))?
         .to_vec()
-        .into();
-    samples.crossfade(CHUNK_CROSSFADE_SAMPLES);
-    Ok(samples)
+        .into())
 }
 
 impl Iterator for SpeechStreamer {
@@ -381,10 +392,13 @@ struct AdaptiveMelChunker {
 }
 
 impl AdaptiveMelChunker {
+    /// `chunk_size` is raised to at least `chunk_padding`: every chunk after the first starts
+    /// its mel slice `chunk_padding` frames before the previous chunk's kept region ends, so a
+    /// first chunk narrower than the padding would need a slice that starts before frame 0.
     fn new(num_frames: isize, chunk_size: isize, chunk_padding: isize, hop_length: isize) -> Self {
         Self {
             num_frames,
-            base_chunk_size: chunk_size as usize,
+            base_chunk_size: chunk_size.max(chunk_padding).max(0) as usize,
             padding: chunk_padding,
             hop_length,
             cursor: Some(0),
@@ -396,11 +410,15 @@ impl AdaptiveMelChunker {
         self.cursor = None;
     }
 
+    /// Grows with each chunk up to [`MAX_CHUNK_SIZE`], but never below the padding: like
+    /// `chunk_size` in [`Self::new`], a first chunk narrower than the padding would need a
+    /// second mel slice that starts before frame 0.
     fn current_chunk_width(&self) -> isize {
+        let cap = MAX_CHUNK_SIZE.max(self.padding.max(0) as usize);
         self.base_chunk_size
             .max(1)
             .saturating_mul(self.chunks_emitted + 1)
-            .min(MAX_CHUNK_SIZE) as isize
+            .min(cap) as isize
     }
 }
 
@@ -514,6 +532,58 @@ mod tests {
         assert_eq!(mel_index.end, None);
         assert_eq!(audio_index.end, None);
         assert!(chunker.next().is_none());
+    }
+
+    #[test]
+    fn effective_chunk_padding_raises_small_padding_to_the_decoder_context() {
+        assert_eq!(effective_chunk_padding(0), MIN_DECODER_CONTEXT_FRAMES);
+        assert_eq!(effective_chunk_padding(3), MIN_DECODER_CONTEXT_FRAMES);
+        assert_eq!(effective_chunk_padding(32), 32);
+    }
+
+    #[test]
+    fn adaptive_mel_chunker_kept_audio_tiles_the_utterance_without_gaps_or_overlap() {
+        for (num_frames, chunk_size, padding) in [
+            (766, 55, 20),
+            (5000, 55, 20),
+            (300, 72, 3),
+            (2000, 100, 32),
+            (300, 10, 20),
+            (766, 1, 20),
+            (200, 0, 20),
+            (10_000, 10, 2000),
+            (5000, 55, 1500),
+        ] {
+            let hop = 256;
+            let mut next_expected = 0;
+            for (mel, audio) in AdaptiveMelChunker::new(num_frames, chunk_size, padding, hop) {
+                assert!(
+                    mel.start >= 0,
+                    "mel slice starts before frame 0 \
+                     (num_frames {num_frames}, chunk {chunk_size}, padding {padding})"
+                );
+                let mel_end = mel.end.unwrap_or(num_frames);
+                let kept_start = mel.start + audio.start / hop;
+                let kept_end = mel_end + audio.end.map_or(0, |end| end / hop);
+                assert_eq!(
+                    kept_start, next_expected,
+                    "gap or overlap at frame {next_expected} \
+                     (num_frames {num_frames}, chunk {chunk_size}, padding {padding})"
+                );
+                assert!(kept_end > kept_start);
+                next_expected = kept_end;
+            }
+            assert_eq!(next_expected, num_frames);
+        }
+    }
+
+    #[test]
+    fn trim_chunk_padding_keeps_the_edge_samples_at_full_amplitude() {
+        let waveform = Array::from_elem(IxDyn(&[1, 1, 4096]), 0.5_f32);
+        let trimmed =
+            trim_chunk_padding(waveform.view(), ndarray::Slice::new(256, Some(-256), 1)).unwrap();
+        assert_eq!(trimmed.len(), 4096 - 512);
+        assert!(trimmed.as_slice().iter().all(|&s| s == 0.5));
     }
 
     #[test]
