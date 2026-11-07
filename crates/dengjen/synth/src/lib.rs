@@ -1547,6 +1547,10 @@ mod audio_output_config_tests {
         input: &[f32],
         chunk_lens: &[usize],
     ) -> Vec<f32> {
+        assert!(
+            chunk_lens.iter().any(|&len| len > 0),
+            "chunk_lens needs a positive length, or the loop below never consumes the input"
+        );
         let mut shaper = StreamShaper::new(config, 22050, 1).unwrap();
         let mut output = Vec::new();
         let mut rest = input;
