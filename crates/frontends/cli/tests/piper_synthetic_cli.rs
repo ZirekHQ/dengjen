@@ -196,9 +196,7 @@ fn cli_streams_realtime_synthesis_from_a_synthetic_piper_voice() {
     let one_shot_output = run_streaming(&config_path, &input_path, "100");
     assert_streaming_success(&one_shot_output, "chunk-size=100 (one-shot)");
 
-    // Chunks are no longer faded at their edges, so the chunked path reproduces the one-shot
-    // decode. (This assertion used to be `assert_ne!`: the two runs differed only because every
-    // chunk was faded to silence at both ends.)
+    // Chunks carry no edge fade, so the chunked path reproduces the one-shot decode.
     assert_eq!(
         chunked_output.stdout, one_shot_output.stdout,
         "chunked (--chunk-size 20) and one-shot (--chunk-size 100) streaming runs should produce \
