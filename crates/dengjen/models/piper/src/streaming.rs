@@ -410,11 +410,15 @@ impl AdaptiveMelChunker {
         self.cursor = None;
     }
 
+    /// Grows with each chunk up to [`MAX_CHUNK_SIZE`], but never below the padding: like
+    /// `chunk_size` in [`Self::new`], a first chunk narrower than the padding would need a
+    /// second mel slice that starts before frame 0.
     fn current_chunk_width(&self) -> isize {
+        let cap = MAX_CHUNK_SIZE.max(self.padding.max(0) as usize);
         self.base_chunk_size
             .max(1)
             .saturating_mul(self.chunks_emitted + 1)
-            .min(MAX_CHUNK_SIZE) as isize
+            .min(cap) as isize
     }
 }
 
@@ -547,6 +551,8 @@ mod tests {
             (300, 10, 20),
             (766, 1, 20),
             (200, 0, 20),
+            (10_000, 10, 2000),
+            (5000, 55, 1500),
         ] {
             let hop = 256;
             let mut next_expected = 0;
