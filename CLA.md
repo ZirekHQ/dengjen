@@ -11,7 +11,8 @@ copyright in your contributions; this is a licence, not an assignment.
 
 "You" means the person who submits a Contribution and agrees to this agreement.
 
-"Contribution" means any work you intentionally submit to the Project for inclusion, such as code,
+"Contribution" means any work you intentionally submit, or submitted before agreeing to this
+agreement, to the Project for inclusion, such as code,
 documentation, translations, voice data or other material, through a pull request, an issue, a
 patch or any other channel the Project uses.
 
@@ -62,4 +63,5 @@ Add this comment to your first pull request:
 
 > I have read the Zirek Individual Contributor License Agreement, version 1.0, and I agree to it.
 
-Your agreement covers that pull request and all your later Contributions to the Project.
+Your agreement covers that pull request, all your later Contributions, and every Contribution you
+made to the Project before you agreed.
