@@ -1,7 +1,21 @@
 # Contributing to Dengjen
 
-Thanks for taking the time to contribute. Two lightweight conventions make reviews easier and
-keep the project's history useful — neither is required to get a PR merged.
+Thanks for taking the time to contribute. Agreeing to the CLA below is required before a PR can be
+merged. The two conventions after it make reviews easier and keep the project's history useful;
+neither is required.
+
+## Contributor License Agreement (required)
+
+Before your first PR is merged, read the [Contributor License Agreement](../CLA.md) and agree to it
+by adding this comment to the PR:
+
+> I have read the Zirek Individual Contributor License Agreement, version 1.0, and I agree to it.
+
+You keep the copyright in your work. The CLA lets the project change its licence later without
+tracking down every contributor, for example to publish the apps in stores whose terms conflict
+with the GPL. Dengjen stays GPL-3.0-or-later today, and every release published under that licence
+stays available under it. A Developer Certificate of Origin (DCO) sign-off would not be enough: it
+only confirms that you may submit the work under the current licence.
 
 ## Commit signing (recommended)
 
