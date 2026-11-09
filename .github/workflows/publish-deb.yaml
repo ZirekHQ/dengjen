@@ -100,12 +100,14 @@ jobs:
             DENGJEN_VOICES_DIR=/tmp/voices DENGJEN_CATALOGUE_URL=http://127.0.0.1:9/voices.json \
               dengjen voices list || status=$?
             test "$status" -eq 1
-            # With no voices installed, INIT must fail with 399.
+            # With no voices installed, INIT still succeeds and names the command that adds one.
             test -x /usr/lib/speech-dispatcher-modules/sd_dengjen
             test -f /etc/speech-dispatcher/modules/dengjen.conf
             test -f /usr/lib/speech-dispatcher-modules/espeak-ng-data/phontab
             printf "INIT\nQUIT\n" | DENGJEN_VOICES_DIR=/tmp/voices \
-              /usr/lib/speech-dispatcher-modules/sd_dengjen | grep -q "^399 ERR CANT INIT MODULE"
+              /usr/lib/speech-dispatcher-modules/sd_dengjen > /tmp/init.out
+            grep -q "^299 OK LOADED SUCCESSFULLY" /tmp/init.out
+            grep -q "dengjen voices install" /tmp/init.out
           '
       - name: speak through the installed module
         run: |
@@ -114,6 +116,13 @@ jobs:
             apt-get update
             apt-get install -y ca-certificates /pkg/*.deb
             bash /scripts/speechd-smoke.sh
+          '
+      - name: install for one user without root
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/target/debian:/pkg:ro" -v "$PWD/scripts:/scripts:ro" ubuntu:24.04 sh -ec '
+            apt-get update
+            bash /scripts/speechd-user-install-smoke.sh
           '
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
