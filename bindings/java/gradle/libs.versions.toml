@@ -5,7 +5,7 @@ awaitility = "4.3.0"
 spotless = "8.10.4"
 foojay-resolver = "1.0.0"
 git-version = "6.4.4"
-jreleaser = "1.26.0"
+jreleaser = "1.27.0"
 
 [libraries]
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
