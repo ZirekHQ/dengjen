@@ -182,6 +182,10 @@ impl<B: Backend, W: Write> Session<B, W> {
                     break;
                 }
                 Played::Failed => break,
+                Played::Refused => {
+                    ending = "703 STOP";
+                    break;
+                }
             }
         }
         self.say(if started { ending } else { reply::CANT_SPEAK })
@@ -203,11 +207,12 @@ impl<B: Backend, W: Write> Session<B, W> {
                 }
                 // Speech Dispatcher drops a message the module refuses without telling the
                 // client, so a client waiting for the end (`spd-say -w`) would wait forever.
-                // Report an empty speech instead, as a failure mid-stream already does.
+                // Report the speech as begun and stopped instead: clients hear it was cut
+                // short, rather than finished, and Orca's say-all stops instead of racing on.
                 Err(error) => {
                     eprintln!("sd_dengjen: {error}");
                     begin(&mut self.output, started)?;
-                    Ok(Played::Failed)
+                    Ok(Played::Refused)
                 }
             },
         }
@@ -217,7 +222,10 @@ impl<B: Backend, W: Write> Session<B, W> {
 enum Played {
     Continue,
     Interrupted(Interrupt),
+    /// Synthesis failed after some audio was sent.
     Failed,
+    /// Synthesis could not start, for example because no voice is installed.
+    Refused,
 }
 
 fn begin(output: &mut impl Write, started: &mut bool) -> io::Result<()> {
@@ -520,14 +528,14 @@ mod tests {
     }
 
     #[test]
-    fn a_synthesis_error_still_begins_and_ends_so_clients_stop_waiting() {
+    fn a_synthesis_error_begins_and_stops_so_clients_stop_waiting() {
         let mut backend = Fake {
             fail_speak: true,
             ..fake()
         };
         let failed = transcript(&mut backend, "INIT\nSPEAK\nx\n.\nQUIT\n");
         assert!(failed.contains(
-            "202 OK RECEIVING MESSAGE\n200 OK SPEAKING\n701 BEGIN\n702 END\n210 OK QUIT\n"
+            "202 OK RECEIVING MESSAGE\n200 OK SPEAKING\n701 BEGIN\n703 STOP\n210 OK QUIT\n"
         ));
         assert!(!failed.contains("705 AUDIO"));
     }

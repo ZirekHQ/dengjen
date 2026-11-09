@@ -179,7 +179,11 @@ mod tests {
 
     #[test]
     fn init_succeeds_without_voices_and_says_how_to_add_one() {
-        let empty = std::env::temp_dir().join("dengjen-speechd-no-voices-test");
+        let empty = std::env::temp_dir().join(format!(
+            "dengjen-speechd-no-voices-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+        ));
         let mut engine = Engine::new(empty.clone());
         let message = engine.init().expect("init must not fail without voices");
         assert!(message.contains("no voices installed"), "{message}");

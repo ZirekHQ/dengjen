@@ -31,6 +31,8 @@ printf '#!/bin/sh\necho "$*" >> "$HOME/cli.calls"\n' > "$cli/dengjen"; chmod 755
 : > "$cli/espeak-ng-data/phontab"
 make_deb dengjen
 
+# The runner's own /etc/speech-dispatcher must not affect the results.
+export SPEECHD_SYSTEM_CONF="$tmp/system-speechd.conf"
 run() { env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME="$tmp/home" bash ./install-speechd-user.sh "$@"; }
 home="$tmp/home"
 mods="$home/.local/libexec/speech-dispatcher-modules"
@@ -55,6 +57,10 @@ check '[ ! -e "$home/cli.calls" ]' "skips the voice with --no-voice"
 run --deb-dir "$tmp/debs" --voice en_GB-alba-low > /dev/null
 check 'grep -qx "voices install en_GB-alba-low" "$home/cli.calls"' "installs the voice named by --voice"
 
+printf 'AddModule "espeak-ng" "sd_espeak-ng" "espeak-ng.conf"\n' > "$SPEECHD_SYSTEM_CONF"
+run --deb-dir "$tmp/debs" --no-voice > "$tmp/out"
+check 'grep -q "$SPEECHD_SYSTEM_CONF" "$tmp/out"' "warns about the system speechd.conf when the user has none"
+: > "$SPEECHD_SYSTEM_CONF"
 printf 'AddModule "espeak-ng" "sd_espeak-ng" "espeak-ng.conf"\n' > "$home/.config/speech-dispatcher/speechd.conf"
 run --deb-dir "$tmp/debs" --no-voice > "$tmp/out"
 check 'grep -q "AddModule \"dengjen\"" "$tmp/out"' "warns when speechd.conf turns module detection off"

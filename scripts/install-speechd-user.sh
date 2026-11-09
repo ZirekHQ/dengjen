@@ -52,7 +52,7 @@ fetch() {
 # The repository also publishes java-v* and grpc-release-v* releases, so "latest" is not enough.
 latest_version() {
   local list="$1/releases.json"
-  fetch "https://api.github.com/repos/$REPO/releases?per_page=30" "$list"
+  fetch "https://api.github.com/repos/$REPO/releases?per_page=100" "$list"
   grep -o '"tag_name": *"v[0-9]*\.[0-9]*\.[0-9]*"' "$list" | head -n 1 | grep -o '[0-9][0-9.]*' \
     || die "found no vX.Y.Z release of $REPO"
 }
@@ -66,13 +66,14 @@ unpack_deb() {
   elif command -v bsdtar >/dev/null; then
     bsdtar -xOf "$deb" 'data.tar*' | bsdtar -xf - -C "$dest"
   elif command -v ar >/dev/null; then
+    # Inside $tmp, so the EXIT trap removes it even when tar fails.
     local work
-    work="$(mktemp -d)"
+    work="$tmp/ar-$(basename "$deb")"
+    mkdir -p "$work"
     (cd "$work" && ar x "$(realpath "$deb")")
     tar -xf "$work"/data.tar* -C "$dest"
-    rm -rf "$work"
   else
-    die "needs dpkg-deb, bsdtar or ar (binutils) to unpack the .deb files"
+    die "needs dpkg-deb, bsdtar, or ar (binutils) with xz to unpack the .deb files"
   fi
 }
 
@@ -95,7 +96,9 @@ uninstall() {
 }
 
 warn_about_explicit_modules() {
+  # The server reads the user's speechd.conf when it exists, and the system one otherwise.
   local conf="$config_home/speech-dispatcher/speechd.conf"
+  [ -f "$conf" ] || conf="${SPEECHD_SYSTEM_CONF:-/etc/speech-dispatcher/speechd.conf}"
   if [ -f "$conf" ] && grep -q '^[[:space:]]*AddModule' "$conf" \
     && ! grep -q '^[[:space:]]*AddModule[[:space:]]*"dengjen"' "$conf"; then
     say ""
@@ -106,19 +109,24 @@ warn_about_explicit_modules() {
 }
 
 main() {
-  local version="" deb_dir="" voice="$DEFAULT_VOICE"
+  local version="" deb_dir="" voice="$DEFAULT_VOICE" action=install
   while [ $# -gt 0 ]; do
     case "$1" in
       --version) version="${2:?--version needs a value}"; shift 2 ;;
       --deb-dir) deb_dir="${2:?--deb-dir needs a value}"; shift 2 ;;
       --voice) voice="${2:?--voice needs a value}"; shift 2 ;;
       --no-voice) voice=""; shift ;;
-      --uninstall) uninstall; return ;;
+      --uninstall) action=uninstall; shift ;;
       -h | --help) usage; return ;;
       *) usage >&2; die "unknown option $1" ;;
     esac
   done
+  # Root would also make the module paths resolve under /, where the system package lives.
   [ "$(id -u)" -ne 0 ] || die "run this as the user who will hear the voice, not as root"
+  if [ "$action" = uninstall ]; then
+    uninstall
+    return
+  fi
 
   # Global, so the EXIT trap still sees it after main returns.
   tmp="$(mktemp -d)"
