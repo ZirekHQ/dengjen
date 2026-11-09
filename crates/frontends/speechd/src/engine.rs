@@ -7,6 +7,7 @@ use dengjen_tts::{
 
 const MODEL_TYPE: &str = "piper";
 const VOICES_DIR_ENV: &str = "DENGJEN_VOICES_DIR";
+const SUGGESTED_VOICE: &str = "ku_TR-berfin_renas-medium";
 
 pub struct Engine {
     voices_dir: PathBuf,
@@ -42,6 +43,20 @@ fn installed_keys(voices_dir: &Path) -> Vec<String> {
 
 fn language_of(key: &str) -> String {
     key.split('-').next().unwrap_or(key).replace('_', "-")
+}
+
+fn no_voices(voices_dir: &Path) -> String {
+    format!(
+        "no voices installed in {}; install one with `dengjen voices install {SUGGESTED_VOICE}`",
+        voices_dir.display()
+    )
+}
+
+fn init_message(voices_dir: &Path, count: usize) -> String {
+    match count {
+        0 => format!("dengjen: {}", no_voices(voices_dir)),
+        count => format!("dengjen: {count} voice(s) in {}", voices_dir.display()),
+    }
 }
 
 fn init_ort() -> Result<(), String> {
@@ -103,17 +118,13 @@ impl Engine {
 }
 
 impl Backend for Engine {
+    // Speech Dispatcher never retries a module whose INIT failed, so starting without voices
+    // keeps the module usable once a voice is installed: every request rescans the directory.
     fn init(&mut self) -> Result<String, String> {
-        match installed_keys(&self.voices_dir).len() {
-            0 => Err(format!(
-                "no voices installed in {}",
-                self.voices_dir.display()
-            )),
-            count => Ok(format!(
-                "dengjen: {count} voice(s) in {}",
-                self.voices_dir.display()
-            )),
-        }
+        Ok(init_message(
+            &self.voices_dir,
+            installed_keys(&self.voices_dir).len(),
+        ))
     }
 
     fn voices(&self) -> Vec<VoiceInfo> {
@@ -128,8 +139,8 @@ impl Backend for Engine {
     }
 
     fn synthesize<'a>(&'a mut self, text: &str, settings: &Settings) -> Result<Chunks<'a>, String> {
-        let key =
-            pick_voice(&installed_keys(&self.voices_dir), settings).ok_or("no voices installed")?;
+        let key = pick_voice(&installed_keys(&self.voices_dir), settings)
+            .ok_or_else(|| no_voices(&self.voices_dir))?;
         let synth = self.synthesizer(&key)?;
         let info = synth
             .audio_output_info()
@@ -164,6 +175,24 @@ mod tests {
 
     fn keys(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn init_succeeds_without_voices_and_says_how_to_add_one() {
+        let empty = std::env::temp_dir().join("dengjen-speechd-no-voices-test");
+        let mut engine = Engine::new(empty.clone());
+        let message = engine.init().expect("init must not fail without voices");
+        assert!(message.contains("no voices installed"), "{message}");
+        assert!(message.contains("dengjen voices install"), "{message}");
+        assert!(engine.voices().is_empty());
+        let Err(error) = engine.synthesize("Silav", &Settings::default()) else {
+            panic!("synthesis without voices must fail");
+        };
+        assert!(error.contains("dengjen voices install"), "{error}");
+        assert_eq!(
+            init_message(&empty, 2),
+            format!("dengjen: 2 voice(s) in {}", empty.display())
+        );
     }
 
     #[test]

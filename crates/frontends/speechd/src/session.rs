@@ -201,8 +201,12 @@ impl<B: Backend, W: Write> Session<B, W> {
                     begin(&mut self.output, started)?;
                     stream_audio(chunks, &mut self.output, &mut self.input)
                 }
+                // Speech Dispatcher drops a message the module refuses without telling the
+                // client, so a client waiting for the end (`spd-say -w`) would wait forever.
+                // Report an empty speech instead, as a failure mid-stream already does.
                 Err(error) => {
                     eprintln!("sd_dengjen: {error}");
+                    begin(&mut self.output, started)?;
                     Ok(Played::Failed)
                 }
             },
@@ -510,15 +514,22 @@ mod tests {
     }
 
     #[test]
-    fn empty_text_and_synthesis_errors_cant_speak() {
+    fn empty_text_cant_speak() {
         let empty = transcript(&mut fake(), "INIT\nSPEAK\n.\nQUIT\n");
         assert!(empty.contains("202 OK RECEIVING MESSAGE\n301 ERROR CANT SPEAK\n"));
+    }
+
+    #[test]
+    fn a_synthesis_error_still_begins_and_ends_so_clients_stop_waiting() {
         let mut backend = Fake {
             fail_speak: true,
             ..fake()
         };
         let failed = transcript(&mut backend, "INIT\nSPEAK\nx\n.\nQUIT\n");
-        assert!(failed.contains("202 OK RECEIVING MESSAGE\n301 ERROR CANT SPEAK\n"));
+        assert!(failed.contains(
+            "202 OK RECEIVING MESSAGE\n200 OK SPEAKING\n701 BEGIN\n702 END\n210 OK QUIT\n"
+        ));
+        assert!(!failed.contains("705 AUDIO"));
     }
 
     #[test]
