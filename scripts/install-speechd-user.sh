@@ -71,6 +71,9 @@ unpack_deb() {
     work="$tmp/ar-$(basename "$deb")"
     mkdir -p "$work"
     (cd "$work" && ar x "$(realpath "$deb")")
+    if [ -e "$work/data.tar.xz" ] && ! command -v xz >/dev/null; then
+      die "needs xz to unpack $(basename "$deb") with ar; install xz-utils or dpkg-deb"
+    fi
     tar -xf "$work"/data.tar* -C "$dest"
   else
     die "needs dpkg-deb, bsdtar, or ar (binutils) with xz to unpack the .deb files"
