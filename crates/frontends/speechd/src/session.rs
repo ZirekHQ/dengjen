@@ -182,6 +182,10 @@ impl<B: Backend, W: Write> Session<B, W> {
                     break;
                 }
                 Played::Failed => break,
+                Played::Refused => {
+                    ending = "703 STOP";
+                    break;
+                }
             }
         }
         self.say(if started { ending } else { reply::CANT_SPEAK })
@@ -201,9 +205,14 @@ impl<B: Backend, W: Write> Session<B, W> {
                     begin(&mut self.output, started)?;
                     stream_audio(chunks, &mut self.output, &mut self.input)
                 }
+                // Speech Dispatcher drops a message the module refuses without telling the
+                // client, so a client waiting for the end (`spd-say -w`) would wait forever.
+                // Report the speech as begun and stopped instead: clients hear it was cut
+                // short, rather than finished, and Orca's say-all stops instead of racing on.
                 Err(error) => {
                     eprintln!("sd_dengjen: {error}");
-                    Ok(Played::Failed)
+                    begin(&mut self.output, started)?;
+                    Ok(Played::Refused)
                 }
             },
         }
@@ -213,7 +222,10 @@ impl<B: Backend, W: Write> Session<B, W> {
 enum Played {
     Continue,
     Interrupted(Interrupt),
+    /// Synthesis failed after some audio was sent.
     Failed,
+    /// Synthesis could not start, for example because no voice is installed.
+    Refused,
 }
 
 fn begin(output: &mut impl Write, started: &mut bool) -> io::Result<()> {
@@ -510,15 +522,22 @@ mod tests {
     }
 
     #[test]
-    fn empty_text_and_synthesis_errors_cant_speak() {
+    fn empty_text_cant_speak() {
         let empty = transcript(&mut fake(), "INIT\nSPEAK\n.\nQUIT\n");
         assert!(empty.contains("202 OK RECEIVING MESSAGE\n301 ERROR CANT SPEAK\n"));
+    }
+
+    #[test]
+    fn a_synthesis_error_begins_and_stops_so_clients_stop_waiting() {
         let mut backend = Fake {
             fail_speak: true,
             ..fake()
         };
         let failed = transcript(&mut backend, "INIT\nSPEAK\nx\n.\nQUIT\n");
-        assert!(failed.contains("202 OK RECEIVING MESSAGE\n301 ERROR CANT SPEAK\n"));
+        assert!(failed.contains(
+            "202 OK RECEIVING MESSAGE\n200 OK SPEAKING\n701 BEGIN\n703 STOP\n210 OK QUIT\n"
+        ));
+        assert!(!failed.contains("705 AUDIO"));
     }
 
     #[test]
