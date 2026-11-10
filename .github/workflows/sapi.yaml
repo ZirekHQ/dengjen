@@ -89,7 +89,16 @@ jobs:
           $package = Join-Path $env:RUNNER_TEMP 'onnxruntime.zip'
           Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime/$env:ORT_VERSION" -OutFile $package
           Expand-Archive $package (Join-Path $env:RUNNER_TEMP 'onnxruntime')
-          Copy-Item (Join-Path $env:RUNNER_TEMP "onnxruntime/runtimes/$env:ORT_RUNTIME/native/onnxruntime.dll") $stage
+          Write-Host "NuGet runtimes: $((Get-ChildItem (Join-Path $env:RUNNER_TEMP 'onnxruntime/runtimes')).Name -join ', ')"
+          $dll = Join-Path $env:RUNNER_TEMP "onnxruntime/runtimes/$env:ORT_RUNTIME/native/onnxruntime.dll"
+          if (-not (Test-Path $dll)) {
+            # Newer NuGet packages may leave out win-x86; the GitHub release zip is the fallback.
+            $zip = Join-Path $env:RUNNER_TEMP 'onnxruntime-release.zip'
+            Invoke-WebRequest "https://github.com/microsoft/onnxruntime/releases/download/v$env:ORT_VERSION/onnxruntime-$env:ORT_RUNTIME-$env:ORT_VERSION.zip" -OutFile $zip
+            Expand-Archive $zip (Join-Path $env:RUNNER_TEMP 'onnxruntime-release')
+            $dll = Join-Path $env:RUNNER_TEMP "onnxruntime-release/onnxruntime-$env:ORT_RUNTIME-$env:ORT_VERSION/lib/onnxruntime.dll"
+          }
+          Copy-Item $dll $stage
           $voiceDir = Join-Path $stage "voices/piper/$env:VOICE"
           New-Item -ItemType Directory -Force $voiceDir | Out-Null
           foreach ($file in "$env:VOICE.onnx", "$env:VOICE.onnx.json") {
