@@ -72,7 +72,11 @@ jobs:
       - name: Build the voice DLL
         env:
           TARGET: ${{ matrix.platform.target }}
-        run: cargo build --release --locked --target $env:TARGET -p dengjen-sapi --features ort-dylib
+        # The action's `targets` input lands on its own toolchain, not the one rust-toolchain.toml
+        # pins, so the target is added to the pinned toolchain here.
+        run: |
+          rustup target add $env:TARGET
+          cargo build --release --locked --target $env:TARGET -p dengjen-sapi --features ort-dylib
       - name: Stage the DLL, ONNX Runtime and the voice
         shell: pwsh
         env:
