@@ -183,6 +183,7 @@ fn speak_utterance(
 ) -> Result<Outcome, String> {
     let site = output.site;
     let prosody = engine_prosody(site.rate(), site.volume(), utterance.prosody);
+    crate::log::line(|| format!("prosody: {prosody:?}"));
     let mut samples = Vec::new();
     let mut aborted = false;
     synth.synthesize(&utterance.text, prosody, &mut |chunk| {

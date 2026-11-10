@@ -46,10 +46,12 @@ fn volume(site_volume: u32, fragment_volume: u32) -> Option<u8> {
     (combined != 100).then(|| percent(combined as f32))
 }
 
-/// The engine's pitch runs from 0.5x at 0 to 1.5x at 100, so each SAPI step is 5 percent.
+/// The engine's pitch runs from 0.5x at 0 to 1.5x at 100. Screen readers such as Narrator raise
+/// the pitch for markers like "selected", and at the full range (+10 is 1.5x) the voice turns thin
+/// and childlike, so each SAPI step moves the pitch 2 percent and +10 stops at 1.2x.
 fn pitch(sapi_pitch: i32) -> Option<u8> {
     let sapi_pitch = sapi_pitch.clamp(-SAPI_RANGE, SAPI_RANGE);
-    (sapi_pitch != 0).then(|| percent(50.0 + sapi_pitch as f32 * 5.0))
+    (sapi_pitch != 0).then(|| percent(50.0 + sapi_pitch as f32 * 2.0))
 }
 
 fn percent(value: f32) -> u8 {
@@ -102,10 +104,10 @@ mod tests {
     }
 
     #[test]
-    fn pitch_moves_five_percent_per_step() {
+    fn pitch_moves_two_percent_per_step() {
         assert_eq!(pitch(0), None);
-        assert_eq!(pitch(10), Some(100));
-        assert_eq!(pitch(-10), Some(0));
-        assert_eq!(pitch(2), Some(60));
+        assert_eq!(pitch(10), Some(70));
+        assert_eq!(pitch(-10), Some(30));
+        assert_eq!(pitch(2), Some(54));
     }
 }
