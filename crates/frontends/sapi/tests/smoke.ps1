@@ -79,6 +79,47 @@ $status = $voice.Status
 Write-Host ("status: bookmark='{0}' id={1} word={2}+{3} sentence={4}+{5} result={6}" -f `
     $status.LastBookmark, $status.LastBookmarkId, $status.InputWordPosition, $status.InputWordLength, `
     $status.InputSentencePosition, $status.InputSentenceLength, $status.LastHResult)
+
+# Diagnostics: the same request through a built-in voice shows whether Status works at all in a
+# script without a message pump, and System.Speech reads the event queue itself.
+$control = New-Object -ComObject SAPI.SpVoice
+$builtin = @($control.GetVoices() | Where-Object { $_.GetDescription() -notlike 'Dengjen*' })[0]
+if ($null -ne $builtin) {
+    $control.Voice = $builtin
+    $control.EventInterests = $SVEAllEvents
+    $controlStream = Open-Wave $control (Join-Path $env:TEMP 'dengjen-sapi-control.wav')
+    [void]$control.Speak('Hello there. <bookmark mark="7"/>How are you?', $SVSFIsXML)
+    $controlStream.Close()
+    $cs = $control.Status
+    Write-Host ("control ({0}): bookmark='{1}' id={2} word={3}+{4}" -f $builtin.GetDescription(), `
+        $cs.LastBookmark, $cs.LastBookmarkId, $cs.InputWordPosition, $cs.InputWordLength)
+}
+try {
+    Add-Type -AssemblyName System.Speech
+    foreach ($name in @($voice.Voice.GetAttribute('Name')) + @(if ($null -ne $builtin) { $builtin.GetAttribute('Name') })) {
+        $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+        $synth.SelectVoice($name)
+        Register-ObjectEvent $synth BookmarkReached -SourceIdentifier ssBookmark | Out-Null
+        Register-ObjectEvent $synth SpeakProgress -SourceIdentifier ssWord | Out-Null
+        $synth.SetOutputToWaveFile((Join-Path $env:TEMP 'dengjen-sapi-system-speech.wav'))
+        $prompt = New-Object System.Speech.Synthesis.PromptBuilder
+        $prompt.AppendText('Silav, tu çawa yî?')
+        $prompt.AppendBookmark('7')
+        $prompt.AppendText('Ez baş im, spas.')
+        $synth.Speak($prompt)
+        $synth.SetOutputToNull()
+        Start-Sleep -Milliseconds 500
+        $marks = @(Get-Event -SourceIdentifier ssBookmark -ErrorAction SilentlyContinue | ForEach-Object { $_.SourceEventArgs.Bookmark })
+        $words = @(Get-Event -SourceIdentifier ssWord -ErrorAction SilentlyContinue | ForEach-Object { $_.SourceEventArgs.CharacterPosition })
+        Write-Host "System.Speech ($name): bookmarks=[$($marks -join ',')] words=[$($words -join ',')]"
+        Unregister-Event ssBookmark; Unregister-Event ssWord
+        Get-Event | Remove-Event
+        $synth.Dispose()
+    }
+} catch {
+    Write-Host "System.Speech diagnostics failed: $_"
+}
+
 Assert ($bytes -gt 44 + 32000) 'the voice wrote at least a second of audio'
 Assert ($voice.Status.LastBookmark -eq '7') "the bookmark fired (got '$($voice.Status.LastBookmark)')"
 Assert ($voice.Status.LastBookmarkId -eq 7) 'the bookmark carries its number'
