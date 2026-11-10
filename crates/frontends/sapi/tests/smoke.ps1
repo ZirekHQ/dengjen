@@ -66,64 +66,49 @@ $voice = New-DengjenVoice
 Assert ($voice.Voice.GetDescription() -like 'Dengjen*') "SAPI lists $($voice.Voice.GetDescription())"
 Assert ($voice.Voice.GetAttribute('Language') -ne '') "the voice declares Language=$($voice.Voice.GetAttribute('Language'))"
 
-# Speech, a bookmark and word events, written to a file: CI runners have no sound card.
-$stream = Open-Wave $voice $Out
-$text = 'Silav, tu çawa yî? <bookmark mark="7"/>Ez baş im, spas.'
-$watch = [Diagnostics.Stopwatch]::StartNew()
-[void]$voice.Speak($text, $SVSFIsXML)
-$watch.Stop()
-$stream.Close()
-$bytes = (Get-Item $Out).Length
-Write-Host "spoke $bytes bytes in $($watch.ElapsedMilliseconds) ms"
-$status = $voice.Status
-Write-Host ("status: bookmark='{0}' id={1} word={2}+{3} sentence={4}+{5} result={6}" -f `
-    $status.LastBookmark, $status.LastBookmarkId, $status.InputWordPosition, $status.InputWordLength, `
-    $status.InputSentencePosition, $status.InputSentenceLength, $status.LastHResult)
+# SpVoice raises its events through window messages on this thread, so the wait pumps them.
+Add-Type -AssemblyName System.Windows.Forms
+function Invoke-Speech([object]$Voice, [string]$Text, [string]$Path) {
+    $stream = Open-Wave $Voice $Path
+    $bookmark = Register-ObjectEvent $Voice Bookmark
+    $word = Register-ObjectEvent $Voice Word
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    [void]$Voice.Speak($Text, $SVSFIsXML + $SVSFlagsAsync)
+    while (-not $Voice.WaitUntilDone(20)) { [Windows.Forms.Application]::DoEvents() }
+    foreach ($i in 1..10) { [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 20 }
+    $watch.Stop()
+    $stream.Close()
+    $result = [pscustomobject]@{
+        Bytes = (Get-Item $Path).Length
+        Ms = $watch.ElapsedMilliseconds
+        # Bookmark(StreamNumber, StreamPosition, Bookmark, BookmarkId)
+        Bookmarks = @(Get-Event -SourceIdentifier $bookmark.Name -ErrorAction SilentlyContinue | ForEach-Object { "$($_.SourceArgs[2])#$($_.SourceArgs[3])" })
+        # Word(StreamNumber, StreamPosition, CharacterPosition, Length)
+        Words = @(Get-Event -SourceIdentifier $word.Name -ErrorAction SilentlyContinue | ForEach-Object { $_.SourceArgs[2] })
+    }
+    Unregister-Event $bookmark.Name
+    Unregister-Event $word.Name
+    Get-Event | Remove-Event
+    $result
+}
 
-# Diagnostics: the same request through a built-in voice shows whether Status works at all in a
-# script without a message pump, and System.Speech reads the event queue itself.
+# A built-in voice through the same probe, so a broken probe is told apart from a broken engine.
 $control = New-Object -ComObject SAPI.SpVoice
 $builtin = @($control.GetVoices() | Where-Object { $_.GetDescription() -notlike 'Dengjen*' })[0]
 if ($null -ne $builtin) {
     $control.Voice = $builtin
     $control.EventInterests = $SVEAllEvents
-    $controlStream = Open-Wave $control (Join-Path $env:TEMP 'dengjen-sapi-control.wav')
-    [void]$control.Speak('Hello there. <bookmark mark="7"/>How are you?', $SVSFIsXML)
-    $controlStream.Close()
-    $cs = $control.Status
-    Write-Host ("control ({0}): bookmark='{1}' id={2} word={3}+{4}" -f $builtin.GetDescription(), `
-        $cs.LastBookmark, $cs.LastBookmarkId, $cs.InputWordPosition, $cs.InputWordLength)
-}
-try {
-    Add-Type -AssemblyName System.Speech
-    foreach ($name in @($voice.Voice.GetAttribute('Name')) + @(if ($null -ne $builtin) { $builtin.GetAttribute('Name') })) {
-        $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
-        $synth.SelectVoice($name)
-        Register-ObjectEvent $synth BookmarkReached -SourceIdentifier ssBookmark | Out-Null
-        Register-ObjectEvent $synth SpeakProgress -SourceIdentifier ssWord | Out-Null
-        $synth.SetOutputToWaveFile((Join-Path $env:TEMP 'dengjen-sapi-system-speech.wav'))
-        $prompt = New-Object System.Speech.Synthesis.PromptBuilder
-        $prompt.AppendText('Silav, tu çawa yî?')
-        $prompt.AppendBookmark('7')
-        $prompt.AppendText('Ez baş im, spas.')
-        $synth.Speak($prompt)
-        $synth.SetOutputToNull()
-        Start-Sleep -Milliseconds 500
-        $marks = @(Get-Event -SourceIdentifier ssBookmark -ErrorAction SilentlyContinue | ForEach-Object { $_.SourceEventArgs.Bookmark })
-        $words = @(Get-Event -SourceIdentifier ssWord -ErrorAction SilentlyContinue | ForEach-Object { $_.SourceEventArgs.CharacterPosition })
-        Write-Host "System.Speech ($name): bookmarks=[$($marks -join ',')] words=[$($words -join ',')]"
-        Unregister-Event ssBookmark; Unregister-Event ssWord
-        Get-Event | Remove-Event
-        $synth.Dispose()
-    }
-} catch {
-    Write-Host "System.Speech diagnostics failed: $_"
+    $c = Invoke-Speech $control 'Hello there. <bookmark mark="7"/>How are you?' (Join-Path $env:TEMP 'dengjen-sapi-control.wav')
+    Write-Host "control ($($builtin.GetDescription())): bookmarks=[$($c.Bookmarks -join ',')] words=[$($c.Words -join ',')]"
 }
 
-Assert ($bytes -gt 44 + 32000) 'the voice wrote at least a second of audio'
-Assert ($voice.Status.LastBookmark -eq '7') "the bookmark fired (got '$($voice.Status.LastBookmark)')"
-Assert ($voice.Status.LastBookmarkId -eq 7) 'the bookmark carries its number'
-Assert ($voice.Status.InputWordPosition -gt 0) "word events report positions (last word at $($voice.Status.InputWordPosition))"
+# Speech, a bookmark and word events, written to a file: CI runners have no sound card.
+$spoken = Invoke-Speech $voice 'Silav, tu çawa yî? <bookmark mark="7"/>Ez baş im, spas.' $Out
+Write-Host "spoke $($spoken.Bytes) bytes in $($spoken.Ms) ms: bookmarks=[$($spoken.Bookmarks -join ',')] words=[$($spoken.Words -join ',')]"
+Assert ($spoken.Bytes -gt 44 + 32000) 'the voice wrote at least a second of audio'
+Assert ($spoken.Bookmarks -contains '7#7') 'the bookmark fired with its name and number'
+Assert ($spoken.Words.Count -ge 6) "word events fired ($($spoken.Words.Count))"
+Assert (($spoken.Words | Select-Object -Last 1) -gt 0) 'word events report positions in the input'
 
 # A purge must stop a long request quickly: screen readers purge on every key press.
 $voice = New-DengjenVoice
