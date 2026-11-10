@@ -67,29 +67,57 @@ Assert ($voice.Voice.GetDescription() -like 'Dengjen*') "SAPI lists $($voice.Voi
 Assert ($voice.Voice.GetAttribute('Language') -ne '') "the voice declares Language=$($voice.Voice.GetAttribute('Language'))"
 
 # SpVoice raises its events through window messages on this thread, so the wait pumps them.
+# PowerShell cannot subscribe to a late-bound COM object's events, so a small class hooks
+# _ISpeechVoiceEvents by dispatch id: 4 is Bookmark, 5 is Word.
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public class SapiEvents : IDisposable
+{
+    static readonly Guid Events = new Guid("A372ACD1-3BEF-4BBD-8FFB-CB3E2B416AF8");
+    delegate void Handler(object streamNumber, object streamPosition, object third, object fourth);
+    public readonly List<string> Bookmarks = new List<string>();
+    public readonly List<int> Words = new List<int>();
+    readonly object voice;
+    readonly Handler bookmark;
+    readonly Handler word;
+
+    public SapiEvents(object voice)
+    {
+        this.voice = voice;
+        bookmark = (number, position, name, id) => Bookmarks.Add(name + "#" + id);
+        word = (number, position, character, length) => Words.Add(Convert.ToInt32(character));
+        ComEventsHelper.Combine(voice, Events, 4, bookmark);
+        ComEventsHelper.Combine(voice, Events, 5, word);
+    }
+
+    public void Dispose()
+    {
+        ComEventsHelper.Remove(voice, Events, 4, bookmark);
+        ComEventsHelper.Remove(voice, Events, 5, word);
+    }
+}
+'@
+
 function Invoke-Speech([object]$Voice, [string]$Text, [string]$Path) {
     $stream = Open-Wave $Voice $Path
-    $bookmark = Register-ObjectEvent $Voice Bookmark
-    $word = Register-ObjectEvent $Voice Word
+    $events = New-Object SapiEvents -ArgumentList $Voice.PSObject.BaseObject
     $watch = [Diagnostics.Stopwatch]::StartNew()
     [void]$Voice.Speak($Text, $SVSFIsXML + $SVSFlagsAsync)
     while (-not $Voice.WaitUntilDone(20)) { [Windows.Forms.Application]::DoEvents() }
     foreach ($i in 1..10) { [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 20 }
     $watch.Stop()
     $stream.Close()
-    $result = [pscustomobject]@{
+    $events.Dispose()
+    [pscustomobject]@{
         Bytes = (Get-Item $Path).Length
         Ms = $watch.ElapsedMilliseconds
-        # Bookmark(StreamNumber, StreamPosition, Bookmark, BookmarkId)
-        Bookmarks = @(Get-Event -SourceIdentifier $bookmark.Name -ErrorAction SilentlyContinue | ForEach-Object { "$($_.SourceArgs[2])#$($_.SourceArgs[3])" })
-        # Word(StreamNumber, StreamPosition, CharacterPosition, Length)
-        Words = @(Get-Event -SourceIdentifier $word.Name -ErrorAction SilentlyContinue | ForEach-Object { $_.SourceArgs[2] })
+        Bookmarks = @($events.Bookmarks)
+        Words = @($events.Words)
     }
-    Unregister-Event $bookmark.Name
-    Unregister-Event $word.Name
-    Get-Event | Remove-Event
-    $result
 }
 
 # A built-in voice through the same probe, so a broken probe is told apart from a broken engine.
