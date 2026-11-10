@@ -10,6 +10,8 @@ use crate::fragments::{Step, Utterance};
 use crate::prosody::{engine_prosody, EngineProsody};
 use crate::timing::word_starts;
 
+/// Audio written when a request synthesizes to nothing (punctuation, a symbol, whitespace).
+const MIN_AUDIO_MS: u32 = 50;
 /// How much audio goes to SAPI between two abort checks.
 pub const SLICE_MS: u32 = 40;
 const BYTES_PER_SAMPLE: u64 = 2;
@@ -119,6 +121,18 @@ pub fn speak(steps: &[Step], synth: &dyn Synth, site: &dyn Site) -> Result<Outco
         written: 0,
         slice_samples: (sample_rate * SLICE_MS / 1000).max(1) as usize,
     };
+    let outcome = run(steps, synth, site, &mut output);
+    crate::log::line(|| format!("speak: {outcome:?}, {} bytes written", output.written));
+    outcome
+}
+
+fn run(
+    steps: &[Step],
+    synth: &dyn Synth,
+    site: &dyn Site,
+    output: &mut Output<'_>,
+) -> Result<Outcome, String> {
+    let sample_rate = synth.sample_rate().max(1);
     let mut index = 0;
     while let Some(step) = steps.get(index) {
         let actions = site.actions();
@@ -130,12 +144,23 @@ pub fn speak(steps: &[Step], synth: &dyn Synth, site: &dyn Site) -> Result<Outco
             continue;
         }
         let outcome = match step {
-            Step::Speak(utterance) => speak_utterance(utterance, synth, &mut output)?,
+            Step::Speak(utterance) => {
+                crate::log::line(|| {
+                    let text: String = utterance.text.chars().take(40).collect();
+                    format!(
+                        "step: speak {text:?} ({} chars)",
+                        utterance.text.chars().count()
+                    )
+                });
+                speak_utterance(utterance, synth, output)?
+            }
             Step::Silence { ms } => {
+                crate::log::line(|| format!("step: silence {ms} ms"));
                 let samples = (u64::from(*ms) * u64::from(sample_rate) / 1000) as usize;
                 output.write(&vec![0; samples])?
             }
             Step::Bookmark { name } => {
+                crate::log::line(|| format!("step: bookmark {name:?}"));
                 site.add_events(&[Event::Bookmark {
                     audio_offset: output.written,
                     name: name.clone(),
@@ -167,6 +192,12 @@ fn speak_utterance(
     })?;
     if aborted {
         return Ok(Outcome::Aborted);
+    }
+    if samples.is_empty() {
+        // Punctuation, a symbol or whitespace synthesizes to nothing, and a host such as Narrator
+        // may treat a voice that answers a request with no audio at all as broken.
+        let silence = u64::from(MIN_AUDIO_MS) * u64::from(synth.sample_rate()) / 1000;
+        samples.resize(silence.max(1) as usize, 0);
     }
     let start = output.written;
     let mut events = vec![Event::Sentence {
@@ -446,6 +477,31 @@ mod tests {
         assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Aborted));
         assert!(site.written.borrow().is_empty());
         assert_eq!(synth.calls.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_request_that_synthesizes_to_nothing_still_writes_a_little_silence() {
+        struct Mute;
+        impl Synth for Mute {
+            fn sample_rate(&self) -> u32 {
+                RATE
+            }
+            fn synthesize(
+                &self,
+                _text: &str,
+                _prosody: EngineProsody,
+                _chunk: &mut dyn FnMut(&[i16]) -> bool,
+            ) -> Result<(), String> {
+                Ok(())
+            }
+        }
+        let site = FakeSite::default();
+        let steps = plan(&[fragment(Action::Speak, ",", 0)]);
+        assert_eq!(speak(&steps, &Mute, &site), Ok(Outcome::Completed));
+        assert_eq!(
+            samples(&site),
+            vec![0; (RATE * MIN_AUDIO_MS / 1000) as usize]
+        );
     }
 
     #[test]

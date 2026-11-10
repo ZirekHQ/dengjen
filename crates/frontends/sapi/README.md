@@ -69,7 +69,7 @@ The 32-bit DLL is only compiled.
 
 A voice runs inside someone else's process, so there is no console. Set the environment variable
 `DENGJEN_SAPI_LOG` to a file path (for Narrator, machine-wide with `setx /M`, then restart it) and
-the DLL appends a line for each `Speak` request and each failed write. Without it, nothing is logged.
+the DLL appends a line for each `Speak` request, each step with the first 40 characters of the text, the bytes written and each failed write. The log contains the text being read, so keep it off outside debugging. Without the variable, nothing is logged.
 
 ## Support
 
