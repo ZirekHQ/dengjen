@@ -186,11 +186,20 @@ fn speak_utterance(
     crate::log::line(|| format!("prosody: {prosody:?}"));
     let mut samples = Vec::new();
     let mut aborted = false;
+    let started = std::time::Instant::now();
+    let mut first_audio = None;
     synth.synthesize(&utterance.text, prosody, &mut |chunk| {
+        first_audio.get_or_insert_with(|| started.elapsed());
         samples.extend_from_slice(chunk);
         aborted = site.actions().abort;
         !aborted
     })?;
+    crate::log::line(|| {
+        format!(
+            "first audio after {first_audio:?}, done after {:?}",
+            started.elapsed()
+        )
+    });
     if aborted {
         return Ok(Outcome::Aborted);
     }

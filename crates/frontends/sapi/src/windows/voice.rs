@@ -46,8 +46,8 @@ impl Voice {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// The loaded voice, loading it on first use: selecting a voice should stay instant, and
-    /// the model's ONNX session costs most of a second.
+    /// The loaded voice, loaded on selection or else on first use; the model's ONNX session costs
+    /// most of a second, which a host may count against the first request.
     fn engine(&self) -> windows_core::Result<Arc<Engine>> {
         let mut state = self.state();
         if let Some(engine) = &state.engine {
@@ -215,6 +215,12 @@ impl ISpObjectWithToken_Impl for Voice_Impl {
                 sample_rate,
                 engine: None,
             };
+            drop(state);
+            // Load now rather than inside the first request: Narrator interrupts a voice that is
+            // still silent after a couple of seconds, and a failure here is retried by `Speak`.
+            if let Err(error) = self.engine() {
+                crate::log::line(|| format!("SetObjectToken: preload failed: {error}"));
+            }
             Ok(())
         })
     }
