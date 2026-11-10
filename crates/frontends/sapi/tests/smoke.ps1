@@ -130,6 +130,37 @@ if ($null -ne $builtin) {
     Write-Host "control ($($builtin.GetDescription())): bookmarks=[$($c.Bookmarks -join ',')] words=[$($c.Words -join ',')]"
 }
 
+# Diagnostics: which kind of output lets SpVoice hand events back to its client at all.
+if ($null -ne $builtin) {
+    foreach ($kind in 'memory', 'file+events', 'device', 'device-sync') {
+        try {
+            $probe = New-Object -ComObject SAPI.SpVoice
+            $probe.Voice = $builtin
+            $probe.EventInterests = $SVEAllEvents
+            $out = $null
+            if ($kind -eq 'memory') {
+                $out = New-Object -ComObject SAPI.SpMemoryStream
+                $probe.AudioOutputStream = $out
+            } elseif ($kind -eq 'file+events') {
+                $out = New-Object -ComObject SAPI.SpFileStream
+                $out.Open((Join-Path $env:TEMP 'dengjen-sapi-probe.wav'), $SSFMCreateForWrite, $true)
+                $probe.AudioOutputStream = $out
+            }
+            $events = New-Object SapiEvents -ArgumentList $probe.PSObject.BaseObject
+            $flags = if ($kind -eq 'device-sync') { $SVSFIsXML } else { $SVSFIsXML + $SVSFlagsAsync }
+            [void]$probe.Speak('Hello there. <bookmark mark="7"/>How are you?', $flags)
+            while (-not $probe.WaitUntilDone(20)) { [Windows.Forms.Application]::DoEvents() }
+            foreach ($i in 1..10) { [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 20 }
+            $st = $probe.Status
+            Write-Host "probe ${kind}: bookmarks=[$($events.Bookmarks -join ',')] words=[$($events.Words -join ',')] status bookmark='$($st.LastBookmark)' word=$($st.InputWordPosition) apartment=$([Threading.Thread]::CurrentThread.GetApartmentState())"
+            $events.Dispose()
+            if ($kind -eq 'file+events') { $out.Close() }
+        } catch {
+            Write-Host "probe ${kind} failed: $_"
+        }
+    }
+}
+
 # Speech, a bookmark and word events, written to a file: CI runners have no sound card.
 $spoken = Invoke-Speech $voice 'Silav, tu çawa yî? <bookmark mark="7"/>Ez baş im, spas.' $Out
 Write-Host "spoke $($spoken.Bytes) bytes in $($spoken.Ms) ms: bookmarks=[$($spoken.Bookmarks -join ',')] words=[$($spoken.Words -join ',')]"
