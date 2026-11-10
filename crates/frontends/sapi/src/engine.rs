@@ -1,7 +1,7 @@
 //! The real [`Synth`]: a dengjen Piper voice, run in whichever process loaded the DLL.
 #![forbid(unsafe_code)]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 use dengjen_tts::{
@@ -41,7 +41,7 @@ pub fn init_runtime(dll_dir: &Path) -> Result<(), String> {
 
 #[cfg(feature = "ort-dylib")]
 fn ort_builder(dll_dir: &Path) -> Result<ort::environment::EnvironmentBuilder, String> {
-    let ort_path: PathBuf = dll_dir.join(ORT_DLL);
+    let ort_path: std::path::PathBuf = dll_dir.join(ORT_DLL);
     ort::init_from(&ort_path).map_err(|error| {
         format!(
             "failed to load ONNX Runtime from `{}`: {error}",
