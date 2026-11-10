@@ -22,7 +22,14 @@ fn write(root: &Key, values: &[registration::Value]) -> windows_core::Result<()>
 pub(super) fn register(options: &InstallOptions) -> windows_core::Result<()> {
     let dll = super::dll_path()?;
     let voices_dir = match &options.voices_dir {
-        Some(dir) => dir.clone(),
+        // The path is stored in each voice token and read back inside the host process, whose
+        // working directory is not regsvr32's, so a relative `voices=` must be made absolute now.
+        Some(dir) => std::path::absolute(dir).map_err(|error| {
+            windows_core::Error::new(
+                E_FAIL,
+                format!("cannot resolve voices directory {}: {error}", dir.display()),
+            )
+        })?,
         None => super::dll_dir()?.join("voices"),
     };
     let voices = registration::discover(&voices_dir);

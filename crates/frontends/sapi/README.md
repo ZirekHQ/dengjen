@@ -47,8 +47,9 @@ what Kurmanji voices declare:
 
 - `fragments`, `speak`, `timing`, `prosody`, `language` and `registration` are platform-neutral,
   forbid `unsafe`, and are tested on every OS with fake SAPI and synthesizer objects.
-- `windows` is the COM layer. Every entry point runs inside `catch_unwind`, so a panic becomes
-  `E_FAIL` instead of unwinding into the host program.
+- `windows` is the COM layer. The COM methods and the registration exports run inside
+  `catch_unwind`, so a panic becomes `E_FAIL` instead of unwinding into the host program;
+  `DllMain`, `DllGetClassObject` and `DllCanUnloadNow` do only trivial work and are not guarded.
 - Text is synthesized one sentence at a time, and audio is written in 40 ms slices with an abort
   check before each, so a screen reader's purge stops speech quickly.
 - Piper voices report no alignments, so word events are placed in proportion to each word's

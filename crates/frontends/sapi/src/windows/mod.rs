@@ -1,7 +1,9 @@
 //! The COM side of the voice: DLL exports, the class factory and the SAPI interfaces.
 //!
-//! Every exported function and COM method runs its body through [`guard`], so a Rust panic turns
-//! into `E_FAIL` for the caller instead of unwinding into Narrator's or NVDA's stack frames.
+//! Every COM method and the registration exports run their bodies through [`guard`], so a Rust
+//! panic turns into `E_FAIL` for the caller instead of unwinding into Narrator's or NVDA's stack
+//! frames. `DllMain`, `DllGetClassObject` and `DllCanUnloadNow` do only trivial work and are not
+//! guarded.
 
 mod factory;
 mod registry;

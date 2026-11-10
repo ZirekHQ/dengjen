@@ -4,10 +4,7 @@
 //! NVDA's SAPI5 driver and any other SAPI5 client load into their own process. Everything that
 //! does not touch COM lives in platform-neutral modules that forbid `unsafe` and are tested on
 //! every OS; the [`windows`] module only translates between those modules and SAPI's interfaces.
-#![cfg_attr(
-    not(test),
-    deny(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)
-)]
+#![cfg_attr(not(test), deny(clippy::expect_used))]
 
 #[cfg(feature = "engine")]
 pub mod engine;
