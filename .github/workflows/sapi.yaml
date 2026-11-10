@@ -1,0 +1,117 @@
+name: SAPI5 voice
+
+# Builds the Windows SAPI5 voice DLL for 64- and 32-bit processes, stages it with ONNX Runtime,
+# the eSpeak-ng data and the Kurmanji voice, and speaks through SAPI's own SpVoice: registration,
+# speech, bookmarks, word events and a purge, in the bitness each build is for.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/frontends/sapi/**"
+      - "crates/text/espeak-phonemizer/**"
+      - ".github/workflows/sapi.yaml"
+  pull_request:
+    paths:
+      - "crates/frontends/sapi/**"
+      - "crates/text/espeak-phonemizer/**"
+      - ".github/workflows/sapi.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Microsoft.ML.OnnxRuntime NuGet package carries both win-x64 and win-x86 builds; ort's
+  # api-27 feature needs 1.27 or later.
+  ORT_VERSION: "1.31.0"
+  VOICE: ku_TR-berfin_renas-medium
+  VOICE_PATH: ku/ku_TR/berfin_renas/medium
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { name: x64, target: x86_64-pc-windows-msvc, msvc: x64, ort: win-x64 }
+          - { name: x86, target: i686-pc-windows-msvc, msvc: amd64_x86, ort: win-x86 }
+    env:
+      CMAKE_GENERATOR: Ninja
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: choco install llvm -y --no-progress
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+      # toolchain input omitted: channel comes from rust-toolchain.toml
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.platform.target }}
+      # The eSpeak-ng data is the same for every architecture, so it is built for the runner's
+      # own x64 toolchain before the developer prompt switches to the target's.
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Stage the eSpeak-ng data built from source
+        shell: bash
+        run: bash scripts/stage-espeak-data.sh "$RUNNER_TEMP/stage" --release
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: ${{ matrix.platform.msvc }}
+      - name: Build the voice DLL
+        env:
+          TARGET: ${{ matrix.platform.target }}
+        run: cargo build --release --locked --target $env:TARGET -p dengjen-sapi --features ort-dylib
+      - name: Stage the DLL, ONNX Runtime and the voice
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.platform.target }}
+          ORT_RUNTIME: ${{ matrix.platform.ort }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'stage'
+          Copy-Item "target/$env:TARGET/release/dengjen_sapi.dll" $stage
+          $package = Join-Path $env:RUNNER_TEMP 'onnxruntime.zip'
+          Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime/$env:ORT_VERSION" -OutFile $package
+          Expand-Archive $package (Join-Path $env:RUNNER_TEMP 'onnxruntime')
+          Copy-Item (Join-Path $env:RUNNER_TEMP "onnxruntime/runtimes/$env:ORT_RUNTIME/native/onnxruntime.dll") $stage
+          $voiceDir = Join-Path $stage "voices/piper/$env:VOICE"
+          New-Item -ItemType Directory -Force $voiceDir | Out-Null
+          foreach ($file in "$env:VOICE.onnx", "$env:VOICE.onnx.json") {
+            Invoke-WebRequest "https://huggingface.co/rhasspy/piper-voices/resolve/main/$env:VOICE_PATH/$file" -OutFile (Join-Path $voiceDir $file)
+          }
+          Get-ChildItem -Recurse $stage -File | Where-Object { $_.FullName -notmatch 'espeak-ng-data' } | Format-Table Length, FullName
+      - name: Speak through SAPI
+        shell: pwsh
+        env:
+          PLATFORM: ${{ matrix.platform.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $powershell = if ($env:PLATFORM -eq 'x86') {
+            "$env:WINDIR\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
+          } else {
+            "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+          }
+          & $powershell -NoProfile -ExecutionPolicy Bypass -File crates/frontends/sapi/tests/smoke.ps1 -Stage (Join-Path $env:RUNNER_TEMP 'stage') -Out (Join-Path $env:RUNNER_TEMP 'dengjen-sapi-smoke.wav')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: dengjen-sapi-${{ matrix.platform.name }}
+          path: |
+            ${{ runner.temp }}/stage/dengjen_sapi.dll
+            ${{ runner.temp }}/stage/onnxruntime.dll
+            ${{ runner.temp }}/stage/espeak-ng-data
+            ${{ runner.temp }}/dengjen-sapi-smoke.wav
+          if-no-files-found: warn

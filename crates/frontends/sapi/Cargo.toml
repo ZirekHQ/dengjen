@@ -1,0 +1,58 @@
+[package]
+name = "dengjen-sapi"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "SAPI5 voice for Windows that speaks with dengjen voices, loaded in-process by Narrator, NVDA and other SAPI5 clients"
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "dengjen_sapi"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["engine", "espeak", "kurmanji"]
+# The real synthesizer. Without it the crate builds only the SAPI plumbing, which is how the
+# Windows layer is type-checked from Linux without cross-compiling eSpeak-ng and ONNX Runtime.
+engine = ["dep:dengjen-tts", "dep:dengjen-tts-core", "dep:dengjen-tts-piper", "dep:ort"]
+espeak = ["engine", "dep:dengjen-espeak-phonemizer", "dengjen-tts-piper/espeak"]
+kurmanji = ["engine", "dengjen-tts-piper/kurmanji"]
+# Loads onnxruntime.dll from beside the DLL at runtime. The shipped voice needs it: it runs inside
+# whichever 32- or 64-bit process asked for it, so it cannot rely on the host's search path. It
+# stays opt-in because cargo unifies features across a workspace build, and every other crate's
+# tests expect ONNX Runtime linked the usual way.
+ort-dylib = ["engine", "ort/load-dynamic"]
+
+[dependencies]
+dengjen-tts = { workspace = true, optional = true }
+dengjen-tts-core = { workspace = true, optional = true, features = ["ort-providers"] }
+dengjen-tts-piper = { workspace = true, optional = true }
+dengjen-espeak-phonemizer = { workspace = true, optional = true }
+serde_json = "1"
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
+
+[dependencies.ort]
+version = "=2.0.0-rc.15"
+optional = true
+default-features = false
+features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62.2"
+features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_Speech",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices",
+]
+
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.62.2"
+windows-registry = "0.6.1"

@@ -13,7 +13,7 @@ use std::ffi;
 use std::ffi::CString;
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 pub type ESpeakResult<T> = Result<T, ESpeakError>;
 
@@ -49,12 +49,29 @@ static ESPEAK_LOCK: Mutex<()> = Mutex::new(());
 
 static ESPEAKNG_DATA_PATH: Mutex<Option<CString>> = Mutex::new(None);
 
+static DATA_DIRECTORY_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
+
+/// Sets the directory that holds `espeak-ng-data`, ahead of the environment variable and the
+/// executable's directory.
+///
+/// A library loaded into someone else's process, such as a SAPI5 voice DLL, cannot rely on
+/// either: the executable is the host application and setting an environment variable would leak
+/// into the host. Call this before the first phonemization; eSpeak-ng reads the path once.
+/// Returns `false` when a directory was already set.
+pub fn set_data_directory(path: PathBuf) -> bool {
+    DATA_DIRECTORY_OVERRIDE.set(path).is_ok()
+}
+
 type ESpeakLock<'a> = std::sync::MutexGuard<'a, ()>;
 
 fn resolve_data_directory() -> Option<CString> {
-    let base = match env::var(DENGJEN_ESPEAKNG_DATA_DIRECTORY) {
-        Ok(configured) => PathBuf::from(configured),
-        Err(_) => env::current_exe().ok()?.parent()?.to_path_buf(),
+    let base = match (
+        DATA_DIRECTORY_OVERRIDE.get(),
+        env::var(DENGJEN_ESPEAKNG_DATA_DIRECTORY),
+    ) {
+        (Some(set), _) => set.clone(),
+        (None, Ok(configured)) => PathBuf::from(configured),
+        (None, Err(_)) => env::current_exe().ok()?.parent()?.to_path_buf(),
     };
     if !base.join("espeak-ng-data").exists() {
         return None;
