@@ -65,6 +65,12 @@ cargo build --release -p dengjen-sapi --features ort-dylib --target i686-pc-wind
 data and the Kurmanji voice. It then runs `tests/smoke.ps1`, which speaks through SAPI's `SpVoice`.
 The 32-bit DLL is only compiled.
 
+## Diagnostics
+
+A voice runs inside someone else's process, so there is no console. Set the environment variable
+`DENGJEN_SAPI_LOG` to a file path (for Narrator, machine-wide with `setx /M`, then restart it) and
+the DLL appends a line for each `Speak` request and each failed write. Without it, nothing is logged.
+
 ## Support
 
 This crate is part of [Zirek](https://github.com/ZirekHQ). 💖 [Support on Open Collective](https://opencollective.com/zirek)

@@ -93,7 +93,18 @@ impl Output<'_> {
                 .iter()
                 .flat_map(|sample| sample.to_le_bytes())
                 .collect();
-            self.site.write(&bytes)?;
+            if let Err(error) = self.site.write(&bytes) {
+                // SAPI refuses audio once the caller has aborted, and the abort can land between
+                // the check above and this write. That is the caller's request, not a failure: a
+                // host such as Narrator treats a failed `Speak` as a broken voice and switches away.
+                let aborted = self.aborted();
+                crate::log::line(|| format!("write failed ({error}); abort requested: {aborted}"));
+                return if aborted {
+                    Ok(Outcome::Aborted)
+                } else {
+                    Err(error)
+                };
+            }
             self.written += slice.len() as u64 * BYTES_PER_SAMPLE;
         }
         Ok(Outcome::Completed)
@@ -259,6 +270,9 @@ mod tests {
         events: RefCell<Vec<Event>>,
         /// Abort once this many `actions` calls have happened.
         abort_after: Option<usize>,
+        /// Every write fails, and the caller's abort is raised by the first one.
+        abort_during_write: Cell<bool>,
+        aborting: Cell<bool>,
         checks: Cell<usize>,
         skip: Cell<Option<i32>>,
         completed_skips: RefCell<Vec<i32>>,
@@ -269,9 +283,10 @@ mod tests {
         fn actions(&self) -> Actions {
             self.checks.set(self.checks.get() + 1);
             Actions {
-                abort: self
-                    .abort_after
-                    .is_some_and(|after| self.checks.get() > after),
+                abort: self.aborting.get()
+                    || self
+                        .abort_after
+                        .is_some_and(|after| self.checks.get() > after),
                 skip: self.skip.get().is_some(),
             }
         }
@@ -294,6 +309,10 @@ mod tests {
 
         fn write(&self, audio: &[u8]) -> Result<(), String> {
             self.writes.set(self.writes.get() + 1);
+            if self.abort_during_write.get() {
+                self.aborting.set(true);
+                return Err("the caller aborted".to_owned());
+            }
             self.written.borrow_mut().extend_from_slice(audio);
             Ok(())
         }
@@ -427,6 +446,46 @@ mod tests {
         assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Aborted));
         assert!(site.written.borrow().is_empty());
         assert_eq!(synth.calls.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_write_that_fails_because_the_caller_aborted_is_an_abort_not_an_error() {
+        let synth = FakeSynth::new();
+        let site = FakeSite::default();
+        site.abort_during_write.set(true);
+        let steps = plan(&[fragment(Action::Speak, "hello there", 0)]);
+        assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Aborted));
+    }
+
+    #[test]
+    fn a_write_that_fails_without_an_abort_is_still_an_error() {
+        struct BrokenSite(FakeSite);
+        impl Site for BrokenSite {
+            fn actions(&self) -> Actions {
+                Actions::default()
+            }
+            fn rate(&self) -> i32 {
+                0
+            }
+            fn volume(&self) -> u16 {
+                100
+            }
+            fn skip_request(&self) -> i32 {
+                0
+            }
+            fn complete_skip(&self, _skipped: i32) {}
+            fn write(&self, _audio: &[u8]) -> Result<(), String> {
+                Err("the audio sink is gone".to_owned())
+            }
+            fn add_events(&self, events: &[Event]) -> Result<(), String> {
+                self.0.add_events(events)
+            }
+        }
+        let steps = plan(&[fragment(Action::Speak, "hello there", 0)]);
+        assert_eq!(
+            speak(&steps, &FakeSynth::new(), &BrokenSite(FakeSite::default())),
+            Err("the audio sink is gone".to_owned())
+        );
     }
 
     #[test]

@@ -132,13 +132,20 @@ impl ISpTTSEngine_Impl for Voice_Impl {
             // SAFETY: SAPI passes a valid fragment list that outlives this call.
             let fragments = unsafe { copy_fragments(fragments) };
             let steps = fragments::plan(&fragments);
+            crate::log::line(|| {
+                format!(
+                    "Speak: {} fragments, {} steps",
+                    fragments.len(),
+                    steps.len()
+                )
+            });
             if steps.is_empty() {
                 return Ok(());
             }
             let engine = self.engine()?;
-            speak::speak(&steps, engine.as_ref(), &EngineSite::new(site))
-                .map(drop)
-                .map_err(failure)
+            let outcome = speak::speak(&steps, engine.as_ref(), &EngineSite::new(site));
+            crate::log::line(|| format!("Speak finished: {outcome:?}"));
+            outcome.map(drop).map_err(failure)
         })
     }
 

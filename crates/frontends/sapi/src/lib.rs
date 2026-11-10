@@ -16,6 +16,7 @@ pub mod engine;
 pub mod engine;
 pub mod fragments;
 pub mod language;
+pub mod log;
 pub mod prosody;
 pub mod registration;
 pub mod speak;
