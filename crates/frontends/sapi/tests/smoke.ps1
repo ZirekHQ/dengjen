@@ -33,7 +33,6 @@ function Assert([bool]$Condition, [string]$Message) {
 $SVSFlagsAsync = 1
 $SVSFPurgeBeforeSpeak = 2
 $SVSFIsXML = 8
-$SSFMCreateForWrite = 3
 $SVEAllEvents = 33790
 
 function New-DengjenVoice {
@@ -45,11 +44,25 @@ function New-DengjenVoice {
     $voice
 }
 
-function Open-Wave([object]$Voice, [string]$Path) {
-    $stream = New-Object -ComObject SAPI.SpFileStream
-    $stream.Open($Path, $SSFMCreateForWrite, $false)
+# SpVoice only hands events back to its client when the output is not an SpFileStream, which
+# takes them for itself; CI runners have no sound card, so the audio goes to memory.
+function Open-Memory([object]$Voice) {
+    $stream = New-Object -ComObject SAPI.SpMemoryStream
     $Voice.AudioOutputStream = $stream
     $stream
+}
+
+function Save-Wave([object]$Stream, [string]$Path) {
+    $format = $Stream.Format.GetWaveFormatEx()
+    [byte[]]$data = $Stream.GetData()
+    $file = [IO.File]::Create($Path)
+    $writer = New-Object IO.BinaryWriter $file
+    $writer.Write([Text.Encoding]::ASCII.GetBytes('RIFF')); $writer.Write([int](36 + $data.Length))
+    $writer.Write([Text.Encoding]::ASCII.GetBytes('WAVEfmt ')); $writer.Write([int]16)
+    $writer.Write([int16]1); $writer.Write([int16]$format.Channels); $writer.Write([int]$format.SamplesPerSec)
+    $writer.Write([int]$format.AvgBytesPerSec); $writer.Write([int16]$format.BlockAlign); $writer.Write([int16]$format.BitsPerSample)
+    $writer.Write([Text.Encoding]::ASCII.GetBytes('data')); $writer.Write([int]$data.Length); $writer.Write($data)
+    $writer.Close()
 }
 
 Write-Host "Testing $dll as a $(if ($is32) { '32' } else { '64' })-bit voice"
@@ -102,18 +115,18 @@ public class SapiEvents : IDisposable
 }
 '@
 
-function Invoke-Speech([object]$Voice, [string]$Text, [string]$Path) {
-    $stream = Open-Wave $Voice $Path
+function Invoke-Speech([object]$Voice, [string]$Text) {
+    $stream = Open-Memory $Voice
     $events = New-Object SapiEvents -ArgumentList $Voice.PSObject.BaseObject
     $watch = [Diagnostics.Stopwatch]::StartNew()
     [void]$Voice.Speak($Text, $SVSFIsXML + $SVSFlagsAsync)
     while (-not $Voice.WaitUntilDone(20)) { [Windows.Forms.Application]::DoEvents() }
     foreach ($i in 1..10) { [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 20 }
     $watch.Stop()
-    $stream.Close()
     $events.Dispose()
     [pscustomobject]@{
-        Bytes = (Get-Item $Path).Length
+        Stream = $stream
+        Bytes = @($stream.GetData()).Length
         Ms = $watch.ElapsedMilliseconds
         Bookmarks = @($events.Bookmarks)
         Words = @($events.Words)
@@ -126,52 +139,22 @@ $builtin = @($control.GetVoices() | Where-Object { $_.GetDescription() -notlike 
 if ($null -ne $builtin) {
     $control.Voice = $builtin
     $control.EventInterests = $SVEAllEvents
-    $c = Invoke-Speech $control 'Hello there. <bookmark mark="7"/>How are you?' (Join-Path $env:TEMP 'dengjen-sapi-control.wav')
+    $c = Invoke-Speech $control 'Hello there. <bookmark mark="7"/>How are you?'
     Write-Host "control ($($builtin.GetDescription())): bookmarks=[$($c.Bookmarks -join ',')] words=[$($c.Words -join ',')]"
 }
 
-# Diagnostics: which kind of output lets SpVoice hand events back to its client at all.
-if ($null -ne $builtin) {
-    foreach ($kind in 'memory', 'memory-sync', 'file+events') {
-        try {
-            $probe = New-Object -ComObject SAPI.SpVoice
-            $probe.Voice = $builtin
-            $probe.EventInterests = $SVEAllEvents
-            $sink = $null
-            if ($kind -like 'memory*') {
-                $sink = New-Object -ComObject SAPI.SpMemoryStream
-                $probe.AudioOutputStream = $sink
-            } elseif ($kind -eq 'file+events') {
-                $sink = New-Object -ComObject SAPI.SpFileStream
-                $sink.Open((Join-Path $env:TEMP 'dengjen-sapi-probe.wav'), $SSFMCreateForWrite, $true)
-                $probe.AudioOutputStream = $sink
-            }
-            $events = New-Object SapiEvents -ArgumentList $probe.PSObject.BaseObject
-            $flags = if ($kind -eq 'memory-sync') { $SVSFIsXML } else { $SVSFIsXML + $SVSFlagsAsync }
-            [void]$probe.Speak('Hello there. <bookmark mark="7"/>How are you?', $flags)
-            while (-not $probe.WaitUntilDone(20)) { [Windows.Forms.Application]::DoEvents() }
-            foreach ($i in 1..10) { [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 20 }
-            $st = $probe.Status
-            Write-Host "probe ${kind}: bookmarks=[$($events.Bookmarks -join ',')] words=[$($events.Words -join ',')] status bookmark='$($st.LastBookmark)' word=$($st.InputWordPosition) apartment=$([Threading.Thread]::CurrentThread.GetApartmentState())"
-            $events.Dispose()
-            if ($kind -eq 'file+events') { $sink.Close() }
-        } catch {
-            Write-Host "probe ${kind} failed: $_"
-        }
-    }
-}
-
-# Speech, a bookmark and word events, written to a file: CI runners have no sound card.
-$spoken = Invoke-Speech $voice 'Silav, tu çawa yî? <bookmark mark="7"/>Ez baş im, spas.' $Out
+# Speech, a bookmark and word events.
+$spoken = Invoke-Speech $voice 'Silav, tu çawa yî? <bookmark mark="7"/>Ez baş im, spas.'
+Save-Wave $spoken.Stream $Out
 Write-Host "spoke $($spoken.Bytes) bytes in $($spoken.Ms) ms: bookmarks=[$($spoken.Bookmarks -join ',')] words=[$($spoken.Words -join ',')]"
-Assert ($spoken.Bytes -gt 44 + 32000) 'the voice wrote at least a second of audio'
+Assert ($spoken.Bytes -gt 32000) 'the voice wrote at least a second of audio'
 Assert ($spoken.Bookmarks -contains '7#7') 'the bookmark fired with its name and number'
 Assert ($spoken.Words.Count -ge 6) "word events fired ($($spoken.Words.Count))"
 Assert (($spoken.Words | Select-Object -Last 1) -gt 0) 'word events report positions in the input'
 
 # A purge must stop a long request quickly: screen readers purge on every key press.
 $voice = New-DengjenVoice
-$stream = Open-Wave $voice (Join-Path $env:TEMP 'dengjen-sapi-abort.wav')
+$stream = Open-Memory $voice
 $long = (1..40 | ForEach-Object { "Ev hevoka hejmar $_ e, û ew gelekî dirêj e da ku axaftin demekê bidome." }) -join ' '
 [void]$voice.Speak($long, $SVSFlagsAsync)
 Start-Sleep -Milliseconds 1500
@@ -179,7 +162,6 @@ $watch = [Diagnostics.Stopwatch]::StartNew()
 [void]$voice.Speak('', $SVSFPurgeBeforeSpeak)
 $done = $voice.WaitUntilDone(10000)
 $watch.Stop()
-$stream.Close()
 Write-Host "purge finished in $($watch.ElapsedMilliseconds) ms"
 Assert $done 'the purge finished'
 Assert ($watch.ElapsedMilliseconds -lt 2000) 'the purge stopped within two seconds'
