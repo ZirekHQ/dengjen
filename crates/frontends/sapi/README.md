@@ -10,8 +10,8 @@ and bookmark events, but it has no installer yet.
 
 ## Layout on disk
 
-Put these side by side, using the 32-bit build for 32-bit programs and the 64-bit build for
-64-bit ones:
+Put these side by side. Only the 64-bit build can run today: Microsoft publishes no 32-bit ONNX
+Runtime after 1.22, so 32-bit programs cannot load the voice.
 
 ```
 dengjen_sapi.dll
@@ -30,7 +30,7 @@ voices/piper/<key>/<key>.onnx.json
 - Options go in `/i:"..."`, separated by `;`: `user` or `machine`, `voices=<dir>` for another
   voices directory, and `kurdish=<policy>`.
 
-Use the matching `regsvr32`: `C:\Windows\SysWOW64\regsvr32.exe` for the 32-bit DLL.
+Use the 64-bit `regsvr32` in `C:\Windows\System32`.
 
 ### The Kurdish language ID
 
@@ -61,8 +61,9 @@ cargo build --release -p dengjen-sapi --features ort-dylib --target x86_64-pc-wi
 cargo build --release -p dengjen-sapi --features ort-dylib --target i686-pc-windows-msvc
 ```
 
-`.github/workflows/sapi.yaml` builds both, stages them with ONNX Runtime, the eSpeak-ng data and the
-Kurmanji voice, and runs `tests/smoke.ps1`, which speaks through SAPI's `SpVoice`.
+`.github/workflows/sapi.yaml` builds both and stages the 64-bit one with ONNX Runtime, the eSpeak-ng
+data and the Kurmanji voice. It then runs `tests/smoke.ps1`, which speaks through SAPI's `SpVoice`.
+The 32-bit DLL is only compiled.
 
 ## Support
 
