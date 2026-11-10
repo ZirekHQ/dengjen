@@ -114,13 +114,7 @@ impl Site for EngineSite<'_> {
                 Event::Bookmark { audio_offset, name } => {
                     let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
                     // SAPI documents wParam as the bookmark's leading number, as `_wtol` reads it.
-                    let number = name
-                        .trim()
-                        .chars()
-                        .take_while(|ch| ch.is_ascii_digit() || *ch == '-')
-                        .collect::<String>()
-                        .parse::<isize>()
-                        .unwrap_or(0);
+                    let number = crate::speak::bookmark_number(name);
                     raw.push(SPEVENT {
                         _bitfield: header(SPEI_TTS_BOOKMARK, SPET_LPARAM_IS_STRING),
                         ulStreamNum: 0,

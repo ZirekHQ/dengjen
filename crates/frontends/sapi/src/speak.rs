@@ -220,6 +220,22 @@ fn speak_utterance(
     output.write(&samples)
 }
 
+/// The leading integer of a bookmark's name, which SAPI hands clients in `wParam` as `_wtol` reads
+/// it: an optional sign, then digits, and 0 when there are none.
+pub fn bookmark_number(name: &str) -> isize {
+    let trimmed = name.trim();
+    let (negative, unsigned) = trimmed
+        .strip_prefix('-')
+        .map_or((false, trimmed), |rest| (true, rest));
+    let digits: String = unsigned.chars().take_while(char::is_ascii_digit).collect();
+    let magnitude = digits.parse::<isize>().unwrap_or(0);
+    if negative {
+        -magnitude
+    } else {
+        magnitude
+    }
+}
+
 /// Moves past (or back over) the sentences the caller asked to skip, and reports how many.
 fn skip(steps: &[Step], index: usize, site: &dyn Site) -> usize {
     let wanted = site.skip_request();
@@ -254,6 +270,17 @@ fn skip(steps: &[Step], index: usize, site: &dyn Site) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_bookmark_number_is_the_leading_integer_of_its_name() {
+        assert_eq!(bookmark_number("7"), 7);
+        assert_eq!(bookmark_number(" 12abc"), 12);
+        assert_eq!(bookmark_number("-3"), -3);
+        // A minus sign counts only at the start, as with `_wtol`.
+        assert_eq!(bookmark_number("1-2"), 1);
+        assert_eq!(bookmark_number("END12"), 0);
+        assert_eq!(bookmark_number(""), 0);
+    }
     use crate::fragments::{plan, Action, Fragment, FragmentProsody};
     use std::cell::{Cell, RefCell};
 

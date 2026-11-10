@@ -275,10 +275,13 @@ mod tests {
 
     #[test]
     fn discovery_finds_voices_with_a_config_and_skips_the_rest() {
+        // Windows path components cannot hold the `:` of a `SystemTime` debug print.
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
         let root = std::env::temp_dir().join(format!(
-            "dengjen-sapi-discover-{}-{:?}",
-            std::process::id(),
-            std::time::SystemTime::now()
+            "dengjen-sapi-discover-{}-{nanos}",
+            std::process::id()
         ));
         for (key, with_config) in [("b_voice", true), ("a_voice", true), ("broken", false)] {
             let dir = root.join("piper").join(key);
