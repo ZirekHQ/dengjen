@@ -901,7 +901,6 @@ dependencies = [
  "windows",
  "windows-core",
  "windows-registry",
- "workspace-hack",
 ]
 
 [[package]]

@@ -34,12 +34,14 @@ $SVSFlagsAsync = 1
 $SVSFPurgeBeforeSpeak = 2
 $SVSFIsXML = 8
 $SSFMCreateForWrite = 3
+$SVEAllEvents = 33790
 
 function New-DengjenVoice {
     $voice = New-Object -ComObject SAPI.SpVoice
     $token = @($voice.GetVoices() | Where-Object { $_.GetDescription() -like 'Dengjen*' })[0]
     if ($null -eq $token) { throw 'no Dengjen voice is registered' }
     $voice.Voice = $token
+    $voice.EventInterests = $SVEAllEvents
     $voice
 }
 
@@ -73,6 +75,10 @@ $watch.Stop()
 $stream.Close()
 $bytes = (Get-Item $Out).Length
 Write-Host "spoke $bytes bytes in $($watch.ElapsedMilliseconds) ms"
+$status = $voice.Status
+Write-Host ("status: bookmark='{0}' id={1} word={2}+{3} sentence={4}+{5} result={6}" -f `
+    $status.LastBookmark, $status.LastBookmarkId, $status.InputWordPosition, $status.InputWordLength, `
+    $status.InputSentencePosition, $status.InputSentenceLength, $status.LastHResult)
 Assert ($bytes -gt 44 + 32000) 'the voice wrote at least a second of audio'
 Assert ($voice.Status.LastBookmark -eq '7') "the bookmark fired (got '$($voice.Status.LastBookmark)')"
 Assert ($voice.Status.LastBookmarkId -eq 7) 'the bookmark carries its number'

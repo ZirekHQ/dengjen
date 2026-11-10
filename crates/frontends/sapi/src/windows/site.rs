@@ -9,22 +9,15 @@ use windows::Win32::Media::Speech::{
 
 use crate::speak::{Actions, Event, Site};
 
+// Every event is handed to SAPI, which drops the ones the client did not ask for. Filtering here
+// on `GetEventInterest` lost bookmarks in testing, and the events are cheap.
 pub(super) struct EngineSite<'a> {
     site: &'a ISpTTSEngineSite,
-    interest: u64,
 }
 
 impl<'a> EngineSite<'a> {
     pub(super) fn new(site: &'a ISpTTSEngineSite) -> Self {
-        let mut interest = 0u64;
-        // SAFETY: `interest` is a live, writable u64 for the call's duration. On failure it stays
-        // zero, which only means no events are sent.
-        let _ = unsafe { site.GetEventInterest(&mut interest) };
-        Self { site, interest }
-    }
-
-    fn wants(&self, id: SPEVENTENUM) -> bool {
-        u32::try_from(id.0).is_ok_and(|bit| bit < 64 && self.interest & (1u64 << bit) != 0)
+        Self { site }
     }
 }
 
@@ -103,7 +96,7 @@ impl Site for EngineSite<'_> {
                     audio_offset,
                     offset,
                     len,
-                } if self.wants(SPEI_SENTENCE_BOUNDARY) => {
+                } => {
                     raw.push(boundary(
                         SPEI_SENTENCE_BOUNDARY,
                         *audio_offset,
@@ -115,10 +108,10 @@ impl Site for EngineSite<'_> {
                     audio_offset,
                     offset,
                     len,
-                } if self.wants(SPEI_WORD_BOUNDARY) => {
+                } => {
                     raw.push(boundary(SPEI_WORD_BOUNDARY, *audio_offset, *offset, *len));
                 }
-                Event::Bookmark { audio_offset, name } if self.wants(SPEI_TTS_BOOKMARK) => {
+                Event::Bookmark { audio_offset, name } => {
                     let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
                     // SAPI documents wParam as the bookmark's leading number, as `_wtol` reads it.
                     let number = name
@@ -137,7 +130,6 @@ impl Site for EngineSite<'_> {
                     });
                     names.push(wide);
                 }
-                _ => {}
             }
         }
         if raw.is_empty() {
