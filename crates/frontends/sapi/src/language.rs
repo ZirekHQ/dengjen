@@ -15,13 +15,15 @@ pub const CENTRAL_KURDISH: u16 = 0x0492;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum KurdishPolicy {
-    /// Register Kurmanji voices as 0x1000 only. Accurate, but a client that looks voices up by a
-    /// known language will not offer them.
-    #[default]
+    /// Register Kurmanji voices as 0x1000 only. Accurate, but NVDA, which reads the first LANGID,
+    /// reports the unknown locale `aa_ET`, and a client that looks voices up by a known language
+    /// will not offer them.
     Unspecified,
-    /// Register as 0x1000 first and Central Kurdish second, so a client asking for Kurdish finds
-    /// the voice while one that reads the first LANGID still sees no wrong language.
-    UnspecifiedThenCentralKurdish,
+    /// Register as Central Kurdish first and 0x1000 second. NVDA, which reads only the first
+    /// LANGID, then reports `ckb` instead of a wrong locale, and clients asking for 0x1000 still
+    /// find the voice. Kurmanji is labelled as Central Kurdish.
+    #[default]
+    CentralKurdishThenUnspecified,
     /// Register as Central Kurdish only, for clients that ignore voices with an unknown language.
     CentralKurdish,
 }
@@ -32,7 +34,7 @@ impl FromStr for KurdishPolicy {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim().to_ascii_lowercase().as_str() {
             "unspecified" | "1000" => Ok(Self::Unspecified),
-            "both" | "1000;492" => Ok(Self::UnspecifiedThenCentralKurdish),
+            "both" | "492;1000" => Ok(Self::CentralKurdishThenUnspecified),
             "ckb" | "492" => Ok(Self::CentralKurdish),
             other => Err(format!(
                 "unknown Kurdish language policy `{other}`; use unspecified, both or ckb"
@@ -45,7 +47,7 @@ impl fmt::Display for KurdishPolicy {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::Unspecified => "unspecified",
-            Self::UnspecifiedThenCentralKurdish => "both",
+            Self::CentralKurdishThenUnspecified => "both",
             Self::CentralKurdish => "ckb",
         })
     }
@@ -107,7 +109,7 @@ pub fn langids(language: &str, kurdish: KurdishPolicy) -> Vec<u16> {
     if is_kurmanji(language) {
         return match kurdish {
             KurdishPolicy::Unspecified => vec![UNSPECIFIED],
-            KurdishPolicy::UnspecifiedThenCentralKurdish => vec![UNSPECIFIED, CENTRAL_KURDISH],
+            KurdishPolicy::CentralKurdishThenUnspecified => vec![CENTRAL_KURDISH, UNSPECIFIED],
             KurdishPolicy::CentralKurdish => vec![CENTRAL_KURDISH],
         };
     }
@@ -156,9 +158,13 @@ mod tests {
         assert_eq!(
             attribute(&langids(
                 "kmr-Latn",
-                KurdishPolicy::UnspecifiedThenCentralKurdish
+                KurdishPolicy::CentralKurdishThenUnspecified
             )),
-            "1000;492"
+            "492;1000"
+        );
+        assert_eq!(
+            attribute(&langids("ku_TR", KurdishPolicy::default())),
+            "492;1000"
         );
         assert_eq!(
             attribute(&langids("ku", KurdishPolicy::CentralKurdish)),
@@ -189,12 +195,16 @@ mod tests {
     fn policies_parse_from_their_names_and_round_trip() {
         for policy in [
             KurdishPolicy::Unspecified,
-            KurdishPolicy::UnspecifiedThenCentralKurdish,
+            KurdishPolicy::CentralKurdishThenUnspecified,
             KurdishPolicy::CentralKurdish,
         ] {
             assert_eq!(policy.to_string().parse::<KurdishPolicy>(), Ok(policy));
         }
         assert_eq!("492".parse(), Ok(KurdishPolicy::CentralKurdish));
+        assert_eq!(
+            "492;1000".parse(),
+            Ok(KurdishPolicy::CentralKurdishThenUnspecified)
+        );
         assert!("sorani".parse::<KurdishPolicy>().is_err());
     }
 }

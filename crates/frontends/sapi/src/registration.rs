@@ -208,13 +208,13 @@ mod tests {
     }
 
     #[test]
-    fn install_args_default_to_machine_scope_and_the_unspecified_kurdish_langid() {
+    fn install_args_default_to_machine_scope_and_central_kurdish_first() {
         assert_eq!(parse_install_args(""), Ok(InstallOptions::default()));
         assert_eq!(
             parse_install_args(r" user ; kurdish=both; voices=D:\My Voices "),
             Ok(InstallOptions {
                 scope: Scope::User,
-                kurdish: KurdishPolicy::UnspecifiedThenCentralKurdish,
+                kurdish: KurdishPolicy::CentralKurdishThenUnspecified,
                 voices_dir: Some(PathBuf::from(r"D:\My Voices")),
             })
         );
@@ -249,8 +249,9 @@ mod tests {
         );
         assert_eq!(
             find(&format!(r"{token}\Attributes"), "Language"),
-            Some("1000")
+            Some("492;1000")
         );
+        assert_eq!(find(token, "492"), Some("Dengjen Hozan (ku_TR, medium)"));
         assert_eq!(find(token, "1000"), Some("Dengjen Hozan (ku_TR, medium)"));
         assert_eq!(
             find(&format!(r"{token}\Attributes"), "Name"),

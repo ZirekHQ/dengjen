@@ -39,9 +39,9 @@ what Kurmanji voices declare:
 
 | Policy | `Language` attribute | Effect |
 |---|---|---|
-| `unspecified` (default) | `1000` | Accurate; clients that only list known languages may hide the voice. |
-| `both` | `1000;492` | Clients asking for Kurdish find it; the first LANGID stays unspecified. |
-| `ckb` | `492` | Declares Central Kurdish (Sorani), for clients that drop unknown languages. |
+| `both` (default) | `492;1000` | NVDA reads only the first LANGID and reports `ckb`; clients asking for the unspecified `1000` still find the voice. Kurmanji is labelled as Central Kurdish. |
+| `unspecified` | `1000` | Accurate, but NVDA reports the unknown locale `aa_ET` and logs symbol-table errors, and clients that only list known languages may hide the voice. |
+| `ckb` | `492` | Declares Central Kurdish (Sorani) only, for clients that drop unknown languages. |
 
 ## Design
 
