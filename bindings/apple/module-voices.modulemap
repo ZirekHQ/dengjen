@@ -1,0 +1,4 @@
+module LibdengjenVoices {
+    header "libdengjen_voices.h"
+    export *
+}

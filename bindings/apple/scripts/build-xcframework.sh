@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # Usage: build-xcframework.sh [debug|release]
 # Prebuilt ort covers only arm64 for iOS, the iOS simulator and macOS, so there are no x86_64 slices.
+# APPLE_TARGETS (space-separated) builds fewer slices, e.g. only aarch64-apple-darwin for a Mac app.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 root="$(cd "$here/../.." && pwd)"
 profile="${1:-release}"
 flag="--release"; [ "$profile" = debug ] && { flag=""; profile=debug; }
-targets=(aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin)
+read -r -a targets <<<"${APPLE_TARGETS:-aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin}"
 name="Libdengjen"
 export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-16.0}"
 export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
 cd "$root"
 target_dir="$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)"
 out="${APPLE_OUT_DIR:-$target_dir/apple}"
-features="${APPLE_FEATURES:-espeak,coreml}"
+features="${APPLE_FEATURES:-espeak,coreml,voices}"
 for target in "${targets[@]}"; do
   cargo build --locked $flag -p libdengjen-apple --lib --features "$features" --target "$target"
 done
@@ -21,12 +22,15 @@ rm -rf "$out/headers" "$out/$name.xcframework"
 mkdir -p "$out/headers"
 cp crates/frontends/capi/libdengjen.h "$out/headers/"
 cp "$here/module.modulemap" "$out/headers/"
-case ",$(printf '%s' "$features" | tr ' ' ',')," in
-  *,stt,*)
-    cp crates/frontends/capi-stt/libdengjen_stt.h "$out/headers/"
-    cat "$here/module-stt.modulemap" >> "$out/headers/module.modulemap"
-    ;;
-esac
+has_feature() { case ",$(printf '%s' "$features" | tr ' ' ',')," in *,"$1",*) return 0 ;; esac; return 1; }
+if has_feature stt; then
+  cp crates/frontends/capi-stt/libdengjen_stt.h "$out/headers/"
+  cat "$here/module-stt.modulemap" >> "$out/headers/module.modulemap"
+fi
+if has_feature voices; then
+  cp crates/frontends/capi-voices/libdengjen_voices.h "$out/headers/"
+  cat "$here/module-voices.modulemap" >> "$out/headers/module.modulemap"
+fi
 args=()
 for target in "${targets[@]}"; do
   args+=(-library "$target_dir/$target/$profile/liblibdengjen_apple.a" -headers "$out/headers")

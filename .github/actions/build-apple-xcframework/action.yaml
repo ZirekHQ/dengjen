@@ -4,7 +4,7 @@ inputs:
   features:
     description: Cargo features of libdengjen-apple to build with.
     required: false
-    default: espeak,coreml
+    default: espeak,coreml,voices
 runs:
   using: composite
   steps:
