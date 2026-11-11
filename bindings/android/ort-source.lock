@@ -1,0 +1,5 @@
+# ONNX Runtime source that scripts/build-ort.sh builds. Keep the version equal to the
+# one inside the sherpa-onnx prebuilt (ort.sha256), because stt's sherpa C API links
+# the libonnxruntime.so that core ships.
+version=1.28.2
+commit=33ca9628233dc8f002435e868d4c2e9f82766ca1

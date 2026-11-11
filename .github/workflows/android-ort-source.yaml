@@ -1,0 +1,95 @@
+name: Android ONNX Runtime from source
+
+# Builds core's libonnxruntime.so from source (scripts/build-ort.sh), the way the
+# F-Droid recipe does, and checks that the AARs stay in budget and still speak.
+on:
+  pull_request:
+    paths:
+      - "bindings/android/scripts/build-ort.sh"
+      - "bindings/android/ort-source.lock"
+      - ".github/workflows/android-ort-source.yaml"
+  schedule:
+    - cron: "0 5 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ort-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # rust-toolchain.toml pins the toolchain, so the targets must be added to that one.
+      - name: Add Android targets to the pinned toolchain
+        run: rustup target add aarch64-linux-android x86_64-linux-android
+      - id: ndk
+        uses: ./.github/actions/setup-android-ndk # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+      - name: Install cargo-ndk and Ninja
+        run: |
+          cargo install cargo-ndk --locked
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build
+      - name: Build ONNX Runtime from source
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.home }}
+        run: bindings/android/scripts/build-ort.sh
+      - name: Build the release AARs
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.home }}
+        run: |
+          set -euo pipefail
+          bindings/android/scripts/build-jni.sh release
+          (cd bindings/android && ./gradlew --console=plain :core:assembleRelease :tts:assembleRelease :stt:assembleRelease)
+          mkdir -p aars
+          for module in core tts stt; do
+            cp "bindings/android/$module/build/outputs/aar/$module-release.aar" "aars/$module-release.aar"
+          done
+          unzip -l aars/core-release.aar | grep libonnxruntime
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: aars-ort-from-source
+          path: aars/
+          retention-days: 14
+      - name: Check the size budgets
+        run: bindings/android/scripts/check-sizes.sh aars
+      - name: Build the debug JNI library
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.home }}
+        run: bindings/android/scripts/build-jni.sh debug
+      - name: Download test voice and eSpeak data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          bash .github/scripts/fetch-manifest-fixtures.sh .github/bench-fixtures.json . piper-std
+          mkdir -p bindings/android/voice
+          cp crates/dengjen/synth/models/std/model.onnx crates/dengjen/synth/models/std/model.onnx.json bindings/android/voice/
+          sudo apt-get install -y --no-install-recommends espeak-ng-data
+          cp -r /usr/lib/x86_64-linux-gnu/espeak-ng-data bindings/android/voice/
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 30
+          arch: x86_64
+          working-directory: bindings/android
+          script: |
+            adb shell mkdir -p /data/local/tmp/dengjen-voice
+            adb push voice/. /data/local/tmp/dengjen-voice/
+            ./gradlew --console=plain :tts:connectedDebugAndroidTest
