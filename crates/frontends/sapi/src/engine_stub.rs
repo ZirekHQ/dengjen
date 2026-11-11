@@ -34,4 +34,6 @@ impl Synth for Engine {
     ) -> Result<(), String> {
         Err(MISSING.to_owned())
     }
+
+    fn interrupt(&self) {}
 }

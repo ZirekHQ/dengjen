@@ -125,6 +125,17 @@ fn speak_one_sentence_synthesizes_against_the_synthetic_fixture() {
     assert!(logs_contain("speak_one_sentence"));
 }
 
+#[test]
+fn an_interrupt_with_nothing_running_stops_nothing_and_does_not_stick() {
+    let model = load_synthetic_model("dengjen_piper_synthetic_interrupt_idle_test");
+    assert!(!model.interrupt());
+    // Each inference has its own run options, so an earlier interrupt cannot cancel a later one.
+    let audio = model
+        .speak_one_sentence("t".to_string())
+        .expect("synthesis after an idle interrupt failed");
+    assert!(!audio.samples.into_vec().is_empty());
+}
+
 #[traced_test]
 #[test]
 fn speak_batch_synthesizes_each_sentence_independently() {

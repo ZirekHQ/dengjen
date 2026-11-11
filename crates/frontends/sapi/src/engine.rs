@@ -113,4 +113,8 @@ impl Synth for Engine {
         }
         Ok(())
     }
+
+    fn interrupt(&self) {
+        self.synth.interrupt();
+    }
 }

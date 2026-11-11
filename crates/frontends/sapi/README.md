@@ -50,8 +50,10 @@ what Kurmanji voices declare:
 - `windows` is the COM layer. The COM methods and the registration exports run inside
   `catch_unwind`, so a panic becomes `E_FAIL` instead of unwinding into the host program;
   `DllMain`, `DllGetClassObject` and `DllCanUnloadNow` do only trivial work and are not guarded.
-- Text is synthesized one sentence at a time, and audio is written in 40 ms slices with an abort
-  check before each, so a screen reader's purge stops speech quickly.
+- Text is synthesized one sentence at a time on a worker thread while the `Speak` thread checks
+  SAPI's abort and skip flags every 5 ms; either one interrupts the ONNX inference instead of
+  waiting for the sentence to finish. Audio is written in 40 ms slices with the same check before
+  each, so a screen reader's purge stops speech quickly and a skip takes effect mid-sentence.
 - Piper voices report no alignments, so word events are placed in proportion to each word's
   character position in its sentence; sentence events are exact.
 

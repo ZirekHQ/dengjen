@@ -1,17 +1,25 @@
 //! The body of `ISpTTSEngine::Speak`, written against two small traits so it runs in tests.
 //!
 //! SAPI calls `Speak` once per request and keeps the call open until all audio is written. The
-//! caller cancels by setting `SPVES_ABORT`, which the engine must poll; screen readers cancel on
-//! every key press, so the loop checks between sentences, between synthesized chunks and between
-//! slices of written audio, and never writes more than [`SLICE_MS`] after an abort.
+//! caller cancels by setting `SPVES_ABORT` and skips by setting `SPVES_SKIP`, which the engine
+//! must poll; screen readers cancel on every key press. A sentence is synthesized on a worker
+//! thread while this thread polls every [`POLL`], and an abort or skip interrupts the engine's
+//! inference rather than waiting for the sentence to finish. Written audio is checked a slice at
+//! a time, so no more than [`SLICE_MS`] goes out after either request.
 #![forbid(unsafe_code)]
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::time::Duration;
 
 use crate::fragments::{Step, Utterance};
 use crate::prosody::{engine_prosody, EngineProsody};
 use crate::timing::word_starts;
 
-/// How much audio goes to SAPI between two abort checks.
+/// How much audio goes to SAPI between two checks of the caller's actions.
 pub const SLICE_MS: u32 = 40;
+/// How often the caller's actions are checked while a sentence is being synthesized.
+pub const POLL: Duration = Duration::from_millis(5);
 const BYTES_PER_SAMPLE: u64 = 2;
 
 /// What the caller has asked for since the last check (`ISpTTSEngineSite::GetActions`).
@@ -40,7 +48,7 @@ pub enum Event {
     },
 }
 
-/// The SAPI side: `ISpTTSEngineSite`.
+/// The SAPI side: `ISpTTSEngineSite`. Only the thread that called [`speak`] uses it.
 pub trait Site {
     fn actions(&self) -> Actions;
     /// The caller's rate, `-10..=10`.
@@ -54,8 +62,9 @@ pub trait Site {
     fn add_events(&self, events: &[Event]) -> Result<(), String>;
 }
 
-/// The engine side: one loaded voice producing mono 16-bit samples.
-pub trait Synth {
+/// The engine side: one loaded voice producing mono 16-bit samples. [`Synth::synthesize`] runs
+/// on a worker thread while [`Synth::interrupt`] is called from the thread that called [`speak`].
+pub trait Synth: Sync {
     fn sample_rate(&self) -> u32;
     /// Synthesizes `text`, handing each chunk to `chunk` until it returns `false`.
     fn synthesize(
@@ -64,12 +73,35 @@ pub trait Synth {
         prosody: EngineProsody,
         chunk: &mut dyn FnMut(&[i16]) -> bool,
     ) -> Result<(), String>;
+    /// Stops a [`Synth::synthesize`] call running on another thread as soon as the engine can.
+    /// That call may then fail; its result is discarded.
+    fn interrupt(&self);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
     Completed,
     Aborted,
+}
+
+/// How one step ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Ended {
+    Completed,
+    Aborted,
+    /// The caller asked to skip while the step was playing.
+    Skipped,
+}
+
+/// Why a step stops early, if the caller asked it to.
+fn interrupted(actions: Actions) -> Option<Ended> {
+    if actions.abort {
+        Some(Ended::Aborted)
+    } else if actions.skip {
+        Some(Ended::Skipped)
+    } else {
+        None
+    }
 }
 
 struct Output<'a> {
@@ -83,11 +115,11 @@ impl Output<'_> {
         self.site.actions().abort
     }
 
-    /// Writes samples a slice at a time, stopping at the first abort.
-    fn write(&mut self, samples: &[i16]) -> Result<Outcome, String> {
+    /// Writes samples a slice at a time, stopping at the first abort or skip.
+    fn write(&mut self, samples: &[i16]) -> Result<Ended, String> {
         for slice in samples.chunks(self.slice_samples) {
-            if self.aborted() {
-                return Ok(Outcome::Aborted);
+            if let Some(ended) = interrupted(self.site.actions()) {
+                return Ok(ended);
             }
             let bytes: Vec<u8> = slice
                 .iter()
@@ -100,14 +132,14 @@ impl Output<'_> {
                 let aborted = self.aborted();
                 crate::log::line(|| format!("write failed ({error}); abort requested: {aborted}"));
                 return if aborted {
-                    Ok(Outcome::Aborted)
+                    Ok(Ended::Aborted)
                 } else {
                     Err(error)
                 };
             }
             self.written += slice.len() as u64 * BYTES_PER_SAMPLE;
         }
-        Ok(Outcome::Completed)
+        Ok(Ended::Completed)
     }
 }
 
@@ -138,10 +170,10 @@ fn run(
             return Ok(Outcome::Aborted);
         }
         if actions.skip {
-            index = skip(steps, index, site);
+            index = skip(steps, index, false, site);
             continue;
         }
-        let outcome = match step {
+        let ended = match step {
             Step::Speak(utterance) => {
                 crate::log::line(|| {
                     let text: String = utterance.text.chars().take(40).collect();
@@ -163,13 +195,14 @@ fn run(
                     audio_offset: output.written,
                     name: name.clone(),
                 }])?;
-                Outcome::Completed
+                Ended::Completed
             }
         };
-        if outcome == Outcome::Aborted {
-            return Ok(Outcome::Aborted);
-        }
-        index += 1;
+        index = match ended {
+            Ended::Completed => index + 1,
+            Ended::Aborted => return Ok(Outcome::Aborted),
+            Ended::Skipped => skip(steps, index, true, site),
+        };
     }
     Ok(Outcome::Completed)
 }
@@ -178,29 +211,14 @@ fn speak_utterance(
     utterance: &Utterance,
     synth: &dyn Synth,
     output: &mut Output<'_>,
-) -> Result<Outcome, String> {
+) -> Result<Ended, String> {
     let site = output.site;
     let prosody = engine_prosody(site.rate(), site.volume(), utterance.prosody);
     crate::log::line(|| format!("prosody: {prosody:?}"));
-    let mut samples = Vec::new();
-    let mut aborted = false;
-    let started = std::time::Instant::now();
-    let mut first_audio = None;
-    synth.synthesize(&utterance.text, prosody, &mut |chunk| {
-        first_audio.get_or_insert_with(|| started.elapsed());
-        samples.extend_from_slice(chunk);
-        aborted = site.actions().abort;
-        !aborted
-    })?;
-    crate::log::line(|| {
-        format!(
-            "first audio after {first_audio:?}, done after {:?}",
-            started.elapsed()
-        )
-    });
-    if aborted {
-        return Ok(Outcome::Aborted);
-    }
+    let samples = match synthesize(&utterance.text, prosody, synth, site)? {
+        Synthesized::Audio(samples) => samples,
+        Synthesized::Stopped(ended) => return Ok(ended),
+    };
     let start = output.written;
     let mut events = vec![Event::Sentence {
         audio_offset: start,
@@ -220,6 +238,71 @@ fn speak_utterance(
     output.write(&samples)
 }
 
+enum Synthesized {
+    Audio(Vec<i16>),
+    /// The caller aborted or skipped before the sentence was ready.
+    Stopped(Ended),
+}
+
+/// Synthesizes one sentence on a worker thread while this thread watches the caller's actions.
+///
+/// An ONNX inference cannot be split, so a sentence used to finish (100 to 300 ms) before an
+/// abort was seen. Polling here and interrupting the engine stops it within a few milliseconds.
+/// The site is a COM object handed to this thread, so only this thread calls it.
+fn synthesize(
+    text: &str,
+    prosody: EngineProsody,
+    synth: &dyn Synth,
+    site: &dyn Site,
+) -> Result<Synthesized, String> {
+    let stop = AtomicBool::new(false);
+    let started = std::time::Instant::now();
+    std::thread::scope(|scope| {
+        let (sender, receiver) = mpsc::channel::<Vec<i16>>();
+        let stop = &stop;
+        let worker = scope.spawn(move || {
+            synth.synthesize(text, prosody, &mut |chunk| {
+                sender.send(chunk.to_vec()).is_ok() && !stop.load(Ordering::Relaxed)
+            })
+        });
+        let mut samples = Vec::new();
+        let mut first_audio = None;
+        loop {
+            match receiver.recv_timeout(POLL) {
+                Ok(chunk) => {
+                    first_audio.get_or_insert_with(|| started.elapsed());
+                    samples.extend_from_slice(&chunk);
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+            if let Some(ended) = interrupted(site.actions()) {
+                stop.store(true, Ordering::Relaxed);
+                // The request can arrive before the engine has started its inference, which
+                // would then run to the end, so keep asking until the worker returns.
+                while !worker.is_finished() {
+                    synth.interrupt();
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                // The worker's result is the interruption's error, or audio nobody wants.
+                let _ = worker.join();
+                crate::log::line(|| format!("synthesis {ended:?} after {:?}", started.elapsed()));
+                return Ok(Synthesized::Stopped(ended));
+            }
+        }
+        crate::log::line(|| {
+            format!(
+                "first audio after {first_audio:?}, done after {:?}",
+                started.elapsed()
+            )
+        });
+        match worker.join() {
+            Ok(result) => result.map(|()| Synthesized::Audio(samples)),
+            Err(_) => Err("the synthesis thread panicked".to_owned()),
+        }
+    })
+}
+
 /// The leading integer of a bookmark's name, which SAPI hands clients in `wParam` as `_wtol` reads
 /// it: an optional sign, then digits, and 0 when there are none.
 pub fn bookmark_number(name: &str) -> isize {
@@ -237,7 +320,12 @@ pub fn bookmark_number(name: &str) -> isize {
 }
 
 /// Moves past (or back over) the sentences the caller asked to skip, and reports how many.
-fn skip(steps: &[Step], index: usize, site: &dyn Site) -> usize {
+///
+/// `during` says the request arrived while step `index` was playing rather than before it
+/// started. Forward, the step at `index` counts as the first one skipped either way. Backward,
+/// a sentence that was playing is replayed by a skip of one, while between steps a skip of one
+/// returns to the sentence before `index`.
+fn skip(steps: &[Step], index: usize, during: bool, site: &dyn Site) -> usize {
     let wanted = site.skip_request();
     let sentences = |range: &mut dyn Iterator<Item = usize>| -> Vec<usize> {
         range
@@ -245,6 +333,7 @@ fn skip(steps: &[Step], index: usize, site: &dyn Site) -> usize {
             .collect()
     };
     let (target, skipped) = match wanted {
+        // The caller withdrew the request; a step it interrupted plays again from its start.
         0 => (index, 0),
         forward if forward > 0 => {
             let ahead = sentences(&mut (index..steps.len()));
@@ -253,7 +342,8 @@ fn skip(steps: &[Step], index: usize, site: &dyn Site) -> usize {
             (target, count as i32)
         }
         backward => {
-            let behind = sentences(&mut (0..index).rev());
+            let end = if during { index + 1 } else { index };
+            let behind = sentences(&mut (0..end).rev());
             let count = behind.len().min(backward.unsigned_abs() as usize);
             let target = count
                 .checked_sub(1)
@@ -283,19 +373,29 @@ mod tests {
     }
     use crate::fragments::{plan, Action, Fragment, FragmentProsody};
     use std::cell::{Cell, RefCell};
+    use std::sync::Mutex;
+    use std::time::Instant;
 
     const RATE: u32 = 1000;
 
     /// Produces one sample per character, in two chunks, each sample its character's index.
     struct FakeSynth {
-        calls: RefCell<Vec<(String, EngineProsody)>>,
+        calls: Mutex<Vec<(String, EngineProsody)>>,
     }
 
     impl FakeSynth {
         fn new() -> Self {
             Self {
-                calls: RefCell::new(Vec::new()),
+                calls: Mutex::new(Vec::new()),
             }
+        }
+
+        fn calls(&self) -> Vec<(String, EngineProsody)> {
+            self.calls.lock().expect("calls").clone()
+        }
+
+        fn texts(&self) -> Vec<String> {
+            self.calls().into_iter().map(|(text, _)| text).collect()
         }
     }
 
@@ -310,7 +410,10 @@ mod tests {
             prosody: EngineProsody,
             chunk: &mut dyn FnMut(&[i16]) -> bool,
         ) -> Result<(), String> {
-            self.calls.borrow_mut().push((text.to_owned(), prosody));
+            self.calls
+                .lock()
+                .expect("calls")
+                .push((text.to_owned(), prosody));
             if text.contains("FAIL") {
                 return Err("synthesis failed".to_owned());
             }
@@ -321,6 +424,8 @@ mod tests {
             }
             Ok(())
         }
+
+        fn interrupt(&self) {}
     }
 
     #[derive(Default)]
@@ -335,6 +440,8 @@ mod tests {
         aborting: Cell<bool>,
         checks: Cell<usize>,
         skip: Cell<Option<i32>>,
+        /// Requests a skip of this many sentences once the first slice has been written.
+        skip_after_first_write: Cell<Option<i32>>,
         completed_skips: RefCell<Vec<i32>>,
         rate: i32,
     }
@@ -373,6 +480,9 @@ mod tests {
                 self.aborting.set(true);
                 return Err("the caller aborted".to_owned());
             }
+            if let Some(count) = self.skip_after_first_write.take() {
+                self.skip.set(Some(count));
+            }
             self.written.borrow_mut().extend_from_slice(audio);
             Ok(())
         }
@@ -410,12 +520,7 @@ mod tests {
         let site = FakeSite::default();
         let steps = plan(&[fragment(Action::Speak, "Rojbaş. Baş im.", 0)]);
         assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Completed));
-        let texts: Vec<String> = synth
-            .calls
-            .borrow()
-            .iter()
-            .map(|(t, _)| t.clone())
-            .collect();
+        let texts = synth.texts();
         assert_eq!(texts, ["Rojbaş.", "Baş im."]);
         let expected: Vec<i16> = (0..7).chain(0..7).collect();
         assert_eq!(samples(&site), expected);
@@ -491,7 +596,7 @@ mod tests {
         let steps = plan(&[fragment(Action::Speak, "Rojbaş. Baş im.", 0)]);
         assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Aborted));
         assert!(site.written.borrow().is_empty());
-        assert!(synth.calls.borrow().is_empty());
+        assert!(synth.calls().is_empty());
     }
 
     #[test]
@@ -505,7 +610,7 @@ mod tests {
         let steps = plan(&[fragment(Action::Speak, "Rojbaş. Baş im.", 0)]);
         assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Aborted));
         assert!(site.written.borrow().is_empty());
-        assert_eq!(synth.calls.borrow().len(), 1);
+        assert_eq!(synth.calls().len(), 1);
     }
 
     #[test]
@@ -576,11 +681,7 @@ mod tests {
         };
         speak(&plan(&[fragment(Action::Speak, "Zû", 0)]), &synth, &site).expect("speak");
         assert_eq!(
-            synth
-                .calls
-                .borrow()
-                .first()
-                .map(|(_, prosody)| prosody.rate),
+            synth.calls().first().map(|(_, prosody)| prosody.rate),
             Some(Some(50))
         );
     }
@@ -603,12 +704,7 @@ mod tests {
         site.skip.set(Some(2));
         let steps = plan(&[fragment(Action::Speak, "Yek. Du. Sê.", 0)]);
         speak(&steps, &synth, &site).expect("speak");
-        let texts: Vec<String> = synth
-            .calls
-            .borrow()
-            .iter()
-            .map(|(t, _)| t.clone())
-            .collect();
+        let texts = synth.texts();
         assert_eq!(texts, ["Sê."]);
         assert_eq!(*site.completed_skips.borrow(), [2]);
     }
@@ -620,7 +716,7 @@ mod tests {
         site.skip.set(Some(9));
         let steps = plan(&[fragment(Action::Speak, "Yek. Du.", 0)]);
         assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Completed));
-        assert!(synth.calls.borrow().is_empty());
+        assert!(synth.calls().is_empty());
         assert_eq!(*site.completed_skips.borrow(), [2]);
     }
 
@@ -629,9 +725,155 @@ mod tests {
         let steps = plan(&[fragment(Action::Speak, "Yek. Du. Sê.", 0)]);
         let site = FakeSite::default();
         site.skip.set(Some(-1));
-        assert_eq!(skip(&steps, 2, &site), 1);
+        assert_eq!(skip(&steps, 2, false, &site), 1);
         site.skip.set(Some(-5));
-        assert_eq!(skip(&steps, 2, &site), 0);
+        assert_eq!(skip(&steps, 2, false, &site), 0);
         assert_eq!(*site.completed_skips.borrow(), [-1, -2]);
+    }
+
+    /// Blocks like an ONNX inference until it is interrupted, then fails like one.
+    #[derive(Default)]
+    struct BlockingSynth {
+        interrupted: AtomicBool,
+    }
+
+    impl Synth for BlockingSynth {
+        fn sample_rate(&self) -> u32 {
+            RATE
+        }
+
+        fn synthesize(
+            &self,
+            _text: &str,
+            _prosody: EngineProsody,
+            chunk: &mut dyn FnMut(&[i16]) -> bool,
+        ) -> Result<(), String> {
+            let started = Instant::now();
+            while !self.interrupted.load(Ordering::Relaxed) {
+                if started.elapsed() > Duration::from_secs(10) {
+                    chunk(&[1; 100]);
+                    return Ok(());
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err("terminated".to_owned())
+        }
+
+        fn interrupt(&self) {
+            self.interrupted.store(true, Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn an_abort_during_an_inference_interrupts_it_instead_of_waiting() {
+        let synth = BlockingSynth::default();
+        // The step's own check passes; the first poll during synthesis sees the abort.
+        let site = FakeSite {
+            abort_after: Some(1),
+            ..FakeSite::default()
+        };
+        let started = Instant::now();
+        let steps = plan(&[fragment(Action::Speak, "Rojbaş.", 0)]);
+        assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Aborted));
+        assert!(synth.interrupted.load(Ordering::Relaxed));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(site.written.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_skip_during_an_inference_interrupts_it_and_moves_on() {
+        let synth = BlockingSynth::default();
+        let site = FakeSite::default();
+        site.skip.set(Some(1));
+        // The request is seen only once synthesis has started, not by the step's own check.
+        let site = SkipOnPoll {
+            inner: site,
+            polls: Cell::new(0),
+        };
+        let steps = plan(&[fragment(Action::Speak, "Yek.", 0)]);
+        assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Completed));
+        assert!(synth.interrupted.load(Ordering::Relaxed));
+        assert_eq!(*site.inner.completed_skips.borrow(), [1]);
+    }
+
+    /// Hides a pending skip from the first `actions` check.
+    struct SkipOnPoll {
+        inner: FakeSite,
+        polls: Cell<usize>,
+    }
+
+    impl Site for SkipOnPoll {
+        fn actions(&self) -> Actions {
+            self.polls.set(self.polls.get() + 1);
+            let actions = self.inner.actions();
+            Actions {
+                skip: actions.skip && self.polls.get() > 1,
+                ..actions
+            }
+        }
+        fn rate(&self) -> i32 {
+            0
+        }
+        fn volume(&self) -> u16 {
+            100
+        }
+        fn skip_request(&self) -> i32 {
+            self.inner.skip_request()
+        }
+        fn complete_skip(&self, skipped: i32) {
+            self.inner.complete_skip(skipped);
+        }
+        fn write(&self, audio: &[u8]) -> Result<(), String> {
+            self.inner.write(audio)
+        }
+        fn add_events(&self, events: &[Event]) -> Result<(), String> {
+            self.inner.add_events(events)
+        }
+    }
+
+    /// Three sentences, the first longer than one slice of audio.
+    fn three_sentences() -> Vec<Step> {
+        let long = "Yek ".repeat(20);
+        plan(&[fragment(Action::Speak, &format!("{}yek. Du. Sê.", long), 0)])
+    }
+
+    #[test]
+    fn a_skip_forward_while_a_sentence_plays_moves_to_the_next_one() {
+        let synth = FakeSynth::new();
+        let site = FakeSite::default();
+        site.skip_after_first_write.set(Some(1));
+        let steps = three_sentences();
+        assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Completed));
+        let texts = synth.texts();
+        assert_eq!(
+            texts.get(1..),
+            Some(&["Du.".to_owned(), "Sê.".to_owned()][..])
+        );
+        let slice = (RATE * SLICE_MS / 1000) as usize;
+        // One slice of the first sentence, then all of the second and third.
+        assert_eq!(samples(&site).len(), slice + 3 + 3);
+        assert_eq!(*site.completed_skips.borrow(), [1]);
+    }
+
+    #[test]
+    fn a_skip_back_while_a_sentence_plays_replays_it() {
+        let synth = FakeSynth::new();
+        let site = FakeSite::default();
+        site.skip_after_first_write.set(Some(-1));
+        let steps = three_sentences();
+        assert_eq!(speak(&steps, &synth, &site), Ok(Outcome::Completed));
+        let texts = synth.texts();
+        assert_eq!(texts.len(), 4);
+        assert_eq!(texts.first(), texts.get(1));
+        assert_eq!(*site.completed_skips.borrow(), [-1]);
+    }
+
+    #[test]
+    fn a_skip_back_mid_sentence_counts_the_playing_sentence_first() {
+        let steps = plan(&[fragment(Action::Speak, "Yek. Du. Sê.", 0)]);
+        let site = FakeSite::default();
+        site.skip.set(Some(-2));
+        assert_eq!(skip(&steps, 2, true, &site), 1);
+        assert_eq!(*site.completed_skips.borrow(), [-2]);
     }
 }
