@@ -20,6 +20,9 @@ if [ -z "$work" ]; then
   work="$(mktemp -d)"
   trap 'rm -rf "$work"' EXIT
 fi
+# build.py and CMake run from other directories, so a relative ORT_WORK_DIR has to become absolute.
+mkdir -p "$work"
+work="$(cd "$work" && pwd)"
 src="$work/onnxruntime"
 if [ ! -d "$src/.git" ]; then
   git init -q "$src"
@@ -58,7 +61,8 @@ for abi in arm64-v8a x86_64; do
     --android --android_abi "$abi" --android_api "$api" \
     --android_sdk_path "$ANDROID_HOME" --android_ndk_path "$ANDROID_NDK_HOME" \
     --build_shared_lib --skip_tests --skip_submodule_sync --compile_no_warning_as_error \
-    --path_to_protoc_exe "$protoc" --cmake_generator "$generator" --parallel "$jobs"
+    --path_to_protoc_exe "$protoc" --cmake_generator "$generator" --parallel "$jobs" \
+    --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
   dest="$here/core/src/main/jniLibs/$abi/libonnxruntime.so"
   install -D "$work/build/$abi/Release/libonnxruntime.so" "$dest"
   "$tools/llvm-strip" --strip-unneeded "$dest"
