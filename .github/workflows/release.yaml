@@ -389,8 +389,8 @@ jobs:
           # changelog to the wrong range.
           previous_tag="$(gh release list --repo "$REPO" --json tagName --jq '.[].tagName' \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vFx "$tag" | sort -rV | head -n1)"
-          # SignPath Foundation asks every release page to link the code signing policy.
-          policy="Windows installer: [Code signing policy](https://github.com/${REPO}/blob/main/CODE_SIGNING_POLICY.md)"
+          # SignPath Foundation asks every download page to name it and link the code signing policy.
+          policy="Windows installer: free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). [Code signing policy](https://github.com/${REPO}/blob/main/CODE_SIGNING_POLICY.md)"
           notes_args=(--generate-notes --notes "$policy")
           if [ -n "$previous_tag" ]; then
             notes_args+=(--notes-start-tag "$previous_tag")
