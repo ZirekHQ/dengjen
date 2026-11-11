@@ -4,7 +4,7 @@ use crate::lines::{Interrupt, Lines};
 use crate::protocol::{self, Command, Message};
 use crate::reply;
 use crate::settings::Settings;
-use crate::ssml::{self, Piece};
+use crate::ssml::{self, Utterance};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VoiceInfo {
@@ -164,18 +164,18 @@ impl<B: Backend, W: Write> Session<B, W> {
         let Some(lines) = protocol::read_block(|| self.input.next_line())? else {
             return Ok(Flow::Quit);
         };
-        match message_pieces(kind, &lines) {
+        match message_utterances(kind, &lines) {
             Err(error) => self.say(error)?,
-            Ok(pieces) => self.speak_pieces(pieces)?,
+            Ok(utterances) => self.speak_utterances(utterances)?,
         }
         Ok(Flow::Continue)
     }
 
-    fn speak_pieces(&mut self, pieces: Vec<Piece>) -> io::Result<()> {
+    fn speak_utterances(&mut self, utterances: Vec<Utterance>) -> io::Result<()> {
         let mut started = false;
         let mut ending = "702 END";
-        for piece in pieces {
-            match self.play(piece, &mut started)? {
+        for utterance in utterances {
+            match self.play(utterance, &mut started)? {
                 Played::Continue => {}
                 Played::Interrupted(interrupt) => {
                     ending = interrupt.event();
@@ -191,30 +191,37 @@ impl<B: Backend, W: Write> Session<B, W> {
         self.say(if started { ending } else { reply::CANT_SPEAK })
     }
 
-    fn play(&mut self, piece: Piece, started: &mut bool) -> io::Result<Played> {
-        match piece {
-            Piece::Mark(name) => {
+    fn play(&mut self, utterance: Utterance, started: &mut bool) -> io::Result<Played> {
+        let Utterance { text, marks } = utterance;
+        if text.is_empty() {
+            begin(&mut self.output, started)?;
+            return send_marks(&marks, &mut self.output, &mut self.input);
+        }
+        match self.backend.synthesize(&text, &self.settings) {
+            Ok(chunks) => {
                 begin(&mut self.output, started)?;
-                match self.input.interrupt() {
-                    Some(interrupt) => Ok(Played::Interrupted(interrupt)),
-                    None => send_mark(&mut self.output, &name).map(|()| Played::Continue),
+                let len = text.chars().count();
+                let (inside, after): (Vec<_>, Vec<_>) =
+                    marks.into_iter().partition(|(at, _)| *at < len);
+                let played = if inside.is_empty() {
+                    stream_audio(chunks, &mut self.output, &mut self.input)?
+                } else {
+                    place_marks(chunks, &inside, len, &mut self.output, &mut self.input)?
+                };
+                match played {
+                    Played::Continue => send_marks(&after, &mut self.output, &mut self.input),
+                    other => Ok(other),
                 }
             }
-            Piece::Text(text) => match self.backend.synthesize(&text, &self.settings) {
-                Ok(chunks) => {
-                    begin(&mut self.output, started)?;
-                    stream_audio(chunks, &mut self.output, &mut self.input)
-                }
-                // Speech Dispatcher drops a message the module refuses without telling the
-                // client, so a client waiting for the end (`spd-say -w`) would wait forever.
-                // Report the speech as begun and stopped instead: clients hear it was cut
-                // short, rather than finished, and Orca's say-all stops instead of racing on.
-                Err(error) => {
-                    eprintln!("sd_dengjen: {error}");
-                    begin(&mut self.output, started)?;
-                    Ok(Played::Refused)
-                }
-            },
+            // Speech Dispatcher drops a message the module refuses without telling the
+            // client, so a client waiting for the end (`spd-say -w`) would wait forever.
+            // Report the speech as begun and stopped instead: clients hear it was cut
+            // short, rather than finished, and Orca's say-all stops instead of racing on.
+            Err(error) => {
+                eprintln!("sd_dengjen: {error}");
+                begin(&mut self.output, started)?;
+                Ok(Played::Refused)
+            }
         }
     }
 }
@@ -240,6 +247,77 @@ fn begin(output: &mut impl Write, started: &mut bool) -> io::Result<()> {
 fn send_mark(output: &mut impl Write, name: &str) -> io::Result<()> {
     reply::line(output, &format!("700-{name}"))?;
     reply::line(output, "700 INDEX MARK")?;
+    output.flush()
+}
+
+fn send_marks(
+    marks: &[(usize, String)],
+    output: &mut impl Write,
+    input: &mut Lines,
+) -> io::Result<Played> {
+    for (_, name) in marks {
+        if let Some(interrupt) = input.interrupt() {
+            return Ok(Played::Interrupted(interrupt));
+        }
+        send_mark(output, name)?;
+    }
+    Ok(Played::Continue)
+}
+
+/// Collects one sentence's audio, then plays it in slices cut where each mark falls, judged by
+/// the mark's share of the text, so marks arrive about when their word is heard.
+fn place_marks(
+    chunks: Chunks<'_>,
+    marks: &[(usize, String)],
+    len: usize,
+    output: &mut impl Write,
+    input: &mut Lines,
+) -> io::Result<Played> {
+    let mut samples = Vec::new();
+    let mut sample_rate = 0;
+    for chunk in chunks {
+        if let Some(interrupt) = input.interrupt() {
+            return Ok(Played::Interrupted(interrupt));
+        }
+        match chunk {
+            Ok(audio) => {
+                sample_rate = audio.sample_rate;
+                samples.extend(audio.samples);
+            }
+            Err(error) => {
+                eprintln!("sd_dengjen: {error}");
+                write_audio(output, &samples, sample_rate)?;
+                return Ok(Played::Failed);
+            }
+        }
+    }
+    let total = samples.len();
+    let mut from = 0;
+    for (at, name) in marks {
+        let to = (total * at / len).clamp(from, total);
+        write_audio(
+            output,
+            samples.get(from..to).unwrap_or_default(),
+            sample_rate,
+        )?;
+        from = to;
+        if let Some(interrupt) = input.interrupt() {
+            return Ok(Played::Interrupted(interrupt));
+        }
+        send_mark(output, name)?;
+    }
+    write_audio(output, samples.get(from..).unwrap_or_default(), sample_rate)?;
+    match input.interrupt() {
+        Some(interrupt) => Ok(Played::Interrupted(interrupt)),
+        None => Ok(Played::Continue),
+    }
+}
+
+fn write_audio(output: &mut impl Write, samples: &[i16], sample_rate: u32) -> io::Result<()> {
+    if samples.is_empty() {
+        return Ok(());
+    }
+    output.write_all(&reply::audio_frame(samples, sample_rate))?;
     output.flush()
 }
 
@@ -305,18 +383,26 @@ fn debug_reply(line: &str) -> &'static str {
     }
 }
 
-fn message_pieces(kind: Message, lines: &[String]) -> Result<Vec<Piece>, &'static str> {
+fn message_utterances(kind: Message, lines: &[String]) -> Result<Vec<Utterance>, &'static str> {
     let text = lines.join("\n");
-    let pieces = match kind {
-        _ if text.is_empty() => return Err(reply::CANT_SPEAK),
-        Message::Text => ssml::pieces(&text),
-        _ if lines.len() > 1 => return Err(reply::MULTILINE),
-        Message::Char | Message::Key if text == "space" => vec![Piece::Text(" ".to_owned())],
-        _ => vec![Piece::Text(text)],
+    let whole = |text: String| {
+        vec![Utterance {
+            text,
+            marks: Vec::new(),
+        }]
     };
-    let speakable = pieces.iter().any(|piece| matches!(piece, Piece::Text(_)));
-    if speakable {
-        Ok(pieces)
+    let utterances = match kind {
+        _ if text.is_empty() => return Err(reply::CANT_SPEAK),
+        Message::Text => ssml::utterances(&text),
+        _ if lines.len() > 1 => return Err(reply::MULTILINE),
+        Message::Char | Message::Key if text == "space" => whole(" ".to_owned()),
+        _ => whole(text),
+    };
+    if utterances
+        .iter()
+        .any(|utterance| !utterance.text.is_empty())
+    {
+        Ok(utterances)
     } else {
         Err(reply::CANT_SPEAK)
     }
@@ -418,6 +504,28 @@ mod tests {
         assert_eq!(spoken, ["Silav.", "a & b"]);
         assert!(out.contains("705 AUDIO\n700-__spd_0\n700 INDEX MARK\n705-bits=16"));
         assert!(out.ends_with("705 AUDIO\n700-__spd_1\n700 INDEX MARK\n702 END\n"));
+    }
+
+    #[test]
+    fn word_marks_are_placed_in_one_synthesis_of_the_sentence() {
+        let mut backend = fake();
+        let input = "INIT\nSPEAK\n<speak><mark name=\"a\"/>ab <mark name=\"b\"/>c.<mark name=\"c\"/></speak>\n.\n";
+        let out = transcript(&mut backend, input);
+        let spoken: Vec<&str> = backend
+            .spoken
+            .iter()
+            .map(|(text, _)| text.as_str())
+            .collect();
+        assert_eq!(spoken, ["ab c."]);
+        let marks: Vec<&str> = out
+            .lines()
+            .filter_map(|line| line.strip_prefix("700-"))
+            .collect();
+        assert_eq!(marks, ["a", "b", "c"]);
+        assert!(out.contains("701 BEGIN\n700-a\n700 INDEX MARK\n705-bits=16"));
+        assert!(out.contains("705-num_samples=1\n"));
+        assert!(out.contains("705-num_samples=3\n"));
+        assert!(out.ends_with("705 AUDIO\n700-c\n700 INDEX MARK\n702 END\n"));
     }
 
     #[test]

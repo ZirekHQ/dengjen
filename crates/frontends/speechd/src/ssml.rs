@@ -1,4 +1,8 @@
 const SEPARATING_TAGS: [&str; 3] = ["s", "p", "break"];
+const SENTENCE_ENDS: [char; 6] = ['.', '!', '?', '…', ':', ';'];
+/// Text with marks but no sentence end, such as a long list, is still cut here so speech
+/// starts without waiting for the whole message.
+const MAX_UTTERANCE_CHARS: usize = 400;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Piece {
@@ -6,10 +10,87 @@ pub(crate) enum Piece {
     Mark(String),
 }
 
+/// Text synthesized in one go, with the marks inside it. Each mark sits at a character offset
+/// into `text`; a mark at its end follows the audio.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Utterance {
+    pub(crate) text: String,
+    pub(crate) marks: Vec<(usize, String)>,
+}
+
+impl Utterance {
+    fn trimmed(self) -> Self {
+        let leading = self.text.chars().take_while(|c| c.is_whitespace()).count();
+        let text = self.text.trim().to_owned();
+        let len = text.chars().count();
+        let marks = self
+            .marks
+            .into_iter()
+            .map(|(at, name)| (at.saturating_sub(leading).min(len), name))
+            .collect();
+        Self { text, marks }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.text.trim_end().ends_with(SENTENCE_ENDS)
+            || self.text.chars().count() >= MAX_UTTERANCE_CHARS
+    }
+}
+
+/// Groups a message into sentences. Orca puts a mark after every word; synthesizing each word
+/// on its own gives every word its own start-up delay and silence, so words in a sentence are
+/// synthesized together and the marks are placed in the sentence's audio instead.
+pub(crate) fn utterances(text: &str) -> Vec<Utterance> {
+    if !is_ssml(text) {
+        return vec![Utterance {
+            text: text.to_owned(),
+            marks: Vec::new(),
+        }];
+    }
+    let mut out = Vec::new();
+    let mut current = Utterance::default();
+    for piece in split(text) {
+        match piece {
+            Piece::Mark(name) => {
+                let at = current.text.trim_end().chars().count();
+                current.marks.push((at, name));
+            }
+            Piece::Text(text) => {
+                if current.is_complete() && !text.trim().is_empty() {
+                    out.push(std::mem::take(&mut current).trimmed());
+                }
+                current.text.push_str(&text);
+            }
+        }
+    }
+    out.push(current.trimmed());
+    out.retain(|utterance| !utterance.text.is_empty() || !utterance.marks.is_empty());
+    out
+}
+
+#[cfg(test)]
 pub(crate) fn pieces(text: &str) -> Vec<Piece> {
-    if !text.trim_start().starts_with("<speak") {
+    if !is_ssml(text) {
         return vec![Piece::Text(text.to_owned())];
     }
+    split(text)
+        .into_iter()
+        .filter_map(|piece| match piece {
+            Piece::Text(text) => {
+                let text = text.trim();
+                (!text.is_empty()).then(|| Piece::Text(text.to_owned()))
+            }
+            mark => Some(mark),
+        })
+        .collect()
+}
+
+fn is_ssml(text: &str) -> bool {
+    text.trim_start().starts_with("<speak")
+}
+
+/// Splits SSML into decoded text and marks, keeping the whitespace around each mark.
+fn split(text: &str) -> Vec<Piece> {
     let mut parts = text.split('<');
     let mut current = parts.next().unwrap_or_default().to_owned();
     let mut out = Vec::new();
@@ -31,7 +112,7 @@ pub(crate) fn pieces(text: &str) -> Vec<Piece> {
 }
 
 fn flush(out: &mut Vec<Piece>, current: &mut String) {
-    let text = decode_entities(current).trim().to_owned();
+    let text = decode_entities(current);
     current.clear();
     if !text.is_empty() {
         out.push(Piece::Text(text));
@@ -198,6 +279,66 @@ mod tests {
     fn numeric_references_decode_once() {
         let ssml = "<speak>caf&#233; &#xE9; &amp;#233; &#xD800; &#zz; &bogus;</speak>";
         assert_eq!(spoken(ssml), "café é &#233; &#xD800; &#zz; &bogus;");
+    }
+
+    fn utterance(text: &str, marks: &[(usize, &str)]) -> Utterance {
+        Utterance {
+            text: text.to_owned(),
+            marks: marks
+                .iter()
+                .map(|(at, name)| (*at, (*name).to_owned()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn word_marks_stay_inside_one_sentence() {
+        let ssml = r#"<speak><mark name="0:4"/>Navê <mark name="5:3"/>min <mark name="9:6"/>Berfîn e. <mark name="18:5"/>Silav<mark name="end"/></speak>"#;
+        assert_eq!(
+            utterances(ssml),
+            vec![
+                utterance(
+                    "Navê min Berfîn e.",
+                    &[(0, "0:4"), (4, "5:3"), (8, "9:6"), (18, "18:5")]
+                ),
+                utterance("Silav", &[(5, "end")]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_mark_after_a_sentence_end_follows_that_sentence() {
+        let ssml = r#"<speak>Silav.<mark name="a"/> Navê min Berfîn e.<mark name="b"/></speak>"#;
+        assert_eq!(
+            utterances(ssml),
+            vec![
+                utterance("Silav.", &[(6, "a")]),
+                utterance("Navê min Berfîn e.", &[(18, "b")]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_mark_inside_a_word_does_not_split_it() {
+        assert_eq!(
+            utterances(r#"<speak>co<mark name="m"/>ld</speak>"#),
+            vec![utterance("cold", &[(2, "m")])]
+        );
+    }
+
+    #[test]
+    fn plain_text_is_one_utterance_without_marks() {
+        assert_eq!(utterances(" a. b "), vec![utterance(" a. b ", &[])]);
+    }
+
+    #[test]
+    fn long_text_without_a_sentence_end_is_cut() {
+        let word = "peyv ";
+        let ssml = format!(
+            "<speak>{}</speak>",
+            format!("{word}<mark name=\"m\"/>").repeat(MAX_UTTERANCE_CHARS / word.len() + 2)
+        );
+        assert!(utterances(&ssml).len() > 1);
     }
 
     #[test]
