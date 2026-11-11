@@ -53,6 +53,23 @@ const SINGLES: &[(char, Segment)] = &[
     ('z', seg("z", false)),
 ];
 
+/// Every IPA symbol the letter rules can produce, without stress marks.
+pub(crate) fn phoneme_symbols() -> impl Iterator<Item = char> {
+    SINGLES
+        .iter()
+        .map(|(_, segment)| segment.ipa)
+        .chain(
+            DIGRAPHS
+                .iter()
+                .flat_map(|(_, segments)| segments.iter().map(|segment| segment.ipa)),
+        )
+        .chain(CONTEXT_SYMBOLS)
+        .flat_map(str::chars)
+}
+
+/// The symbols `context_segment` produces.
+const CONTEXT_SYMBOLS: [&str; 3] = ["ɟ", "c", "ɾ"];
+
 const FRONT_VOWEL_STARTS: [&str; 5] = ["î", "ê", "iy", "ew", "ey"];
 
 fn starts_with(rest: &[char], pattern: &str) -> bool {

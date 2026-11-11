@@ -2,7 +2,7 @@
 //! call Piper uses. The eSpeak-ng comparisons are `#[ignore]` until run with `--include-ignored`
 //! against data from `scripts/stage-espeak-data.sh` and `DENGJEN_ESPEAKNG_DATA_DIRECTORY`.
 use dengjen_espeak_phonemizer::text_to_phonemes;
-use dengjen_kurmanji_phonemizer::text_to_kurmanji_phonemes;
+use dengjen_kurmanji_phonemizer::{text_to_kurmanji_phonemes_with_lexicon, Lexicon};
 
 const CORPUS: &str = include_str!("kurmanji_corpus.txt");
 const MAX_REPORTED: usize = 100;
@@ -64,8 +64,9 @@ fn espeak(line: &str) -> String {
         .join(" ")
 }
 
+/// The letter rules alone: lexicon entries are deliberate departures from eSpeak-ng.
 fn ours(line: &str) -> String {
-    text_to_kurmanji_phonemes(line)
+    text_to_kurmanji_phonemes_with_lexicon(line, &Lexicon::default())
         .unwrap_or_else(|error| panic!("crate failed on {line:?}: {error:?}"))
         .to_vec()
         .join(" ")
