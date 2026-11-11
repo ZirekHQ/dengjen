@@ -15,7 +15,9 @@ Run `dengjen-sapi-<version>-x64-setup.exe` (from the `dengjen-sapi-x64-setup` ar
 copies the voice to `C:\Program Files\Dengjen\SAPI5 voice` and registers it machine-wide, so
 Narrator, NVDA's SAPI5 driver and other SAPI5 programs list it, on the lock screen and in UAC
 prompts too. Uninstalling from Settings > Apps removes the files, the voice tokens and the COM
-registration. For an unattended install, pass `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`.
+registration. For an unattended install, pass `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. If the
+Visual C++ runtime it installs needs a restart, Setup stops before copying anything (exit code 8
+when unattended); restart Windows and run it again.
 
 The script is `installer/dengjen-sapi.iss` (Inno Setup 6); `tests/installer.ps1` installs, speaks
 and uninstalls in CI. The installer is unsigned for now (#574), so SmartScreen warns about it.

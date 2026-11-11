@@ -86,9 +86,16 @@ begin
   if not Exec(ExpandConstant('{tmp}\vc_redist.x64.exe'), '/install /quiet /norestart', '',
     SW_HIDE, ewWaitUntilTerminated, ResultCode) then
     Result := 'Could not start the Visual C++ runtime installer: ' + SysErrorMessage(ResultCode)
-  { 3010: installed, a restart is needed to finish; 1638: a newer version is already there. }
+  { 3010: installed, but the new runtime is only in place after a restart, so registering the
+    voice now could load the old one. Inno Setup acts on NeedsRestart only when Result is not
+    empty: it stops here, offers the restart, and Setup is run again afterwards.
+    1638: a newer version is already there. }
   else if ResultCode = 3010 then
-    NeedsRestart := True
+  begin
+    NeedsRestart := True;
+    Result := 'The Visual C++ runtime was installed and Windows needs to restart to finish. ' +
+      'Restart, then run this setup again.';
+  end
   else if (ResultCode <> 0) and (ResultCode <> 1638) then
     Result := 'The Visual C++ runtime installer failed with exit code ' + IntToStr(ResultCode) + '.';
 end;
