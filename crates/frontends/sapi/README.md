@@ -68,6 +68,10 @@ what Kurmanji voices declare:
   SAPI's abort and skip flags every 5 ms; either one interrupts the ONNX inference instead of
   waiting for the sentence to finish. Audio is written in 40 ms slices with the same check before
   each, so a screen reader's purge stops speech quickly and a skip takes effect mid-sentence.
+- Screen readers speak their own UI in English (Narrator's `Misspelled`, `selected`, control
+  types). For a Kurmanji voice, `english` respells a short list of such words in Kurmanji
+  spelling before synthesis, so they sound English rather than being read with Kurmanji letter
+  rules. Add words to its table as they turn up; the word must not also be a Kurmanji word.
 - Piper voices report no alignments, so word events are placed in proportion to each word's
   character position in its sentence; sentence events are exact.
 

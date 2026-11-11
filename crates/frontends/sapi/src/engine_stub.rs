@@ -37,4 +37,8 @@ impl Synth for Engine {
 
     /// Nothing runs without the native library, so there is nothing to stop.
     fn interrupt(&self) {}
+
+    fn language(&self) -> &str {
+        ""
+    }
 }

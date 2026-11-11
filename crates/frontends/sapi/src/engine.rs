@@ -60,6 +60,7 @@ fn ort_builder(_dll_dir: &Path) -> Result<ort::environment::EnvironmentBuilder, 
 pub struct Engine {
     synth: DengjenSpeechSynthesizer,
     sample_rate: u32,
+    language: String,
 }
 
 impl Engine {
@@ -79,8 +80,13 @@ impl Engine {
         }
         let sample_rate = u32::try_from(info.sample_rate)
             .map_err(|_| format!("unsupported sample rate {}", info.sample_rate))?;
+        let language = model.get_language().ok().flatten().unwrap_or_default();
         let synth = DengjenSpeechSynthesizer::new(model).map_err(|error| error.to_string())?;
-        Ok(Self { synth, sample_rate })
+        Ok(Self {
+            synth,
+            sample_rate,
+            language,
+        })
     }
 }
 
@@ -117,5 +123,9 @@ impl Synth for Engine {
     /// Stops the model's inference that [`Synth::synthesize`] is waiting on in another thread.
     fn interrupt(&self) {
         self.synth.interrupt();
+    }
+
+    fn language(&self) -> &str {
+        &self.language
     }
 }

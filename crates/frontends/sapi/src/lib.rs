@@ -11,6 +11,7 @@ pub mod engine;
 #[cfg(not(feature = "engine"))]
 #[path = "engine_stub.rs"]
 pub mod engine;
+pub mod english;
 pub mod fragments;
 pub mod language;
 pub mod log;
