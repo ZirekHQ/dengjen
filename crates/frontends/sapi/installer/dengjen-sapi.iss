@@ -21,6 +21,12 @@ AppVersion={#AppVersion}
 AppPublisher=Zirek
 AppPublisherURL=https://github.com/ZirekHQ
 AppSupportURL=https://github.com/ZirekHQ/dengjen/issues
+; Code signing checks these on every signed file: the product is Dengjen, at the release's version.
+VersionInfoProductName=Dengjen
+VersionInfoProductVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}
+VersionInfoCompany=Zirek
+VersionInfoDescription=Dengjen SAPI5 voice setup
 DefaultDirName={autopf}\Dengjen\SAPI5 voice
 DisableDirPage=yes
 DisableProgramGroupPage=yes

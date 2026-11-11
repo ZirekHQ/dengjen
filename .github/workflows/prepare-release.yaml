@@ -130,6 +130,7 @@ jobs:
       BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
       DOCS_APP_CLIENT_ID: ${{ secrets.DOCS_APP_CLIENT_ID }}
       DOCS_APP_PRIVATE_KEY: ${{ secrets.DOCS_APP_PRIVATE_KEY }}
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     with:
       new_tag: ${{ inputs.new_tag }}
       previous_tag: ${{ inputs.previous_tag }}

@@ -1,0 +1,218 @@
+name: Build the SAPI5 voice installer
+
+# Builds the 64-bit SAPI5 voice and its Inno Setup installer for a release, the same way sapi.yaml
+# does on every change. When the SIGNPATH_ORGANIZATION_ID repository variable is set, the DLL and
+# then the installer are signed through SignPath Foundation; each signing request waits for an
+# approver to approve it in SignPath. See CODE_SIGNING_POLICY.md.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "vX.Y.Z being released"
+        required: true
+        type: string
+      dry_run:
+        description: "Build and test only; send nothing to SignPath"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      SIGNPATH_API_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  ORT_VERSION: "1.31.0"
+  VOICE: ku_TR-berfin_renas-medium
+  VOICE_PATH: ku/ku_TR/berfin_renas/medium
+  SIGNPATH_PROJECT: dengjen
+  SIGNPATH_POLICY: release-signing
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # github.workflow_ref stays bound to the top-level caller through nested workflow_call hops.
+      - name: verify this workflow was only reached through release.yaml or prepare-release.yaml
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          actual_path="${WORKFLOW_REF%@*}"
+          if [ "$WORKFLOW_REF" != "ZirekHQ/dengjen/.github/workflows/release.yaml@refs/heads/main" ] \
+            && [ "$actual_path" != "ZirekHQ/dengjen/.github/workflows/prepare-release.yaml" ]; then
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen -- refusing to run outside release.yaml's main-branch flow or prepare-release.yaml's override path" >&2
+            exit 1
+          fi
+
+  build:
+    needs: guard
+    # SignPath only signs what GitHub-hosted runners built, and each request can wait up to an
+    # hour for its approval.
+    runs-on: windows-2022
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    env:
+      CMAKE_GENERATOR: Ninja
+      TARGET: x86_64-pc-windows-msvc
+      # A dry run still builds and tests everything but asks SignPath for nothing.
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && !inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: choco install llvm -y --no-progress
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+      # toolchain input omitted: channel comes from rust-toolchain.toml
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Stage the eSpeak-ng data built from source
+        shell: bash
+        run: bash scripts/stage-espeak-data.sh "$RUNNER_TEMP/stage" --release
+      - name: Build the voice DLL
+        run: |
+          rustup target add $env:TARGET
+          cargo build --release --locked --target $env:TARGET -p dengjen-sapi --features ort-dylib
+      # Code signing only accepts files that name the product and its version (build.rs adds them).
+      - name: Check the DLL's version resource
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = ((cargo pkgid -p dengjen-sapi) -split '[#@]')[-1]
+          $info = (Get-Item "target/$env:TARGET/release/dengjen_sapi.dll").VersionInfo
+          if ($info.ProductName -ne 'Dengjen' -or $info.ProductVersion -ne $version) {
+            throw "dengjen_sapi.dll says '$($info.ProductName)' $($info.ProductVersion), expected 'Dengjen' $version"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'dll') | Out-Null
+          Copy-Item "target/$env:TARGET/release/dengjen_sapi.dll" (Join-Path $env:RUNNER_TEMP 'dll')
+
+      - name: Upload the unsigned DLL for signing
+        id: unsigned-dll
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dengjen-sapi-dll-unsigned
+          path: ${{ runner.temp }}/dll/dengjen_sapi.dll
+          if-no-files-found: error
+      - name: Sign the DLL
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY }}
+          artifact-configuration-slug: sapi-dll
+          github-artifact-id: ${{ steps.unsigned-dll.outputs.artifact-id }}
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ runner.temp }}/dll
+
+      - name: Stage the DLL, ONNX Runtime and the voice
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'stage'
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'dll/dengjen_sapi.dll') $stage
+          $package = Join-Path $env:RUNNER_TEMP 'onnxruntime.zip'
+          Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime/$env:ORT_VERSION" -OutFile $package
+          Expand-Archive $package (Join-Path $env:RUNNER_TEMP 'onnxruntime')
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'onnxruntime/runtimes/win-x64/native/onnxruntime.dll') $stage
+          $voiceDir = Join-Path $stage "voices/piper/$env:VOICE"
+          New-Item -ItemType Directory -Force $voiceDir | Out-Null
+          foreach ($file in "$env:VOICE.onnx", "$env:VOICE.onnx.json") {
+            Invoke-WebRequest "https://huggingface.co/rhasspy/piper-voices/resolve/main/$env:VOICE_PATH/$file" -OutFile (Join-Path $voiceDir $file)
+          }
+          Copy-Item LICENSE $stage
+      - name: Speak through SAPI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File crates/frontends/sapi/tests/smoke.ps1 -Stage (Join-Path $env:RUNNER_TEMP 'stage') -Out (Join-Path $env:RUNNER_TEMP 'dengjen-sapi-smoke.wav')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build the installer
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $redist = Join-Path $env:RUNNER_TEMP 'vc_redist.x64.exe'
+          Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $redist
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $out = Join-Path $env:RUNNER_TEMP 'installer'
+          & $iscc "/DAppVersion=$env:VERSION" "/DStage=$(Join-Path $env:RUNNER_TEMP 'stage')" "/DRedist=$redist" "/O$out" crates/frontends/sapi/installer/dengjen-sapi.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install, speak and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'installer') -Filter '*-setup.exe' | Select-Object -First 1
+          & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File crates/frontends/sapi/tests/installer.ps1 -Setup $setup.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload the unsigned installer for signing
+        id: unsigned-setup
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dengjen-sapi-setup-unsigned
+          path: ${{ runner.temp }}/installer/*-setup.exe
+          if-no-files-found: error
+      - name: Sign the installer
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY }}
+          artifact-configuration-slug: sapi-installer
+          github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ runner.temp }}/installer
+
+      - name: Check the signatures and checksum the installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'installer') -Filter '*-setup.exe' | Select-Object -First 1
+          if ($env:SIGN -eq 'true') {
+            foreach ($file in $setup.FullName, (Join-Path $env:RUNNER_TEMP 'stage/dengjen_sapi.dll')) {
+              $signature = Get-AuthenticodeSignature $file
+              if ($signature.Status -ne 'Valid') { throw "$file is not validly signed: $($signature.Status)" }
+              "$file signed by $($signature.SignerCertificate.Subject)"
+            }
+          }
+          $out = Join-Path $env:RUNNER_TEMP 'out'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item $setup.FullName $out
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($setup.Name)" | Out-File -Encoding ascii (Join-Path $out 'SHA256SUMS-sapi.txt')
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sapi-installer
+          path: ${{ runner.temp }}/out/*
+          if-no-files-found: error
