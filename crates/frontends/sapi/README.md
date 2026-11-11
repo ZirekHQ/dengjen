@@ -10,8 +10,9 @@ and bookmark events. A 64-bit installer is built by CI but not yet published wit
 
 ## Installing
 
-Run `dengjen-sapi-<version>-x64-setup.exe` (from the `dengjen-sapi-x64-setup` artifact of the
-`SAPI5 voice` workflow) as an administrator. It installs the Visual C++ runtime if it is missing,
+Run `dengjen-sapi-<version>-x64-setup.exe` from a [release](https://github.com/ZirekHQ/dengjen/releases)
+(or, between releases, the `dengjen-sapi-x64-setup` artifact of the `SAPI5 voice` workflow) as an
+administrator. It installs the Visual C++ runtime if it is missing,
 copies the voice to `C:\Program Files\Dengjen\SAPI5 voice` and registers it machine-wide, so
 Narrator, NVDA's SAPI5 driver and other SAPI5 programs list it, on the lock screen and in UAC
 prompts too. Uninstalling from Settings > Apps removes the files, the voice tokens and the COM
@@ -20,7 +21,10 @@ Visual C++ runtime it installs needs a restart, Setup stops before copying anyth
 when unattended); restart Windows and run it again.
 
 The script is `installer/dengjen-sapi.iss` (Inno Setup 6); `tests/installer.ps1` installs, speaks
-and uninstalls in CI. The installer is unsigned for now (#574), so SmartScreen warns about it.
+and uninstalls in CI. Releases build it with `publish-sapi.yaml`, which signs the DLL and the installer
+through SignPath Foundation once the `SIGNPATH_ORGANIZATION_ID` variable and `SIGNPATH_API_TOKEN`
+secret are set; until then it is unsigned and SmartScreen warns about it. See the
+[code signing policy](../../../CODE_SIGNING_POLICY.md).
 
 ## Layout on disk
 

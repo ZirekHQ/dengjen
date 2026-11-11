@@ -80,6 +80,19 @@ jobs:
         run: |
           rustup target add $env:TARGET
           cargo build --release --locked --target $env:TARGET -p dengjen-sapi --features ort-dylib
+      # Code signing only accepts files that name the product and its version (build.rs adds them).
+      - name: Check the DLL's version resource
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.platform.target }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = ((cargo pkgid -p dengjen-sapi) -split '[#@]')[-1]
+          $info = (Get-Item "target/$env:TARGET/release/dengjen_sapi.dll").VersionInfo
+          $info | Format-List ProductName, ProductVersion, FileVersion, FileDescription
+          if ($info.ProductName -ne 'Dengjen' -or $info.ProductVersion -ne $version) {
+            throw "dengjen_sapi.dll says '$($info.ProductName)' $($info.ProductVersion), expected 'Dengjen' $version"
+          }
       - name: Stage the DLL, ONNX Runtime and the voice
         if: matrix.platform.speak
         shell: pwsh
@@ -134,6 +147,10 @@ jobs:
           & $iscc "/DAppVersion=$version" "/DStage=$stage" "/DRedist=$redist" "/O$out" crates/frontends/sapi/installer/dengjen-sapi.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem $out | Format-Table Length, Name
+          $info = (Get-ChildItem $out -Filter '*-setup.exe' | Select-Object -First 1).VersionInfo
+          if ($info.ProductName -ne 'Dengjen' -or $info.ProductVersion -ne $version) {
+            throw "setup says '$($info.ProductName)' $($info.ProductVersion), expected 'Dengjen' $version"
+          }
       - name: Install, speak and uninstall
         if: matrix.platform.speak
         shell: pwsh

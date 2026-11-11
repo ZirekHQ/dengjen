@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "sapi-dll": the voice DLL, uploaded by publish-sapi.yaml as a
+     GitHub artifact (a ZIP). Kept here for review; SignPath uses the copy saved in its project. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="dengjen_sapi.dll" product-name="Dengjen" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
