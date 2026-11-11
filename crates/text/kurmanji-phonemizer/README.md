@@ -14,9 +14,13 @@ Where eSpeak-ng has no rule, the crate spells the text out in Kurmanji instead o
 
 Stress follows eSpeak-ng after [espeak-ng#2500](https://github.com/espeak-ng/espeak-ng/pull/2500), which differs from eSpeak-ng 1.52.0 for unstressed pronouns, verb-prefix words and the plural `-an`.
 
+## Pronunciation lexicon
+
+`lexicon/kmr.tsv` holds whole-word overrides that native speakers can edit on github.com: the written form, a respelling or `/IPA/`, and a note. It is compiled in and applied before the letter rules; `tests/lexicon.rs` checks that it parses, has no duplicates, uses only known phonemes and that every entry changes the output. `text_to_kurmanji_phonemes_with_lexicon` takes another lexicon, and `Lexicon::default()` gives the rules alone. The volunteer guide is `docs/modules/ROOT/pages/pronunciation-lexicon.adoc`.
+
 ## Parity tests
 
-`tests/golden*.tsv` pin expected output and run everywhere. The parity tests live in `dengjen-espeak-phonemizer` (`tests/kurmanji_parity.rs`) because they call eSpeak-ng's runtime phonemizer, the call Piper uses, not the `espeak-ng` command line, which forces stress on a lone unstressed word. CI runs them against the data built from the pinned eSpeak-ng source (`scripts/stage-espeak-data.sh`), over `tests/kurmanji_corpus.txt` (Common Voice sentences, CC0) and the integers 0 to 3000. Locally:
+`tests/golden*.tsv` pin expected output and run everywhere. The parity tests compare the letter rules alone, without the lexicon, and live in `dengjen-espeak-phonemizer` (`tests/kurmanji_parity.rs`) because they call eSpeak-ng's runtime phonemizer, the call Piper uses, not the `espeak-ng` command line, which forces stress on a lone unstressed word. CI runs them against the data built from the pinned eSpeak-ng source (`scripts/stage-espeak-data.sh`), over `tests/kurmanji_corpus.txt` (Common Voice sentences, CC0) and the integers 0 to 3000. Locally:
 
 ```sh
 bash scripts/stage-espeak-data.sh /tmp/espeak
