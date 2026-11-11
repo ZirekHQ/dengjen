@@ -103,6 +103,59 @@ spd-say -o dengjen -L               # lists the installed voices
 spd-say -o dengjen -l ku "Silav"
 ----
 
+== Use it with Orca
+
+Orca speaks through Speech Dispatcher, so it can use the module once `spd-say -O` lists `dengjen`.
+Restart Orca after installing the module or a voice so it reloads the list of synthesizers.
+
+. Open Orca's preferences with Orca+Space (Insert+Space on the desktop layout, Caps Lock+Space on
+  the laptop layout).
+. On the *Voice* page, set *Speech system* to *Speech Dispatcher* and *Speech synthesizer* to
+  *dengjen*.
+. Set *Language* to Kurmanji (`ku`), then pick the Kurmanji voice in *Person*. *Person* lists only
+  the voices for the chosen language. Orca otherwise asks for language `C`, which falls back to the
+  first installed voice, so this matters once more than one voice is installed.
+. Press *Apply*, then *OK*. Orca should now read its own interface in Kurmanji.
+
+=== Check it
+
+Run these checks after a new install, and after any change to the module. Each one names what to
+listen for.
+
+[cols="1,2"]
+|===
+|Check |What should happen
+
+|Read a Kurmanji web page in Firefox with the arrow keys, then with say all (Numpad Plus, or
+Orca+Semicolon on the laptop layout)
+|Every line is spoken in Kurmanji, sentence by sentence, without gaps or repeated sentences.
+
+|Move around a GTK app, such as GNOME Text Editor or Settings, with Tab and the arrow keys
+|Each focused control and each line is spoken. Typed characters are echoed.
+
+|Press Ctrl, or any other key, while Orca is reading a long paragraph
+|Speech stops within one sentence, and the next thing Orca says starts at once.
+
+|Change *Rate* and *Pitch* in Orca's voice settings, then press *Apply*
+|Speech gets faster or slower, and higher or lower. The middle of each slider is the voice's normal
+speed and pitch.
+
+|Before this check, keep another way to use the computer at hand, such as a braille display or a
+second session with another voice, because Orca goes silent. Remove the voice
+(`dengjen voices remove ku_TR-berfin_renas-medium`, or `~/.local/bin/dengjen ...` after a user-local
+install) and any other Dengjen voices, then restart Speech Dispatcher
+(`pkill -f speech-dispatcher`) and Orca. Install the voice again with
+`dengjen voices install ku_TR-berfin_renas-medium`.
+|While no voice is installed, Orca keeps running and responds to keys but says nothing, and the
+module's log names the command that installs a voice. Once the voice is back, the next thing Orca
+says is spoken, with no restart. Packages from release 3.1.0 and older do not start with no voice
+installed, so run this check with a newer release.
+|===
+
+If a check fails, open an issue with the check, your distribution and its version, the output of
+`spd-say -O` and `spd-say -o dengjen -L`, and the module's log,
+`~/.cache/speech-dispatcher/log/dengjen.log`.
+
 == Voices
 
 The module reads voices from `~/.local/share/dengjen/voices`, the same directory `dengjen voices`
