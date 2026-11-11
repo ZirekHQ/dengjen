@@ -18,6 +18,10 @@ for pair in arm64-v8a:aarch64-linux-android x86_64:x86_64-linux-android; do
   "$strip" --strip-unneeded "$dest"
 done
 
+# DENGJEN_ANDROID_STT=0 stops here: the STT module links a prebuilt sherpa-onnx library, and an
+# app that needs only core and tts (the F-Droid build) has no use for it.
+if [ "${DENGJEN_ANDROID_STT:-1}" = 0 ]; then exit 0; fi
+
 # The prebuilt libonnxruntime.so needs libc symbols from API 24 (__write_chk), which cargo-ndk's default platform lacks.
 stt_out="$here/stt/src/main/jniLibs"
 cargo ndk -t arm64-v8a -t x86_64 -P 27 -o "$stt_out" build --release -p dengjen-capi-jni-stt
