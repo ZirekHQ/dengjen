@@ -49,7 +49,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/build-apple-xcframework # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
         with:
-          features: espeak,coreml,stt
+          features: espeak,coreml,voices,stt
       - name: Locate the sherpa-onnx libraries
         run: |
           set -euo pipefail

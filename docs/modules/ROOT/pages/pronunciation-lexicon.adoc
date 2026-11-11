@@ -1,0 +1,45 @@
+= Fixing a word that sounds wrong
+
+When the Kurmanji voice says a word, an abbreviation or a name wrongly, you can fix it by adding one line to the pronunciation lexicon. You don't need to install anything or write code: the file is edited on github.com, and the fix reaches every Dengjen voice (Windows, Linux, Android, Apple, the NVDA add-on and the gRPC server) in the next release.
+
+The file is https://github.com/ZirekHQ/dengjen/blob/main/crates/text/kurmanji-phonemizer/lexicon/kmr.tsv[`crates/text/kurmanji-phonemizer/lexicon/kmr.tsv`].
+
+== Add an entry on github.com
+
+. Open the file above and select the pencil button, *Edit this file*. GitHub makes a copy for you if you can't edit the project directly.
+. Add a line at the end with three parts separated by a Tab: the word as it is written, how to say it, and an optional note.
+. Select *Commit changes*, then *Propose changes*, then *Create pull request*.
+. A check runs on your pull request and tells you if a line has a problem, with its line number. A maintainer or a second native speaker reviews the change.
+
+If this is your first pull request to Zirek, the CLA check asks you to agree to the https://github.com/ZirekHQ/dengjen/blob/main/CLA.md[Contributor License Agreement] with one comment.
+
+== The three columns
+
+[cols="1,3"]
+|===
+|Column |What to write
+
+|`written`
+|One word exactly as it appears in text, with no spaces, digits or punctuation. Write it in lowercase to match the word in any case (`kurmancî` matches `Kurmancî` and `KURMANCÎ`). Write it with capitals to match only that spelling, as for abbreviations: `AB` does not change the word `ab`.
+
+|`say`
+|How to say it. Usually a *respelling*: Kurmanji words written the way they sound, for example `Yekîtiya Ewropayê` for `AB`. The voice reads the respelling with its normal rules and stress. If a respelling can't express it, write IPA phonemes between slashes, for example `/sɪlˈav/`; the check rejects any symbol the voice can't say.
+
+|`note`
+|Optional. Why the entry is needed or where the word comes from, for the reviewer.
+|===
+
+== Rules the check enforces
+
+* The first line stays the header `written`, `say`, `note`.
+* Each written form appears once.
+* Phonemes use only the voice's phoneme set, plus the stress marks `ˈ` and `ˌ`.
+* Each entry changes how its word is said. If the voice already says it right, the line isn't needed.
+
+Write entries yourself; don't copy them from eSpeak-ng's `ku` dictionary or other dictionaries, so the lexicon can be used under any licence the project chooses later.
+
+Prefer a respelling over phonemes, and a lexicon entry over a phonemizer rule only for one-off words: names, loanwords and abbreviations. If many words share the same mistake, open an issue instead, so the rule can be fixed.
+
+== Where it applies
+
+The lexicon is built into `dengjen-kurmanji-phonemizer` and applies to every voice whose eSpeak-ng voice is `ku`, unless the voice sets `kurmanji_use_espeak`. It matches whole words before the letter rules, so an entry for `silav` doesn't change `silavên`.

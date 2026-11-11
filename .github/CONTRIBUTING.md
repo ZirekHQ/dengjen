@@ -11,6 +11,11 @@ by adding this comment to the PR:
 
 > I have read the Zirek Individual Contributor License Agreement, version 1.0, and I agree to it.
 
+The `CLA` check on the PR turns green once every commit author has agreed. You only agree once:
+the check records it, so your later PRs pass without a new comment. If it lists an email instead
+of your name, that commit's email isn't linked to your GitHub account; add the email to your
+account or amend the commit, then push again.
+
 You keep the copyright in your work. The CLA lets the project change its licence later without
 tracking down every contributor, for example to publish the apps in stores whose terms conflict
 with the GPL. Dengjen stays GPL-3.0-or-later today, and every release published under that licence

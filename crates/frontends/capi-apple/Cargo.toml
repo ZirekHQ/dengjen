@@ -3,7 +3,7 @@ name = "libdengjen-apple"
 version.workspace = true
 edition = "2021"
 license.workspace = true
-description = "Single static library bundling the libdengjen and libdengjen-stt C APIs for the Apple XCFramework"
+description = "Single static library bundling the libdengjen, libdengjen-stt and libdengjen-voices C APIs for the Apple XCFramework"
 repository.workspace = true
 homepage.workspace = true
 publish = false
@@ -20,8 +20,10 @@ default = []
 espeak = ["libdengjen/espeak"]
 coreml = ["libdengjen/coreml"]
 stt = ["dep:libdengjen-stt"]
+voices = ["dep:libdengjen-voices"]
 
 [dependencies]
 libdengjen = { path = "../capi", default-features = false, features = ["piper", "kurmanji"] }
 libdengjen-stt = { path = "../capi-stt", optional = true }
+libdengjen-voices = { path = "../capi-voices", optional = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }

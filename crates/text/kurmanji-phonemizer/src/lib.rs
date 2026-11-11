@@ -6,6 +6,7 @@
 
 mod expand;
 mod letters;
+mod lexicon;
 mod normalize;
 mod numbers;
 mod numeric;
@@ -16,6 +17,7 @@ mod suffix;
 mod tokens;
 
 use dengjen_tts_core::{DengjenResult, Phonemes};
+pub use lexicon::{parse_entries, Entry, Lexicon, LexiconError, Say};
 use tokens::{Break, Token};
 
 const PERCENT: &str = "sɛdˈe";
@@ -79,17 +81,38 @@ fn spells_acronyms(tokens: &[Token]) -> bool {
     lower > 3 && upper <= lower
 }
 
-fn word_to_ipa(word: &str, clause_final: bool, spell_acronyms: bool) -> String {
+fn say_to_ipa(say: &Say, clause_final: bool) -> String {
+    match say {
+        Say::Phonemes(ipa) => ipa.clone(),
+        Say::Respelling(words) => phrase_to_ipa(
+            &words
+                .split_whitespace()
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+            clause_final,
+        ),
+    }
+}
+
+fn word_to_ipa(word: &str, clause_final: bool, spell_acronyms: bool, lexicon: &Lexicon) -> String {
+    if let Some(say) = lexicon.lookup(word) {
+        return say_to_ipa(say, clause_final);
+    }
     (spell_acronyms && is_short_acronym(word))
         .then(|| stress::acronym_to_ipa(word))
         .flatten()
         .unwrap_or_else(|| compound_to_ipa(word, clause_final))
 }
 
-fn token_to_ipa(token: &Token, clause_final: bool, spell_acronyms: bool) -> String {
+fn token_to_ipa(
+    token: &Token,
+    clause_final: bool,
+    spell_acronyms: bool,
+    lexicon: &Lexicon,
+) -> String {
     match token {
         Token::Boundary(_) => String::new(),
-        Token::Word(word) => word_to_ipa(word, clause_final, spell_acronyms),
+        Token::Word(word) => word_to_ipa(word, clause_final, spell_acronyms, lexicon),
         Token::Time {
             hour,
             minute,
@@ -122,13 +145,13 @@ fn token_to_ipa(token: &Token, clause_final: bool, spell_acronyms: bool) -> Stri
     }
 }
 
-fn clause_to_ipa(tokens: &[Token]) -> String {
+fn clause_to_ipa(tokens: &[Token], lexicon: &Lexicon) -> String {
     let last = tokens.len().saturating_sub(1);
     let spell_acronyms = spells_acronyms(tokens);
     tokens
         .iter()
         .enumerate()
-        .map(|(i, token)| token_to_ipa(token, i == last, spell_acronyms))
+        .map(|(i, token)| token_to_ipa(token, i == last, spell_acronyms, lexicon))
         .filter(|ipa| !ipa.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
@@ -166,11 +189,11 @@ fn ends_sentence(kind: Option<Break>) -> bool {
     )
 }
 
-fn line_to_sentences(line: &str) -> Vec<String> {
+fn line_to_sentences(line: &str, lexicon: &Lexicon) -> Vec<String> {
     let (mut sentences, pending) = clauses(expand::expand(tokens::tokenize(line))).iter().fold(
         (Vec::new(), String::new()),
         |(mut sentences, mut pending), (tokens, kind)| {
-            let words = clause_to_ipa(tokens);
+            let words = clause_to_ipa(tokens, lexicon);
             if !words.is_empty() {
                 pending.push_str(&words);
                 pending.push_str(break_suffix(*kind));
@@ -189,10 +212,22 @@ fn line_to_sentences(line: &str) -> Vec<String> {
 
 /// Returns one phoneme string per spoken sentence, as espeak-ng does: clause
 /// breaks keep their `,` `.` `?` `!` suffix, and text with nothing speakable
-/// returns no sentences.
+/// returns no sentences. Words in the built-in pronunciation lexicon
+/// (`lexicon/kmr.tsv`) are said as the lexicon says.
 pub fn text_to_kurmanji_phonemes(text: &str) -> DengjenResult<Phonemes> {
+    text_to_kurmanji_phonemes_with_lexicon(text, Lexicon::builtin())
+}
+
+/// [`text_to_kurmanji_phonemes`] with another lexicon in place of the
+/// built-in one; [`Lexicon::default`] applies the letter rules alone.
+pub fn text_to_kurmanji_phonemes_with_lexicon(
+    text: &str,
+    lexicon: &Lexicon,
+) -> DengjenResult<Phonemes> {
     Ok(Phonemes::from(
-        text.lines().flat_map(line_to_sentences).collect::<Vec<_>>(),
+        text.lines()
+            .flat_map(|line| line_to_sentences(line, lexicon))
+            .collect::<Vec<_>>(),
     ))
 }
 
@@ -381,6 +416,43 @@ mod tests {
     #[test]
     fn a_hyphen_in_a_range_is_not_spoken_as_minus() {
         assert_eq!(sentences("2006-2007"), sentences("2006 2007"));
+    }
+
+    fn with(rows: &str, text: &str) -> Vec<String> {
+        let lexicon = Lexicon::parse(&format!("written\tsay\tnote\n{rows}")).unwrap();
+        text_to_kurmanji_phonemes_with_lexicon(text, &lexicon)
+            .unwrap()
+            .to_vec()
+    }
+
+    #[test]
+    fn a_respelling_is_read_with_the_usual_rules_and_stress() {
+        assert_eq!(
+            with("AB\tYekîtiya Ewropayê", "AB hat"),
+            sentences("Yekîtiya Ewropayê hat")
+        );
+        assert_eq!(with("AB\tYekîtiya Ewropayê", "ab hat"), sentences("ab hat"));
+    }
+
+    #[test]
+    fn phonemes_are_used_as_written() {
+        assert_eq!(
+            with("silav\t/sɪlˈaw/", "Silav, heval"),
+            vec!["sɪlˈaw,hɛvˈal."]
+        );
+    }
+
+    #[test]
+    fn a_lexicon_entry_wins_over_acronym_spelling() {
+        assert_eq!(
+            with("ISO\tîso", "ISO sed kes hatin"),
+            sentences("îso sed kes hatin")
+        );
+    }
+
+    #[test]
+    fn the_lexicon_matches_whole_words_only() {
+        assert_eq!(with("silav\t/sɪlˈaw/", "silavên"), sentences("silavên"));
     }
 
     #[test]
