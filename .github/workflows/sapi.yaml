@@ -148,7 +148,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem $out | Format-Table Length, Name
           $info = (Get-ChildItem $out -Filter '*-setup.exe' | Select-Object -First 1).VersionInfo
-          if ($info.ProductName -ne 'Dengjen' -or $info.ProductVersion -ne $version) {
+          # Inno Setup pads its version strings with spaces to a fixed length.
+          if ($info.ProductName.Trim() -ne 'Dengjen' -or $info.ProductVersion.Trim() -ne $version) {
             throw "setup says '$($info.ProductName)' $($info.ProductVersion), expected 'Dengjen' $version"
           }
       - name: Install, speak and uninstall
