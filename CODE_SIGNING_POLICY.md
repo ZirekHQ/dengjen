@@ -3,6 +3,9 @@
 Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
 [SignPath Foundation](https://signpath.org/).
 
+Signing starts with the first release after SignPath Foundation approves the project; installers
+from earlier releases are unsigned, and each release's notes say which applies.
+
 ## What is signed
 
 Only the Windows SAPI5 voice is signed: `dengjen_sapi.dll` and its installer,

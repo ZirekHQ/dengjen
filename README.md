@@ -50,9 +50,9 @@ To contribute, see [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 ## Code signing policy
 
-The Windows SAPI5 voice installer is signed: free code signing provided by
-[SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
-See the [code signing policy](CODE_SIGNING_POLICY.md) for what is signed, who approves it, and the
+The Windows SAPI5 voice installer is signed through SignPath Foundation (free code signing provided
+by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/))
+from the first release after the project's approval; until then it is unsigned. See the [code signing policy](CODE_SIGNING_POLICY.md) for what is signed, who approves it, and the
 privacy statement.
 
 ## License

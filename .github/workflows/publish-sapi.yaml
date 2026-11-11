@@ -11,6 +11,11 @@ on:
         description: "vX.Y.Z being released"
         required: true
         type: string
+      dry_run:
+        description: "Build and test only; send nothing to SignPath"
+        required: false
+        type: boolean
+        default: false
     secrets:
       SIGNPATH_API_TOKEN:
         required: false
@@ -53,11 +58,11 @@ jobs:
     timeout-minutes: 180
     permissions:
       contents: read
-      actions: read
     env:
       CMAKE_GENERATOR: Ninja
       TARGET: x86_64-pc-windows-msvc
-      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+      # A dry run still builds and tests everything but asks SignPath for nothing.
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && !inputs.dry_run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

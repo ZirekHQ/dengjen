@@ -227,10 +227,10 @@ jobs:
     if: "!cancelled() && needs.tag-and-release.result == 'success'"
     permissions:
       contents: read
-      actions: read
     uses: ./.github/workflows/publish-sapi.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
       tag: v${{ needs.tag-and-release.outputs.version }}
+      dry_run: ${{ inputs.dry_run == true }}
     secrets:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
 
@@ -366,6 +366,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           VERSION: ${{ needs.tag-and-release.outputs.version }}
+          SIGNED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
         # Depends on every component job so this always publishes last, shown as "Latest". Each
         # component job skips a version it already published, so a re-run reaching this step
         # must skip the same way instead of hitting gh's already_exists error.
@@ -389,8 +390,14 @@ jobs:
           # changelog to the wrong range.
           previous_tag="$(gh release list --repo "$REPO" --json tagName --jq '.[].tagName' \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vFx "$tag" | sort -rV | head -n1)"
-          # SignPath Foundation asks every download page to name it and link the code signing policy.
-          policy="Windows installer: free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). [Code signing policy](https://github.com/${REPO}/blob/main/CODE_SIGNING_POLICY.md)"
+          # SignPath Foundation asks every download page to name it and link the code signing policy;
+          # until signing is set up the installer ships unsigned, and the note says so.
+          policy_link="[Code signing policy](https://github.com/${REPO}/blob/main/CODE_SIGNING_POLICY.md)"
+          if [ "$SIGNED" = "true" ]; then
+            policy="Windows installer: free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). ${policy_link}"
+          else
+            policy="Windows installer: not signed yet; signing through [SignPath Foundation](https://signpath.org/) is being set up. ${policy_link}"
+          fi
           notes_args=(--generate-notes --notes "$policy")
           if [ -n "$previous_tag" ]; then
             notes_args+=(--notes-start-tag "$previous_tag")
