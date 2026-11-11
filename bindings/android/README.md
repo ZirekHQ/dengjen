@@ -18,6 +18,8 @@ scripts/build-jni.sh debug  # JNI library with the self-test hooks (use `release
 ./gradlew :core:assembleRelease :tts:assembleRelease :stt:assembleRelease
 ```
 
+F-Droid needs ONNX Runtime built from source: run `scripts/build-ort.sh` in place of `fetch-ort.sh`. It builds the version pinned in `ort-source.lock` for both ABIs with the NDK, plus a host `protoc` from ONNX Runtime's pinned protobuf source, and needs `ANDROID_HOME`, CMake 3.28 or newer and Python 3. Keep that version equal to the one inside the sherpa-onnx prebuilt, because the `stt` module's sherpa C API links core's `libonnxruntime.so`. Set `DENGJEN_ANDROID_STT=0` for `build-jni.sh` to build only the core and TTS libraries, because the STT module links a prebuilt sherpa-onnx library. The `Android ONNX Runtime from source` workflow runs it weekly and when the script changes.
+
 Instrumented tests need an emulator or device and a Piper voice plus eSpeak data pushed to `/data/local/tmp/dengjen-voice` (`model.onnx`, `model.onnx.json`, `espeak-ng-data/`; the CI job shows where each comes from):
 
 ```bash
