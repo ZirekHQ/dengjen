@@ -1997,6 +1997,7 @@ version = "3.1.0"
 dependencies = [
  "libdengjen",
  "libdengjen-stt",
+ "libdengjen-voices",
  "workspace-hack",
 ]
 

@@ -4,3 +4,5 @@
 extern crate libdengjen;
 #[cfg(feature = "stt")]
 extern crate libdengjen_stt;
+#[cfg(feature = "voices")]
+extern crate libdengjen_voices;
