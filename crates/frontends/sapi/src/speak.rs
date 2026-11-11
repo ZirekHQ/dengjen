@@ -230,6 +230,9 @@ fn speak_utterance(
     } else {
         crate::english::Respelled::unchanged(&utterance.text)
     };
+    if *spoken.text != *utterance.text {
+        crate::log::line(|| format!("respelled: {:?}", spoken.text));
+    }
     let samples = match synthesize(&spoken.text, prosody, synth, site)? {
         Synthesized::Audio(samples) => samples,
         Synthesized::Stopped(ended) => return Ok(ended),
@@ -292,6 +295,7 @@ fn synthesize(
                 Err(RecvTimeoutError::Disconnected) => break,
             }
             if let Some(ended) = interrupted(site.actions()) {
+                let seen = started.elapsed();
                 stop.store(true, Ordering::Relaxed);
                 // The request can arrive before the engine has started its inference, which
                 // would then run to the end, so keep asking until the worker returns.
@@ -301,7 +305,13 @@ fn synthesize(
                 }
                 // The worker's result is the interruption's error, or audio nobody wants.
                 let _ = worker.join();
-                crate::log::line(|| format!("synthesis {ended:?} after {:?}", started.elapsed()));
+                // How long the engine took to stop, apart from how long it ran before the request.
+                crate::log::line(|| {
+                    format!(
+                        "synthesis {ended:?} after {seen:?}, stopped {:?} later",
+                        started.elapsed().saturating_sub(seen)
+                    )
+                });
                 return Ok(Synthesized::Stopped(ended));
             }
         }
