@@ -53,7 +53,11 @@ voice, `--no-voice` to skip it, `--version X.Y.Z` for an older release, or `--de
 
 Restart Speech Dispatcher afterwards with `pkill -f speech-dispatcher`; the next request starts it
 again. (`pkill -x speech-dispatcher` matches nothing, because the process name is cut to 15
-characters.) Restart Orca too, so it reconnects.
+characters.) `-f` matches any process whose command line contains the text, including a script
+named after Speech Dispatcher. In a script, use `pkill -x speech-dispatch`, which matches the
+process name cut to 15 characters instead of the whole command line. A script whose own file name
+starts with `speech-dispatch` gets that process name too, so give the script another name. Restart
+Orca too, so it reconnects.
 
 The script needs `curl` or `wget`, and `dpkg-deb`, `bsdtar`, or `ar` with `xz` to unpack. The release builds are
 for x86_64 and arm64 with glibc 2.39 or newer (Ubuntu 24.04's).
@@ -153,8 +157,17 @@ installed, so run this check with a newer release.
 |===
 
 If a check fails, open an issue with the check, your distribution and its version, the output of
-`spd-say -O` and `spd-say -o dengjen -L`, and the module's log,
-`~/.cache/speech-dispatcher/log/dengjen.log`.
+`spd-say -O` and `spd-say -o dengjen -L`, and the module's log, `dengjen.log` (see
+<<module-log>>).
+
+[[module-log]]
+=== Where the module's log is
+
+Speech Dispatcher writes it to `speech-dispatcher/log/dengjen.log` under the user runtime
+directory: `$XDG_RUNTIME_DIR`, usually `/run/user/<your user id>/` in a desktop session. When
+`XDG_RUNTIME_DIR` is not set, it uses the cache directory instead: `$XDG_CACHE_HOME`, or
+`~/.cache` when that is not set either. The server's own `speech-dispatcher.log` in the same
+folder names the file on its "Output module is logging to file" line.
 
 == Voices
 
@@ -167,8 +180,8 @@ A request picks the voice by name (`synthesis_voice`), then by language (`ku` ma
 
 The module starts even when no voice is installed. Every request looks at the voices directory
 again, so a voice installed later works at once, without restarting Speech Dispatcher. Until then
-each request is reported as stopped without audio, and the module's log (by default
-`~/.cache/speech-dispatcher/log/dengjen.log`) names the command that installs a voice:
+each request is reported as stopped without audio, and the module's log (see <<module-log>>)
+names the command that installs a voice:
 `dengjen voices install ku_TR-berfin_renas-medium`, or `~/.local/bin/dengjen voices install ...`
 after a user-local install when `~/.local/bin` is not on your `PATH`.
 
