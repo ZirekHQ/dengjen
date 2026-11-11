@@ -54,8 +54,10 @@ voice, `--no-voice` to skip it, `--version X.Y.Z` for an older release, or `--de
 Restart Speech Dispatcher afterwards with `pkill -f speech-dispatcher`; the next request starts it
 again. (`pkill -x speech-dispatcher` matches nothing, because the process name is cut to 15
 characters.) `-f` matches any process whose command line contains the text, including a script
-named after Speech Dispatcher. In a script, use `pkill -x speech-dispatch`, which matches only the
-server by its process name cut to 15 characters. Restart Orca too, so it reconnects.
+named after Speech Dispatcher. In a script, use `pkill -x speech-dispatch`, which matches the
+process name cut to 15 characters instead of the whole command line. A script whose own file name
+starts with `speech-dispatch` gets that process name too, so give the script another name. Restart
+Orca too, so it reconnects.
 
 The script needs `curl` or `wget`, and `dpkg-deb`, `bsdtar`, or `ar` with `xz` to unpack. The release builds are
 for x86_64 and arm64 with glibc 2.39 or newer (Ubuntu 24.04's).
