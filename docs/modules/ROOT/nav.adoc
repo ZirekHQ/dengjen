@@ -10,5 +10,6 @@
 * xref:speech-recognition.adoc[Speech recognition]
 * xref:streaming.adoc[Streaming synthesis and the gRPC frontend]
 * xref:phonemizers.adoc[Phonemizer language coverage]
+** xref:pronunciation-lexicon.adoc[Fixing a word that sounds wrong]
 * xref:testing.adoc[Testing]
 * xref:architecture.adoc[Architecture]

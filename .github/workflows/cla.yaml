@@ -1,0 +1,153 @@
+name: CLA
+
+# Posts a "CLA" commit status on every PR: success once each commit author has agreed to CLA.md,
+# failure (plus a comment that says what to do) otherwise. Make "CLA" a required status check on
+# main. An agreement is the exact sentence from .github/CONTRIBUTING.md posted as a PR comment. It
+# is recorded once per person as signatures/<login>.json on the orphan `cla-signatures` branch, so
+# later PRs pass without a new comment; the maintainer can also add a file there by hand.
+#
+# pull_request_target and issue_comment give a write token on fork PRs too. The job never checks
+# out or runs PR code, and comment text is only compared inside jq, never expanded by the shell.
+
+on:  # zizmor: ignore[dangerous-triggers]
+  pull_request_target:
+    types: [ opened, synchronize, reopened ]
+    branches: [ main ]
+  issue_comment:
+    types: [ created, edited ]
+
+permissions: {}
+
+concurrency:
+  group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  cla:
+    name: CLA
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request && contains(github.event.comment.body, 'Zirek Individual Contributor License Agreement'))
+    permissions:
+      contents: write        # signatures/<login>.json on the cla-signatures branch
+      statuses: write        # the "CLA" status on the PR head
+      pull-requests: write   # the explanatory comment on the PR
+      issues: write          # PR comments go through the issues API
+    steps:
+      - name: Check that every commit author has agreed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: cla-signatures
+          # Space-separated logins that never need to agree; any login ending in [bot] is exempt too.
+          ALLOWLIST: austek
+          SENTENCE: I have read the Zirek Individual Contributor License Agreement, version 1.0, and I agree to it.
+          MARKER: <!-- cla-check -->
+        run: |
+          set -euo pipefail
+
+          head_sha=$(gh api "repos/${REPO}/pulls/${PR}" --jq .head.sha)
+
+          # One line per commit author: the login, or "email:<address>" when the commit's email is
+          # not linked to a GitHub account.
+          mapfile -t authors < <(gh api --paginate "repos/${REPO}/pulls/${PR}/commits" \
+            | jq -r '.[] | if .author.login then .author.login else "email:" + .commit.author.email end' \
+            | sort -u)
+
+          # All comments on this PR, slurped into one array (pagination prints one array per page).
+          comments=$(gh api --paginate "repos/${REPO}/issues/${PR}/comments" | jq -s 'add // []')
+
+          # "<login> <comment url>" for each comment holding the exact sentence on a line of its own.
+          # Quote markers and surrounding whitespace are ignored, so pasting the quoted line from
+          # CONTRIBUTING.md works.
+          mapfile -t agreed_here < <(jq -r --arg s "$SENTENCE" \
+            '.[] | select(.body | split("\n") | map(sub("^[>\\s]+"; "") | sub("\\s+$"; "")) | any(. == $s))
+                 | "\(.user.login) \(.html_url)"' <<<"$comments")
+
+          ensure_branch() {
+            gh api "repos/${REPO}/git/ref/heads/${BRANCH}" >/dev/null 2>&1 && return 0
+            local tree commit
+            tree=$(gh api "repos/${REPO}/git/trees" -f "tree[][path]=README.md" -f "tree[][mode]=100644" \
+              -f "tree[][type]=blob" \
+              -f "tree[][content]=Agreements to CLA.md, one file per GitHub login, written by .github/workflows/cla.yaml." \
+              --jq .sha)
+            commit=$(gh api "repos/${REPO}/git/commits" -f message="Start the CLA signature record" \
+              -f tree="$tree" --jq .sha)
+            # A concurrent run may have created the branch first; that is fine.
+            gh api "repos/${REPO}/git/refs" -f ref="refs/heads/${BRANCH}" -f sha="$commit" >/dev/null 2>&1 || true
+          }
+
+          is_signed() {
+            gh api "repos/${REPO}/contents/signatures/$1.json?ref=${BRANCH}" >/dev/null 2>&1
+          }
+
+          record() {
+            local login=$1 url=$2 content
+            ensure_branch
+            content=$(jq -n --arg login "$login" --argjson pr "$PR" --arg url "$url" \
+              --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              '{login: $login, cla_version: "1.0", pull_request: $pr, comment: $url, recorded_at: $date}' \
+              | base64 -w0)
+            # Fails with 422 when a concurrent run already recorded the same person.
+            gh api -X PUT "repos/${REPO}/contents/signatures/${login}.json" \
+              -f message="Record CLA agreement from ${login}" -f branch="$BRANCH" -f content="$content" \
+              >/dev/null 2>&1 || is_signed "$login"
+          }
+
+          missing=()
+          list=""
+          for author in "${authors[@]}"; do
+            case "$author" in
+              email:*)
+                missing+=("$author")
+                list+="- a commit by \`${author#email:}\`, whose email is not linked to a GitHub account"$'\n'
+                continue ;;
+              *'[bot]') continue ;;
+            esac
+            if [[ " ${ALLOWLIST} " == *" ${author} "* ]] || is_signed "$author"; then
+              continue
+            fi
+            url=$(printf '%s\n' "${agreed_here[@]}" | awk -v a="$author" '$1 == a { print $2; exit }')
+            if [[ -n "$url" ]]; then
+              record "$author" "$url"
+            else
+              missing+=("$author")
+              list+="- @${author}"$'\n'
+            fi
+          done
+
+          comment_id=$(jq -r --arg m "$MARKER" \
+            'map(select(.user.login == "github-actions[bot]" and (.body | startswith($m)))) | first | .id // empty' \
+            <<<"$comments")
+
+          if (( ${#missing[@]} == 0 )); then
+            state=success
+            description="Every commit author has agreed to the CLA"
+            body="${MARKER}"$'\n'"Thank you. Every commit author on this pull request has agreed to the CLA."
+          else
+            state=failure
+            description="Waiting for the CLA from: ${missing[*]}"
+            body="${MARKER}
+          Thank you for your pull request. Before it can be merged, each person below needs to read the [Contributor License Agreement](${SERVER_URL}/${REPO}/blob/main/CLA.md) and agree to it by posting this comment on this pull request:
+
+          > ${SENTENCE}
+
+          ${list}
+          You only need to do this once; later pull requests pass on their own. If a commit email is not linked to a GitHub account, add it to your account (Settings, Emails), or amend the commit to use an email that is, and push again."
+          fi
+
+          # Only comment when something is missing, or to update a comment posted earlier.
+          if [[ -n "$comment_id" ]]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${comment_id}" -f body="$body" >/dev/null
+          elif [[ "$state" == failure ]]; then
+            gh api "repos/${REPO}/issues/${PR}/comments" -f body="$body" >/dev/null
+          fi
+
+          gh api "repos/${REPO}/statuses/${head_sha}" -f state="$state" -f context=CLA \
+            -f description="${description:0:139}" -f target_url="$RUN_URL" >/dev/null
+          echo "$state: $description"
