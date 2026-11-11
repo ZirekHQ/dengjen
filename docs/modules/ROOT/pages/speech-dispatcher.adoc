@@ -53,9 +53,9 @@ voice, `--no-voice` to skip it, `--version X.Y.Z` for an older release, or `--de
 
 Restart Speech Dispatcher afterwards with `pkill -f speech-dispatcher`; the next request starts it
 again. (`pkill -x speech-dispatcher` matches nothing, because the process name is cut to 15
-characters.) In a script whose own command line contains `speech-dispatcher`, use
-`pkill -f '[s]peech-dispatcher'` instead, or the pattern also matches and kills the script. Restart
-Orca too, so it reconnects.
+characters.) `-f` matches any process whose command line contains the text, including a script
+named after Speech Dispatcher. In a script, use `pkill -x speech-dispatch`, which matches only the
+server by its process name cut to 15 characters. Restart Orca too, so it reconnects.
 
 The script needs `curl` or `wget`, and `dpkg-deb`, `bsdtar`, or `ar` with `xz` to unpack. The release builds are
 for x86_64 and arm64 with glibc 2.39 or newer (Ubuntu 24.04's).
@@ -161,10 +161,10 @@ If a check fails, open an issue with the check, your distribution and its versio
 [[module-log]]
 === Where the module's log is
 
-Speech Dispatcher chooses the folder, and it depends on the version and the session. In a desktop
-session with Speech Dispatcher 0.12 it is `$XDG_RUNTIME_DIR/speech-dispatcher/log/dengjen.log`
-(usually `/run/user/<your user id>/speech-dispatcher/log/`). Otherwise look in
-`~/.cache/speech-dispatcher/log/dengjen.log`. The server's own `speech-dispatcher.log` in the same
+Speech Dispatcher writes it to `speech-dispatcher/log/dengjen.log` under the user runtime
+directory: `$XDG_RUNTIME_DIR`, usually `/run/user/<your user id>/` in a desktop session. When
+`XDG_RUNTIME_DIR` is not set, it uses the cache directory instead: `$XDG_CACHE_HOME`, or
+`~/.cache` when that is not set either. The server's own `speech-dispatcher.log` in the same
 folder names the file on its "Output module is logging to file" line.
 
 == Voices
