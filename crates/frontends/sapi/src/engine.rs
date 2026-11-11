@@ -114,6 +114,7 @@ impl Synth for Engine {
         Ok(())
     }
 
+    /// Stops the model's inference that [`Synth::synthesize`] is waiting on in another thread.
     fn interrupt(&self) {
         self.synth.interrupt();
     }

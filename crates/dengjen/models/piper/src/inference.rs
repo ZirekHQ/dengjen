@@ -133,6 +133,8 @@ impl VitsModel {
             pinyin_engine,
         })
     }
+    /// Runs the model on `input_phonemes` and returns the samples, with run options that
+    /// [`DengjenModel::interrupt`] can terminate while the run is in progress.
     fn infer_with_values(&self, input_phonemes: Vec<i64>) -> DengjenAudioResult {
         let (scales, speaker) = snapshot_scales_and_speaker(
             &self.synth_config,
@@ -235,6 +237,7 @@ impl DengjenModel for VitsModel {
     fn audio_output_info(&self) -> DengjenResult<AudioInfo> {
         self.get_audio_output_info()
     }
+    /// Terminates the run in progress, if any; the next run gets fresh options so it is unaffected.
     fn interrupt(&self) -> bool {
         lock_ignoring_poison(&self.running)
             .as_ref()

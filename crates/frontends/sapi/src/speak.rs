@@ -104,6 +104,7 @@ fn interrupted(actions: Actions) -> Option<Ended> {
     }
 }
 
+/// Audio on its way to the caller, with the byte count that event offsets are measured in.
 struct Output<'a> {
     site: &'a dyn Site,
     written: u64,
@@ -111,6 +112,7 @@ struct Output<'a> {
 }
 
 impl Output<'_> {
+    /// Whether the caller has asked to stop speaking.
     fn aborted(&self) -> bool {
         self.site.actions().abort
     }
@@ -156,6 +158,7 @@ pub fn speak(steps: &[Step], synth: &dyn Synth, site: &dyn Site) -> Result<Outco
     outcome
 }
 
+/// Plays `steps` in order, handling skips between and during steps; [`speak`] logs the outcome.
 fn run(
     steps: &[Step],
     synth: &dyn Synth,
@@ -207,6 +210,10 @@ fn run(
     Ok(Outcome::Completed)
 }
 
+/// Synthesizes one sentence, queues its word and sentence events, and writes its audio.
+///
+/// Ends early with [`Ended::Aborted`] or [`Ended::Skipped`] when the caller asks during
+/// synthesis or playback.
 fn speak_utterance(
     utterance: &Utterance,
     synth: &dyn Synth,
@@ -742,6 +749,7 @@ mod tests {
             RATE
         }
 
+        /// Waits for `interrupt`, giving up after a few seconds so a broken test cannot hang.
         fn synthesize(
             &self,
             _text: &str,
@@ -803,6 +811,7 @@ mod tests {
     }
 
     impl Site for SkipOnPoll {
+        /// Reports no skip on the first call and the inner site's actions after that.
         fn actions(&self) -> Actions {
             self.polls.set(self.polls.get() + 1);
             let actions = self.inner.actions();
