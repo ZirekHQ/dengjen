@@ -31,7 +31,8 @@ $class = 'HKLM:\SOFTWARE\Classes\CLSID\{EE94E0DE-50A8-4645-B76B-38F65AE052D4}'
 Invoke-Silently $Setup (Join-Path $env:TEMP 'dengjen-sapi-install.log')
 Assert (Test-Path (Join-Path $app 'dengjen_sapi.dll')) "the DLL is installed in $app"
 Assert (@(Get-ChildItem $machineTokens | Where-Object { $_.PSChildName -like 'Dengjen-*' }).Count -gt 0) 'the voice is registered machine-wide'
-$tokens = Get-DengjenTokens
+# A function returning one item hands back the item itself, so wrap it to index it.
+$tokens = @(Get-DengjenTokens)
 Assert ($tokens.Count -gt 0) "SAPI lists $($tokens[0].GetDescription())"
 $voicePath = (Get-ItemProperty (Join-Path $machineTokens $tokens[0].Id.Split('\')[-1])).VoicePath
 Assert ($voicePath -like "$app*") "the token points into the install directory ($voicePath)"
@@ -54,7 +55,7 @@ Invoke-Silently $uninstaller (Join-Path $env:TEMP 'dengjen-sapi-uninstall.log')
 # The uninstaller copies itself to a temporary folder and returns before that copy finishes.
 $deadline = (Get-Date).AddSeconds(60)
 while ((Test-Path $uninstaller) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-Assert ((Get-DengjenTokens).Count -eq 0) 'uninstalling removes the voice from SAPI'
+Assert (@(Get-DengjenTokens).Count -eq 0) 'uninstalling removes the voice from SAPI'
 Assert (-not (Test-Path $class)) 'uninstalling removes the COM class'
 Assert (-not (Test-Path (Join-Path $app 'dengjen_sapi.dll'))) 'uninstalling removes the DLL'
 Assert (-not (Test-Path (Join-Path $app 'voices'))) 'uninstalling removes the voices'
