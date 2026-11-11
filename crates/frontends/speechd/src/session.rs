@@ -307,7 +307,10 @@ fn place_marks(
         send_mark(output, name)?;
     }
     write_audio(output, samples.get(from..).unwrap_or_default(), sample_rate)?;
-    Ok(Played::Continue)
+    match input.interrupt() {
+        Some(interrupt) => Ok(Played::Interrupted(interrupt)),
+        None => Ok(Played::Continue),
+    }
 }
 
 fn write_audio(output: &mut impl Write, samples: &[i16], sample_rate: u32) -> io::Result<()> {
