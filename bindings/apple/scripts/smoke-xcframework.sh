@@ -37,8 +37,8 @@ if [ "$variant" = stt ]; then
   : "${SHERPA_LIB_DIR:?SHERPA_LIB_DIR must point at the sherpa-onnx libraries}"
   stt_flags=(-DWITH_STT -L "$SHERPA_LIB_DIR" -lsherpa-onnx-c-api -Wl,-rpath,"$SHERPA_LIB_DIR")
 fi
-clang -fmodules -fobjc-arc -I "$slice/Headers" "${stt_flags[@]}" "${voices_flags[@]}" "$work/main.m" "$slice"/*.a \
+clang -fmodules -fobjc-arc -I "$slice/Headers" ${stt_flags[@]+"${stt_flags[@]}"} ${voices_flags[@]+"${voices_flags[@]}"} "$work/main.m" "$slice"/*.a \
   -lc++ -framework Foundation -framework CoreML -framework Accelerate -o "$work/smoke"
 "$work/smoke" | grep -E '^abi [0-9]+$'
 [ "$variant" != stt ] || "$work/smoke" | grep -E '^stt abi [0-9]+$'
-[ "${#voices_flags[@]}" -eq 0 ] || "$work/smoke" | grep -E '^voices abi [0-9]+$'
+[ -z "${voices_flags[*]-}" ] || "$work/smoke" | grep -E '^voices abi [0-9]+$'
