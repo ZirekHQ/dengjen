@@ -2,7 +2,8 @@ name: SAPI5 voice
 
 # Builds the Windows SAPI5 voice DLL for 64- and 32-bit processes; the 64-bit one is staged with ONNX Runtime,
 # the eSpeak-ng data and the Kurmanji voice, and speaks through SAPI's own SpVoice: registration,
-# speech, bookmarks, word events and a purge.
+# speech, bookmarks, word events and a purge. The same files are then packed into the Inno Setup
+# installer, which is installed, used and uninstalled silently.
 on:
   push:
     branches:
@@ -114,6 +115,39 @@ jobs:
           }
           & $powershell -NoProfile -ExecutionPolicy Bypass -File crates/frontends/sapi/tests/smoke.ps1 -Stage (Join-Path $env:RUNNER_TEMP 'stage') -Out (Join-Path $env:RUNNER_TEMP 'dengjen-sapi-smoke.wav')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build the installer
+        if: matrix.platform.speak
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'stage'
+          Copy-Item LICENSE $stage
+          $redist = Join-Path $env:RUNNER_TEMP 'vc_redist.x64.exe'
+          Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $redist
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $version = ((cargo pkgid -p dengjen-sapi) -split '[#@]')[-1]
+          $out = Join-Path $env:RUNNER_TEMP 'installer'
+          & $iscc "/DAppVersion=$version" "/DStage=$stage" "/DRedist=$redist" "/O$out" crates/frontends/sapi/installer/dengjen-sapi.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem $out | Format-Table Length, Name
+      - name: Install, speak and uninstall
+        if: matrix.platform.speak
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'installer') -Filter '*-setup.exe' | Select-Object -First 1
+          & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File crates/frontends/sapi/tests/installer.ps1 -Setup $setup.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && matrix.platform.speak
+        with:
+          name: dengjen-sapi-x64-setup
+          path: ${{ runner.temp }}/installer/*-setup.exe
+          if-no-files-found: warn
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && matrix.platform.speak
         with:
