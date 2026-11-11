@@ -76,6 +76,8 @@ pub trait Synth: Sync {
     /// Stops a [`Synth::synthesize`] call running on another thread as soon as the engine can.
     /// That call may then fail; its result is discarded.
     fn interrupt(&self);
+    /// The voice's language code, such as `ku_TR`, or an empty string when it is unknown.
+    fn language(&self) -> &str;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,7 +224,16 @@ fn speak_utterance(
     let site = output.site;
     let prosody = engine_prosody(site.rate(), site.volume(), utterance.prosody);
     crate::log::line(|| format!("prosody: {prosody:?}"));
-    let samples = match synthesize(&utterance.text, prosody, synth, site)? {
+    // Only the text sent to the engine changes; word events still point into the caller's text.
+    let spoken = if crate::english::applies_to(synth.language()) {
+        crate::english::respell(&utterance.text)
+    } else {
+        crate::english::Respelled::unchanged(&utterance.text)
+    };
+    if *spoken.text != *utterance.text {
+        crate::log::line(|| format!("respelled: {:?}", spoken.text));
+    }
+    let samples = match synthesize(&spoken.text, prosody, synth, site)? {
         Synthesized::Audio(samples) => samples,
         Synthesized::Stopped(ended) => return Ok(ended),
     };
@@ -233,7 +244,7 @@ fn speak_utterance(
         len: utterance.len,
     }];
     events.extend(
-        word_starts(utterance, samples.len())
+        word_starts(utterance, &spoken, samples.len())
             .into_iter()
             .map(|(word, sample)| Event::Word {
                 audio_offset: start + sample as u64 * BYTES_PER_SAMPLE,
@@ -284,6 +295,7 @@ fn synthesize(
                 Err(RecvTimeoutError::Disconnected) => break,
             }
             if let Some(ended) = interrupted(site.actions()) {
+                let seen = started.elapsed();
                 stop.store(true, Ordering::Relaxed);
                 // The request can arrive before the engine has started its inference, which
                 // would then run to the end, so keep asking until the worker returns.
@@ -293,7 +305,13 @@ fn synthesize(
                 }
                 // The worker's result is the interruption's error, or audio nobody wants.
                 let _ = worker.join();
-                crate::log::line(|| format!("synthesis {ended:?} after {:?}", started.elapsed()));
+                // How long the engine took to stop, apart from how long it ran before the request.
+                crate::log::line(|| {
+                    format!(
+                        "synthesis {ended:?} after {seen:?}, stopped {:?} later",
+                        started.elapsed().saturating_sub(seen)
+                    )
+                });
                 return Ok(Synthesized::Stopped(ended));
             }
         }
@@ -433,6 +451,10 @@ mod tests {
         }
 
         fn interrupt(&self) {}
+
+        fn language(&self) -> &str {
+            "ku"
+        }
     }
 
     #[derive(Default)]
@@ -770,6 +792,10 @@ mod tests {
         fn interrupt(&self) {
             self.interrupted.store(true, Ordering::Relaxed);
         }
+
+        fn language(&self) -> &str {
+            "ku"
+        }
     }
 
     #[test]
@@ -884,5 +910,32 @@ mod tests {
         site.skip.set(Some(-2));
         assert_eq!(skip(&steps, 2, true, &site), 1);
         assert_eq!(*site.completed_skips.borrow(), [-2]);
+    }
+
+    #[test]
+    fn a_kurmanji_voice_hears_english_ui_words_respelled() {
+        let synth = FakeSynth::new();
+        let site = FakeSite::default();
+        let steps = plan(&[fragment(Action::Speak, "Bişkok selected", 0)]);
+        speak(&steps, &synth, &site).expect("speak");
+        assert_eq!(synth.texts(), ["Bişkok silektid"]);
+    }
+
+    #[test]
+    fn word_events_after_a_respelled_word_follow_the_spoken_text() {
+        let synth = FakeSynth::new();
+        let site = FakeSite::default();
+        let steps = plan(&[fragment(Action::Speak, "checked a", 0)]);
+        speak(&steps, &synth, &site).expect("speak");
+        // "çekt a" is 6 samples and "a" is its sixth char, so it starts at sample 5 (byte 10),
+        // while the event still points at "a" in the caller's text.
+        assert_eq!(
+            site.events.borrow().last(),
+            Some(&Event::Word {
+                audio_offset: 10,
+                offset: 8,
+                len: 1
+            })
+        );
     }
 }
