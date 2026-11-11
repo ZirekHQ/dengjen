@@ -110,10 +110,11 @@ Restart Orca after installing the module or a voice so it reloads the list of sy
 
 . Open Orca's preferences with Orca+Space (Insert+Space on the desktop layout, Caps Lock+Space on
   the laptop layout).
-. On the *Speech* page, set *Speech system* to *Speech Dispatcher* and *Speech synthesizer* to
+. On the *Voice* page, set *Speech system* to *Speech Dispatcher* and *Speech synthesizer* to
   *dengjen*.
-. Under the voice settings, pick the Kurmanji voice in *Person*. Orca asks for language `C`, which
-  falls back to the first installed voice, so this matters once more than one voice is installed.
+. Set *Language* to Kurmanji (`ku`), then pick the Kurmanji voice in *Person*. *Person* lists only
+  the voices for the chosen language. Orca otherwise asks for language `C`, which falls back to the
+  first installed voice, so this matters once more than one voice is installed.
 . Press *Apply*, then *OK*. Orca should now read its own interface in Kurmanji.
 
 === Check it
@@ -139,10 +140,16 @@ Orca+Semicolon on the laptop layout)
 |Speech gets faster or slower, and higher or lower. The middle of each slider is the voice's normal
 speed and pitch.
 
-|Remove the voice (`dengjen voices remove ku_TR-berfin_renas-medium`), restart Orca, then
-install it again
-|With no voice, Orca stays usable and the module is silent; the module's log names the command
-that installs a voice. Once the voice is back, the next thing Orca says is spoken, with no restart.
+|Before this check, keep another way to use the computer at hand, such as a braille display or a
+second session with another voice, because Orca goes silent. Remove the voice
+(`dengjen voices remove ku_TR-berfin_renas-medium`, or `~/.local/bin/dengjen ...` after a user-local
+install) and any other Dengjen voices, then restart Speech Dispatcher
+(`pkill -f speech-dispatcher`) and Orca. Install the voice again with
+`dengjen voices install ku_TR-berfin_renas-medium`.
+|While no voice is installed, Orca keeps running and responds to keys but says nothing, and the
+module's log names the command that installs a voice. Once the voice is back, the next thing Orca
+says is spoken, with no restart. Packages from release 3.1.0 and older do not start with no voice
+installed, so run this check with a newer release.
 |===
 
 If a check fails, open an issue with the check, your distribution and its version, the output of
