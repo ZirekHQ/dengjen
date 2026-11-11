@@ -34,4 +34,7 @@ impl Synth for Engine {
     ) -> Result<(), String> {
         Err(MISSING.to_owned())
     }
+
+    /// Nothing runs without the native library, so there is nothing to stop.
+    fn interrupt(&self) {}
 }

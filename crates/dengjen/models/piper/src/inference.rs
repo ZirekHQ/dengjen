@@ -10,11 +10,11 @@ use dengjen_tts_core::{
     DengjenModel, DengjenResult, Phonemes, SynthesisConfig,
 };
 use ndarray::{Array1, Array2};
-use ort::session::{Session, SessionInputValue};
+use ort::session::{RunOptions, Session, SessionInputValue};
 use ort::value::Tensor;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 pub(crate) fn reversed_mapping<K, V>(input: &HashMap<K, V>) -> HashMap<V, K>
 where
@@ -95,6 +95,9 @@ pub struct VitsModel {
     config: ModelConfig,
     speaker_map: HashMap<i64, String>,
     session: Mutex<Session>,
+    /// The options of the inference running now, so [`DengjenModel::interrupt`] can stop it
+    /// from another thread.
+    running: Mutex<Option<Arc<RunOptions>>>,
     #[cfg_attr(not(all(feature = "tashkeel", feature = "espeak")), allow(dead_code))]
     tashkeel_engine: Option<TashkeelEngine>,
     #[cfg_attr(not(feature = "hebrew"), allow(dead_code))]
@@ -124,11 +127,14 @@ impl VitsModel {
             config,
             speaker_map,
             session: Mutex::new(session),
+            running: Mutex::new(None),
             tashkeel_engine,
             hebrew_engine,
             pinyin_engine,
         })
     }
+    /// Runs the model on `input_phonemes` and returns the samples, with run options that
+    /// [`DengjenModel::interrupt`] can terminate while the run is in progress.
     fn infer_with_values(&self, input_phonemes: Vec<i64>) -> DengjenAudioResult {
         let (scales, speaker) = snapshot_scales_and_speaker(
             &self.synth_config,
@@ -137,9 +143,13 @@ impl VitsModel {
         );
         let inputs = build_vits_inputs(input_phonemes, scales, speaker)?;
 
+        let options = Arc::new(RunOptions::new().map_err(inference_error)?);
         let mut session = lock_ignoring_poison(&self.session);
+        *lock_ignoring_poison(&self.running) = Some(Arc::clone(&options));
         let started_at = std::time::Instant::now();
-        let outputs = session.run(inputs.as_slice()).map_err(inference_error)?;
+        let result = session.run_with_options(inputs.as_slice(), &*options);
+        *lock_ignoring_poison(&self.running) = None;
+        let outputs = result.map_err(inference_error)?;
         let inference_ms = started_at.elapsed().as_millis() as f32;
 
         let first = first_output(&outputs)?;
@@ -226,6 +236,12 @@ impl DengjenModel for VitsModel {
     }
     fn audio_output_info(&self) -> DengjenResult<AudioInfo> {
         self.get_audio_output_info()
+    }
+    /// Terminates the run in progress, if any; the next run gets fresh options so it is unaffected.
+    fn interrupt(&self) -> bool {
+        lock_ignoring_poison(&self.running)
+            .as_ref()
+            .is_some_and(|options| options.terminate().is_ok())
     }
 }
 

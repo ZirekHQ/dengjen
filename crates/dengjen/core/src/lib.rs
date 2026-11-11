@@ -249,6 +249,13 @@ pub trait DengjenModel {
     fn supports_streaming_output(&self) -> bool {
         false
     }
+    /// Stops the inference another thread is running on this model right now, which then fails
+    /// with [`DengjenError::InferenceError`]. A caller that cancels speech uses it so it does not
+    /// wait for the rest of a sentence it will discard. Returns `false` when nothing was running
+    /// or the model cannot be interrupted, which is the default.
+    fn interrupt(&self) -> bool {
+        false
+    }
     #[allow(unused_variables)]
     fn stream_synthesis(
         &self,
@@ -363,6 +370,11 @@ mod tests {
     #[test]
     fn default_properties_returns_an_empty_map() {
         assert!(NullModel::default().properties().unwrap().is_empty());
+    }
+
+    #[test]
+    fn default_interrupt_reports_nothing_stopped() {
+        assert!(!NullModel::default().interrupt());
     }
 
     #[test]

@@ -365,6 +365,12 @@ impl DengjenSpeechSynthesizer {
         Ok(Self { backend: model })
     }
 
+    /// Stops the model's inference running on another thread now; see
+    /// [`DengjenModel::interrupt`].
+    pub fn interrupt(&self) -> bool {
+        self.backend.interrupt()
+    }
+
     #[inline(always)]
     pub fn clone_model(&self) -> Arc<dyn DengjenModel + Send + Sync> {
         Arc::clone(&self.backend)
