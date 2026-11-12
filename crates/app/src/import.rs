@@ -102,35 +102,78 @@ fn strip_block_marker(line: &str) -> &str {
     line
 }
 
-// Keeps a link's or image's words and drops its address, and drops the
-// emphasis and code markers.
+// Keeps a link's or image's words and drops its address, and drops emphasis and
+// code markers. A `*` or `__` with spaces on both sides or letters on both
+// sides is read as written (`2 * 3`), and code spans and `\*` escapes keep
+// their characters.
 fn inline_markdown(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut rest = line;
+    let mut previous = None;
+    let mut in_code = false;
     while let Some(c) = rest.chars().next() {
         let after = rest.get(c.len_utf8()..).unwrap_or_default();
-        if let Some((words, remainder)) = link(rest) {
-            out.push_str(words);
-            rest = remainder;
-            continue;
-        }
-        if !matches!(c, '*' | '`') && !(c == '_' && after.starts_with('_')) {
-            out.push(c);
-        }
-        rest = if c == '_' && after.starts_with('_') {
-            after.get(1..).unwrap_or_default()
+        let (kept, consumed) = if c == '`' {
+            in_code = !in_code;
+            (None, after)
+        } else if in_code {
+            (Some(c.to_string()), after)
+        } else if let Some(escaped) = escaped(c, after) {
+            (
+                Some(escaped.to_string()),
+                after.get(escaped.len_utf8()..).unwrap_or_default(),
+            )
+        } else if let Some((words, remainder)) = link(rest) {
+            (Some(words.to_owned()), remainder)
+        } else if let Some(remainder) = emphasis(previous, rest) {
+            (None, remainder)
         } else {
-            after
+            (Some(c.to_string()), after)
         };
+        if let Some(kept) = kept {
+            previous = kept.chars().last();
+            out.push_str(&kept);
+        } else {
+            previous = Some(c);
+        }
+        rest = consumed;
     }
     out
 }
 
+fn escaped(c: char, after: &str) -> Option<char> {
+    (c == '\\')
+        .then(|| after.chars().next())
+        .flatten()
+        .filter(char::is_ascii_punctuation)
+}
+
+// The text after an emphasis delimiter run starting `rest`, if it is one.
+fn emphasis(previous: Option<char>, rest: &str) -> Option<&str> {
+    let marker = rest.chars().next().filter(|c| matches!(c, '*' | '_'))?;
+    let after = rest.trim_start_matches(marker);
+    if marker == '_' && rest.len() - after.len() < 2 {
+        return None;
+    }
+    let next = after.chars().next();
+    let spaced = |c: Option<char>| c.is_none_or(char::is_whitespace);
+    let wordy = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
+    let literal = (spaced(previous) && spaced(next)) || (wordy(previous) && wordy(next));
+    (!literal).then_some(after)
+}
+
+// Stops at the next bracket so unmatched brackets never rescan the line.
 fn link(text: &str) -> Option<(&str, &str)> {
     let open = text.strip_prefix("![").or_else(|| text.strip_prefix('['))?;
-    let (words, after) = open.split_once("](")?;
-    let (_, remainder) = after.split_once(')')?;
-    (!words.contains(['[', ']'])).then_some((words, remainder))
+    let close = open.find(['[', ']'])?;
+    let target = open.get(close..)?.strip_prefix("](")?;
+    let end = target.find([')', '[', ']'])?;
+    target.get(end..)?.starts_with(')').then(|| {
+        (
+            open.get(..close).unwrap_or_default(),
+            target.get(end + 1..).unwrap_or_default(),
+        )
+    })
 }
 
 const HIDDEN: [&str; 5] = ["script", "style", "head", "template", "noscript"];
@@ -177,7 +220,7 @@ fn skip_tag<'a>(rest: &'a str, out: &mut String) -> &'a str {
     if let Some(comment) = rest.strip_prefix("<!--") {
         return comment.split_once("-->").map_or("", |(_, after)| after);
     }
-    let Some((tag, after)) = rest.get(1..).and_then(|tag| tag.split_once('>')) else {
+    let Some((tag, after)) = rest.get(1..).and_then(split_tag) else {
         return "";
     };
     let closing = tag.starts_with('/');
@@ -196,13 +239,35 @@ fn skip_tag<'a>(rest: &'a str, out: &mut String) -> &'a str {
     after
 }
 
+// Splits at the first `>` outside a quoted attribute value.
+fn split_tag(text: &str) -> Option<(&str, &str)> {
+    let mut quote = None;
+    let end = text.char_indices().find_map(|(at, c)| {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(open), _) if c == open => quote = None,
+            (None, '>') => return Some(at),
+            _ => {}
+        }
+        None
+    })?;
+    Some((text.get(..end)?, text.get(end + 1..)?))
+}
+
 fn skip_past_close<'a>(text: &'a str, name: &str) -> &'a str {
     let needle = format!("</{name}");
-    text.to_ascii_lowercase()
-        .find(&needle)
-        .and_then(|at| text.get(at..))
-        .and_then(|close| close.split_once('>'))
-        .map_or("", |(_, after)| after)
+    let mut search = text;
+    while let Some(at) = search.find("</") {
+        let candidate = search.get(at..).unwrap_or_default();
+        if candidate
+            .get(..needle.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(&needle))
+        {
+            return candidate.split_once('>').map_or("", |(_, after)| after);
+        }
+        search = search.get(at + 2..).unwrap_or_default();
+    }
+    ""
 }
 
 fn decode_entities(text: &str) -> String {
@@ -210,10 +275,15 @@ fn decode_entities(text: &str) -> String {
     let mut rest = text;
     while let Some((before, after)) = rest.split_once('&') {
         out.push_str(before);
+        // Entity names are short, so the search for `;` stops after ten characters.
         let decoded = after
-            .split_once(';')
-            .filter(|(name, _)| name.len() <= 8)
-            .and_then(|(name, tail)| entity(name).map(|c| (c, tail)));
+            .char_indices()
+            .take(10)
+            .find(|&(_, c)| c == ';')
+            .and_then(|(at, _)| {
+                let tail = after.get(at + 1..).unwrap_or_default();
+                entity(after.get(..at)?).map(|c| (c, tail))
+            });
         rest = match decoded {
             Some((c, tail)) => {
                 out.push(c);
@@ -328,6 +398,37 @@ mod tests {
             text_from_bytes(html.as_bytes(), Format::Html).unwrap(),
             "Sernav\nRoj baş & xweş e.\nŞev şad e.\nDawî"
         );
+    }
+
+    #[test]
+    fn markdown_keeps_literal_asterisks_escapes_and_code() {
+        assert_eq!(
+            markdown_to_text("2 * 3 = 6, 2*3, \\*star\\*, `a*b` and *em*"),
+            "2 * 3 = 6, 2*3, *star*, a*b and em"
+        );
+    }
+
+    #[test]
+    fn markdown_brackets_that_are_not_links_stay() {
+        assert_eq!(markdown_to_text("[[x] [a](b c ["), "[[x] [a](b c [");
+        assert_eq!(markdown_to_text(&"[".repeat(50_000)).len(), 50_000);
+    }
+
+    #[test]
+    fn html_attributes_may_hold_angle_brackets() {
+        assert_eq!(
+            html_to_text("<a title=\"1 > 0\" data-x='<'>Read</a>"),
+            "Read"
+        );
+    }
+
+    #[test]
+    fn many_hidden_elements_and_ampersands_convert_quickly() {
+        let html = "<SCRIPT>x</script>".repeat(20_000) + &"A & B ".repeat(20_000);
+        let start = std::time::Instant::now();
+        let text = html_to_text(&html);
+        assert!(text.starts_with("A & B"));
+        assert!(start.elapsed() < std::time::Duration::from_secs(2));
     }
 
     #[test]
