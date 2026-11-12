@@ -1,0 +1,20 @@
+language = "C"
+cpp_compat = true
+line_endings = "LF"
+usize_is_size_t = true
+include_version = true
+include_guard = "LIBDENGJEN_APP_H"
+documentation = true
+header = """
+/*
+ * Library-wide contracts.
+ * - Every call taking an ExternError* needs a zero-initialized struct. On failure code != 0 and
+ *   message must be released with libdengjenAppFreeString.
+ * - Strings returned by the library are released with libdengjenAppFreeString, sentence arrays
+ *   with libdengjenAppFreeSentences.
+ * - Every function is safe to call from any thread.
+ */"""
+
+[parse]
+parse_deps = true
+include = ["ffi-support"]

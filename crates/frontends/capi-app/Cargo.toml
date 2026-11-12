@@ -1,0 +1,28 @@
+[package]
+name = "libdengjen-app"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "C API for dengjen-app: sentence ranges and file text for the read-aloud apps"
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "libdengjen_app"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+dengjen-app = { path = "../../app", version = "3.2.0" }
+ffi-support = "0.4.4"
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[build-dependencies]
+cbindgen = "0.29.4"

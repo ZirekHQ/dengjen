@@ -1999,6 +1999,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "libdengjen-app"
+version = "3.2.0"
+dependencies = [
+ "cbindgen",
+ "dengjen-app",
+ "ffi-support",
+ "tempfile",
+ "workspace-hack",
+]
+
+[[package]]
 name = "libdengjen-apple"
 version = "3.2.0"
 dependencies = [
