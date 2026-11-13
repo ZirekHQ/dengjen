@@ -32,6 +32,10 @@ git -C "$src" fetch -q --depth 1 origin "$commit"
 git -C "$src" -c advice.detachedHead=false checkout -q FETCH_HEAD
 [ "$(git -C "$src" rev-parse HEAD)" = "$commit" ] || { echo "checkout is not $commit" >&2; exit 1; }
 [ "$(cat "$src/VERSION_NUMBER")" = "$version" ] || { echo "source is $(cat "$src/VERSION_NUMBER"), lock says $version" >&2; exit 1; }
+# F-Droid reviews the sources it builds from. Drop the prebuilt binaries the ONNX Runtime tree
+# carries; the Android build uses none of them (a Windows patch.exe with msys DLLs, Gradle wrappers).
+rm -rf "$src"/cmake/external/git.Win32.*.patch
+find "$src" -name gradle-wrapper.jar -not -path '*/.git/*' -delete
 
 # Cross-compiling needs a host protoc. Build it from the protobuf source ONNX Runtime pins,
 # so CMake does not download a prebuilt protoc binary.
