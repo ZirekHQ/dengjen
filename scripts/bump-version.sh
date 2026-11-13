@@ -62,6 +62,8 @@ rm -f crates/frontends/python/Cargo.toml.bak
 
 
 cargo check --workspace --quiet
+# apps/linux is its own workspace on path dependencies, so its lock file names their versions too.
+cargo metadata --manifest-path apps/linux/Cargo.toml --format-version 1 >/dev/null
 
 echo "Bumped ${old_version} -> ${new_version}:"
-git diff --stat -- Cargo.toml Cargo.lock crates/frontends/python/Cargo.toml
+git diff --stat -- Cargo.toml Cargo.lock crates/frontends/python/Cargo.toml apps/linux/Cargo.lock
