@@ -34,3 +34,17 @@ rodio = { version = "0.20", default-features = false }
 version = "=2.0.0-rc.15"
 default-features = false
 features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]
+
+[package.metadata.deb]
+name = "dengjen-gtk"
+section = "sound"
+priority = "optional"
+depends = "$auto"
+maintainer = "austek <13117393+austek@users.noreply.github.com>"
+extended-description = "Read Kurmanji text aloud with Dengjen voices: type, paste or open a file, follow the highlighted sentence, and save the text as audio. Install a voice with the dengjen command from the dengjen package."
+recommends = "dengjen"
+assets = [
+    ["target/release/dengjen-gtk", "usr/bin/dengjen-gtk", "755"],
+    ["data/io.github.zirekhq.Dengjen.desktop", "usr/share/applications/io.github.zirekhq.Dengjen.desktop", "644"],
+    ["README.md", "usr/share/doc/dengjen-gtk/README.md", "644"],
+]

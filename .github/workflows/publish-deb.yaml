@@ -73,12 +73,19 @@ jobs:
           # cargo-deb resolves non-release asset paths against the crate directory.
           mkdir -p crates/frontends/speechd/target
           cp -r crates/frontends/cli/target/espeak crates/frontends/speechd/target/espeak
+      - name: build the read-aloud app
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libasound2-dev
+          # apps/linux is its own cargo workspace, with its own target directory.
+          cargo build --release --locked --manifest-path apps/linux/Cargo.toml
       - name: build the packages
         run: |
           set -euo pipefail
           cargo install cargo-deb --version 3.8.0 --locked
           cargo deb -p dengjen-tts-cli --no-build
           cargo deb -p dengjen-speechd --no-build
+          cargo deb --manifest-path apps/linux/Cargo.toml --no-build --output target/debian/
       - name: smoke test in a clean container
         run: |
           set -euo pipefail
@@ -108,6 +115,10 @@ jobs:
               /usr/lib/speech-dispatcher-modules/sd_dengjen > /tmp/init.out
             grep -q "^299 OK LOADED SUCCESSFULLY" /tmp/init.out
             grep -q "dengjen voices install" /tmp/init.out
+            # The read-aloud app finds every library it links against.
+            test -x /usr/bin/dengjen-gtk
+            test -f /usr/share/applications/io.github.zirekhq.Dengjen.desktop
+            if ldd /usr/bin/dengjen-gtk | grep "not found"; then exit 1; fi
           '
       - name: speak through the installed module
         run: |
