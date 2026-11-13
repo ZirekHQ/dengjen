@@ -78,10 +78,8 @@ impl Site for EngineSite<'_> {
             // SAFETY: `rest` is a live byte slice of at least `len` bytes; SAPI copies it.
             let written = unsafe { self.site.Write(rest.as_ptr().cast(), len) }
                 .map_err(|error| error.message())?;
-            if written == 0 {
-                return Err("SAPI accepted no audio".to_owned());
-            }
-            rest = rest.get(written as usize..).unwrap_or_default();
+            let taken = crate::speak::bytes_taken(len, written);
+            rest = rest.get(taken as usize..).unwrap_or_default();
         }
         Ok(())
     }
