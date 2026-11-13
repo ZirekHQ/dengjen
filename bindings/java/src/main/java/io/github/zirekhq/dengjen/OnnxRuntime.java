@@ -28,10 +28,6 @@ final class OnnxRuntime {
    */
   static synchronized void configure() {
     if (!configured) {
-      if (DengjenLib.SET_ORT_DYLIB_PATH.isEmpty() && !isExplicit(System::getProperty)) {
-        // This native library embeds onnxruntime, so the pinned default has nothing to configure.
-        return;
-      }
       configure(resolvePath(), DengjenLib.SET_ORT_DYLIB_PATH);
     }
   }
@@ -44,25 +40,31 @@ final class OnnxRuntime {
     String classifier =
         NativePlatform.classifier(System.getProperty("os.name"), System.getProperty("os.arch"));
     return resolveSource(
-            System::getProperty, System::getenv, OnnxRuntime.class.getClassLoader(), classifier)
+            System::getProperty,
+            System::getenv,
+            OnnxRuntime.class.getClassLoader(),
+            classifier,
+            DengjenLib.SET_ORT_DYLIB_PATH.isPresent())
         .map(OnnxRuntime::localFile)
         .orElse(null);
   }
 
   /**
    * The source to apply. A jar's pinned default never overrides an {@code ORT_DYLIB_PATH} the user
-   * already exported; an explicit {@code -D} setting still does.
+   * already exported, and nor does it apply to a native library that embeds onnxruntime ({@code
+   * canSetPath} false); an explicit {@code -D} setting still does.
    */
   static Optional<OnnxRuntimeSource> resolveSource(
       UnaryOperator<String> properties,
       UnaryOperator<String> environment,
       ClassLoader loader,
-      String classifier) {
-    boolean explicit =
-        properties.apply(PREFIX + ".path") != null || properties.apply(PREFIX + ".url") != null;
-    String envPath = environment.apply("ORT_DYLIB_PATH");
-    if (!explicit && envPath != null && !envPath.isBlank()) {
-      return Optional.empty();
+      String classifier,
+      boolean canSetPath) {
+    if (!isExplicit(properties)) {
+      String envPath = environment.apply("ORT_DYLIB_PATH");
+      if (!canSetPath || (envPath != null && !envPath.isBlank())) {
+        return Optional.empty();
+      }
     }
     return OnnxRuntimeSource.resolve(PREFIX, properties, loader, classifier);
   }

@@ -97,7 +97,7 @@ class OnnxRuntimeTest {
   private static Optional<OnnxRuntimeSource> resolve(
       Map<String, String> props, Map<String, String> env) {
     return OnnxRuntime.resolveSource(
-        props::get, env::get, OnnxRuntime.class.getClassLoader(), "linux-x86_64");
+        props::get, env::get, OnnxRuntime.class.getClassLoader(), "linux-x86_64", true);
   }
 
   @Test
@@ -106,6 +106,15 @@ class OnnxRuntimeTest {
 
     var download = assertInstanceOf(OnnxRuntimeSource.Download.class, source);
     assertEquals("libonnxruntime.so", download.fileName());
+  }
+
+  @Test
+  void aLibraryThatEmbedsOnnxRuntimeIgnoresThePinnedDefault() {
+    var source =
+        OnnxRuntime.resolveSource(
+            k -> null, k -> null, OnnxRuntime.class.getClassLoader(), "linux-x86_64", false);
+
+    assertTrue(source.isEmpty());
   }
 
   @Test
