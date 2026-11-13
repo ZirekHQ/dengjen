@@ -86,6 +86,9 @@ jobs:
           persist-credentials: false
       # The natives ship as their own artifact; a release uploads them only when nativesVersion is
       # not on Maven Central yet, and refuses a version published with a different fingerprint.
+      # natives-fingerprint-aliases pairs a fingerprint in a published POM with the same inputs'
+      # fingerprint under today's natives-fingerprint.sh, so changing how fingerprints are taken
+      # does not force a republish of unchanged natives.
       - name: Check whether this natives version is already on Maven Central
         id: natives
         run: |
@@ -105,7 +108,8 @@ jobs:
                 exit 1
               fi
               recorded="$(tr -d '[:space:]' < bindings/java/natives.fingerprint)"
-              if [ "${published}" != "${recorded}" ]; then
+              if [ "${published}" != "${recorded}" ] \
+                && ! grep -qxE "${published}[[:space:]]+${recorded}" bindings/java/natives-fingerprint-aliases; then
                 echo "::error::dengjen-tts-natives ${natives_version} is on Maven Central with a different fingerprint; bump nativesVersion in bindings/java/build.gradle.kts" >&2
                 exit 1
               fi
@@ -138,7 +142,8 @@ jobs:
                 exit 1
               fi
               recorded="$(tr -d '[:space:]' < bindings/java/stt-natives.fingerprint)"
-              if [ "${published}" != "${recorded}" ]; then
+              if [ "${published}" != "${recorded}" ] \
+                && ! grep -qxE "${published}[[:space:]]+${recorded}" bindings/java/natives-fingerprint-aliases; then
                 echo "::error::dengjen-stt-natives ${natives_version} is on Maven Central with a different fingerprint; bump sttNativesVersion in bindings/java/build.gradle.kts" >&2
                 exit 1
               fi
@@ -275,7 +280,25 @@ jobs:
           JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SKIP_NATIVES: ${{ needs.check.outputs.skip_natives }}
           SKIP_STT_NATIVES: ${{ needs.check.outputs.skip_stt_natives }}
-        run: ./gradlew publish jreleaserFullRelease --no-daemon --stacktrace -PskipNativesPublish="${SKIP_NATIVES}" -PskipSttNativesPublish="${SKIP_STT_NATIVES}"
+          NATIVES_BUDGET_MB: ${{ vars.JAVA_NATIVES_BUDGET_MB }}
+        # Staged first and measured before JReleaser uploads anything: Maven Central allows 80 MB a
+        # month. A release whose natives are unchanged is only the binding jar, so it gets 2 MB. New
+        # natives are tens of MB and need the repository variable JAVA_NATIVES_BUDGET_MB set on
+        # purpose, so that spending most of a month's quota is a decision, not an accident.
+        run: |
+          set -euo pipefail
+          ./gradlew publish --no-daemon --stacktrace -PskipNativesPublish="${SKIP_NATIVES}" -PskipSttNativesPublish="${SKIP_STT_NATIVES}"
+          budget_mb=2
+          if [ "${SKIP_NATIVES}" != true ] || [ "${SKIP_STT_NATIVES}" != true ]; then
+            if [ -z "${NATIVES_BUDGET_MB}" ]; then
+              echo "::error::this release publishes new natives; set the repository variable JAVA_NATIVES_BUDGET_MB (MB, at most 80) to allow it, then re-run" >&2
+              bash ../../scripts/check-release-size.sh build/staging-deploy 0 || true
+              exit 1
+            fi
+            budget_mb="${NATIVES_BUDGET_MB}"
+          fi
+          bash ../../scripts/check-release-size.sh build/staging-deploy "${budget_mb}"
+          ./gradlew jreleaserFullRelease --no-daemon --stacktrace -PskipNativesPublish="${SKIP_NATIVES}" -PskipSttNativesPublish="${SKIP_STT_NATIVES}"
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
