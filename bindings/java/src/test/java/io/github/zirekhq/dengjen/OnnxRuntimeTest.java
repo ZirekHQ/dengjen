@@ -1,6 +1,7 @@
 package io.github.zirekhq.dengjen;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,6 +11,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -90,6 +92,35 @@ class OnnxRuntimeTest {
         assertThrows(IllegalStateException.class, () -> OnnxRuntime.apply("/x", crashing));
 
     assertTrue(error.getMessage().contains("libdengjenSetOrtDylibPath"));
+  }
+
+  private static Optional<OnnxRuntimeSource> resolve(
+      Map<String, String> props, Map<String, String> env) {
+    return OnnxRuntime.resolveSource(
+        props::get, env::get, OnnxRuntime.class.getClassLoader(), "linux-x86_64");
+  }
+
+  @Test
+  void theJarsPinnedDefaultApplies() {
+    var source = resolve(Map.of(), Map.of()).orElseThrow();
+
+    var download = assertInstanceOf(OnnxRuntimeSource.Download.class, source);
+    assertEquals("libonnxruntime.so", download.fileName());
+  }
+
+  @Test
+  void anExportedOrtDylibPathBeatsThePinnedDefault() {
+    assertTrue(resolve(Map.of(), Map.of("ORT_DYLIB_PATH", "/opt/ort/libonnxruntime.so")).isEmpty());
+  }
+
+  @Test
+  void anExplicitPropertyBeatsAnExportedOrtDylibPath() {
+    var source =
+        resolve(
+            Map.of("dengjen.onnxruntime.path", "/mine/libonnxruntime.so"),
+            Map.of("ORT_DYLIB_PATH", "/opt/ort/libonnxruntime.so"));
+
+    assertInstanceOf(OnnxRuntimeSource.Local.class, source.orElseThrow());
   }
 
   @Test
