@@ -176,7 +176,9 @@ If publishing fails partway through, retry — no new tag needed either way, sin
 step is idempotent (skips an artifact already published):
 - Same version, still current on `main`: use GitHub's "Re-run failed jobs" on the original
   `release.yaml` run (Actions tab). It re-runs just the failed job(s) against that run's own
-  commit, no new dispatch needed.
+  commit, no new dispatch needed. If the run dropped its Maven Central deployment (the
+  "Maven Central (drop)" job ran), use "Re-run all jobs" instead, so Java is staged again; the
+  publishes that already went out skip themselves.
 - Stale version (a newer version has since bumped past it on `main`): run **Prepare release**
   again, this time from the old tag (`--ref v<old-version>` on the CLI, or pick it from the
   branch/tag dropdown in the Actions tab) with `new_tag: v<old-version>` set. This is the

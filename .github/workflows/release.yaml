@@ -337,7 +337,6 @@ jobs:
       contents: write
     uses: ./.github/workflows/promote-java.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
     with:
-      action: publish
       deployment_id: ${{ needs.java.outputs.deployment_id }}
       tag: java-v${{ needs.tag-and-release.outputs.version }}
       previous_tag: ${{ inputs.previous_tag }}
@@ -348,8 +347,9 @@ jobs:
       JRELEASER_GPG_SECRET_KEY: ${{ secrets.JRELEASER_GPG_SECRET_KEY }}
       JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.JRELEASER_GPG_PUBLIC_KEY }}
 
-  # Something irreversible failed (or never ran), so the staged Java bindings must not go out. A
-  # re-run of the release stages them again and the publishes skip what already went out.
+  # Something irreversible failed (or never ran), so the staged Java bindings must not go out.
+  # Inline rather than through promote-java.yaml: that workflow needs contents: write for the
+  # java-v* release, and a reusable workflow cannot get more than its caller grants.
   java-drop:
     name: Maven Central (drop)
     needs: [java, crates, go, grpc, pypi]
@@ -358,15 +358,25 @@ jobs:
       (needs.crates.result != 'success' || needs.go.result != 'success' ||
         needs.grpc.result != 'success' ||
         (needs.pypi.result != 'success' && !(inputs.new_tag != '' && needs.pypi.result == 'skipped')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
-    uses: ./.github/workflows/promote-java.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
-    with:
-      action: drop
-      deployment_id: ${{ needs.java.outputs.deployment_id }}
-    secrets:
-      JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.SONATYPE_USERNAME || secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
-      JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.SONATYPE_PASSWORD || secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Drop the staged deployment
+        env:
+          DEPLOYMENT_ID: ${{ needs.java.outputs.deployment_id }}
+          CENTRAL_USERNAME: ${{ secrets.SONATYPE_USERNAME || secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.SONATYPE_PASSWORD || secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
+        # "Re-run failed jobs" would keep this run's java job and its dropped deployment id, so the
+        # retry has to be "Re-run all jobs": java stages again and every publish skips what is out.
+        run: |
+          set -euo pipefail
+          bash scripts/central-deployment.sh drop "${DEPLOYMENT_ID}"
+          echo "::warning::Dropped Maven Central deployment ${DEPLOYMENT_ID}. Retry this release with \"Re-run all jobs\", not \"Re-run failed jobs\"."
 
   # Installs what just reached crates.io and PyPI and synthesizes once. Runs on the push path only:
   # the override path publishes to PyPI from prepare-release.yaml, after this workflow returns.
