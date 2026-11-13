@@ -316,6 +316,7 @@ jobs:
       - run: bash scripts/test-ort-gate.sh
       - run: bash scripts/test-assemble-natives.sh
       - run: bash scripts/test-bump-natives-versions.sh
+      - run: bash scripts/test-check-release-size.sh
       - run: bash scripts/test-stage-espeak-data.sh
       - run: bash scripts/test-install-speechd-user.sh
 

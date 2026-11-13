@@ -3,6 +3,11 @@
 # the selected natives kind links (workspace version lines stripped, so a version bump alone is not
 # a native change) and the third-party crates the published build links.
 #
+# The root Cargo.toml counts only for the sections that change how code is built ([workspace.package]
+# and [profile.*]); its member list and [workspace.dependencies] would make every new workspace
+# crate republish ~50 MB of unchanged natives, and the dependencies that matter are already covered
+# by `cargo tree`, which also shows the features crates/workspace-hack turns on.
+#
 #   natives-fingerprint.sh            print the fingerprint
 #   natives-fingerprint.sh --update   rewrite the kind's record file
 #   natives-fingerprint.sh --check    fail when the committed fingerprint is stale
@@ -31,10 +36,18 @@ case "${NATIVES_KIND:-tts}" in
   *) echo "unknown NATIVES_KIND '${NATIVES_KIND}'" >&2; exit 2 ;;
 esac
 
+# The [workspace.package] and [profile.*] tables of a manifest, version lines stripped.
+build_sections() {
+  awk '/^\[/ { keep = ($0 == "[workspace.package]" || $0 ~ /^\[profile\./) } keep' "$1" \
+    | sed -E 's/version = "[^"]*"//'
+}
+
 sources() {
+  printf '== Cargo.toml (build sections)\n'
+  build_sections Cargo.toml
   # shellcheck disable=SC2086
   {
-    git ls-files Cargo.toml rust-toolchain.toml .cargo $source_roots crates/workspace-hack \
+    git ls-files rust-toolchain.toml .cargo $source_roots \
       | grep -E '(\.(rs|toml|json|c|h)|/config)$' \
       | grep -vE '/(tests|benches|examples)/'
     for file in $extra_files; do echo "$file"; done
