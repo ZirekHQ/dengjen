@@ -28,8 +28,16 @@ final class OnnxRuntime {
    */
   static synchronized void configure() {
     if (!configured) {
+      if (DengjenLib.SET_ORT_DYLIB_PATH.isEmpty() && !isExplicit(System::getProperty)) {
+        // This native library embeds onnxruntime, so the pinned default has nothing to configure.
+        return;
+      }
       configure(resolvePath(), DengjenLib.SET_ORT_DYLIB_PATH);
     }
+  }
+
+  private static boolean isExplicit(UnaryOperator<String> properties) {
+    return properties.apply(PREFIX + ".path") != null || properties.apply(PREFIX + ".url") != null;
   }
 
   private static String resolvePath() {
