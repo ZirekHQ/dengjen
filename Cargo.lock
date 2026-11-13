@@ -778,6 +778,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6b926516df9c60bfa16e107b21086399f8285a44ca9711344b9e553c5146e2"
 
 [[package]]
+name = "dengjen-app"
+version = "3.2.0"
+dependencies = [
+ "workspace-hack",
+]
+
+[[package]]
 name = "dengjen-audio-ops"
 version = "3.2.0"
 dependencies = [
@@ -1988,6 +1995,17 @@ dependencies = [
  "ffi-support",
  "libc",
  "ort",
+ "workspace-hack",
+]
+
+[[package]]
+name = "libdengjen-app"
+version = "3.2.0"
+dependencies = [
+ "cbindgen",
+ "dengjen-app",
+ "ffi-support",
+ "tempfile",
  "workspace-hack",
 ]
 

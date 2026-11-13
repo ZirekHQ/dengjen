@@ -1,0 +1,15 @@
+[package]
+name = "dengjen-app"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "Logic shared by the Dengjen apps: sentence ranges for read-aloud highlighting and plain text from .txt, .md and .html files"
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+
+[lints]
+workspace = true
+
+[dependencies]
+workspace-hack = { version = "0.1", path = "../workspace-hack" }
