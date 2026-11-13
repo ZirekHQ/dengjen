@@ -289,11 +289,15 @@ jobs:
     name: Whole-repo GitHub Release
     # On the override path `pypi` is skipped (prepare-release.yaml publishes to PyPI after this
     # workflow returns), so only the wheel build gates the release there.
+    # A failed Maven Central publish doesn't hold the release back: Central caps how much an
+    # organization may publish per month, and the Java natives alone can use that up. The
+    # release notes say when the Java bindings are missing.
     needs: [tag-and-release, crates, java, go, grpc, deb, android, apple, espeak-data, sapi, python, pypi]
     if: >-
       !cancelled() && inputs.dry_run != true &&
       needs.tag-and-release.result == 'success' &&
-      needs.crates.result == 'success' && needs.java.result == 'success' &&
+      needs.crates.result == 'success' &&
+      (needs.java.result == 'success' || needs.java.result == 'failure') &&
       needs.go.result == 'success' && needs.grpc.result == 'success' &&
       needs.deb.result == 'success' && needs.android.result == 'success' &&
       needs.apple.result == 'success' && needs.espeak-data.result == 'success' &&
@@ -367,6 +371,7 @@ jobs:
           REPO: ${{ github.repository }}
           VERSION: ${{ needs.tag-and-release.outputs.version }}
           SIGNED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+          JAVA_RESULT: ${{ needs.java.result }}
         # Depends on every component job so this always publishes last, shown as "Latest". Each
         # component job skips a version it already published, so a re-run reaching this step
         # must skip the same way instead of hitting gh's already_exists error.
@@ -397,6 +402,10 @@ jobs:
             policy="Windows installer: free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). ${policy_link}"
           else
             policy="Windows installer: not signed yet; signing through [SignPath Foundation](https://signpath.org/) is being set up. ${policy_link}"
+          fi
+          if [ "$JAVA_RESULT" != "success" ]; then
+            echo "::warning::Maven Central publishing failed; releasing without the Java bindings"
+            policy="${policy}"$'\n\n'"Java bindings: not published to Maven Central for this version (the publish job failed); they follow in a later release."
           fi
           notes_args=(--generate-notes --notes "$policy")
           if [ -n "$previous_tag" ]; then
