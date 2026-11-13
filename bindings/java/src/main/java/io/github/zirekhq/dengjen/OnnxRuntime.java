@@ -1,24 +1,59 @@
 package io.github.zirekhq.dengjen;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.invoke.MethodHandle;
 import java.util.Optional;
 
-/** Points a dynamically linked native library at the onnxruntime named by a system property. */
+/**
+ * Points a dynamically linked native library at the onnxruntime the {@code dengjen.onnxruntime.*}
+ * system properties name (see {@link OnnxRuntimeSource}), downloading it first when they give a
+ * URL.
+ */
 final class OnnxRuntime {
-  static final String PATH_PROPERTY = "dengjen.onnxruntime.path";
+  static final String PREFIX = "dengjen.onnxruntime";
+  static final String PATH_PROPERTY = PREFIX + ".path";
 
   private static boolean configured;
 
   private OnnxRuntime() {}
 
   /**
-   * Applies {@value #PATH_PROPERTY} once per process; without the property the native side falls
-   * back to {@code ORT_DYLIB_PATH} and the platform loader search path.
+   * Applies the configured onnxruntime once per process; without any setting (and no default pinned
+   * in the jar) the native side falls back to {@code ORT_DYLIB_PATH} and the platform loader search
+   * path.
    */
-  static void configure() {
-    configure(System.getProperty(PATH_PROPERTY), DengjenLib.SET_ORT_DYLIB_PATH);
+  static synchronized void configure() {
+    if (!configured) {
+      configure(resolvePath(), DengjenLib.SET_ORT_DYLIB_PATH);
+    }
+  }
+
+  private static String resolvePath() {
+    String classifier =
+        NativePlatform.classifier(System.getProperty("os.name"), System.getProperty("os.arch"));
+    return OnnxRuntimeSource.resolve(
+            PREFIX, System::getProperty, OnnxRuntime.class.getClassLoader(), classifier)
+        .map(OnnxRuntime::localFile)
+        .orElse(null);
+  }
+
+  /** The file for {@code source}, downloaded into the per-user cache when it is remote. */
+  static String localFile(OnnxRuntimeSource source) {
+    return switch (source) {
+      case OnnxRuntimeSource.Local local -> local.file().toString();
+      case OnnxRuntimeSource.Download download -> {
+        try {
+          yield OnnxRuntimeCache.fromEnvironment(System::getProperty, System::getenv)
+              .fetch(download)
+              .toString();
+        } catch (IOException e) {
+          throw new UncheckedIOException("cannot get ONNX Runtime from " + download.url(), e);
+        }
+      }
+    };
   }
 
   static synchronized void configure(String path, Optional<MethodHandle> setter) {

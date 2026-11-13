@@ -9,6 +9,7 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +26,57 @@ class SttNativeExtractionTest {
       Path directory = SttNativeLoader.extractManifest(loader, "linux-x86_64");
       assertThat(directory.resolve("libonnxruntime.so.1.28.2")).hasContent("ort");
       assertThat(directory.resolve("libdengjen_stt.so")).hasContent("stt");
+    }
+  }
+
+  @Test
+  void aConfiguredRuntimeReplacesTheJarsCopyUnderTheJarsName(
+      @TempDir Path classpath, @TempDir Path elsewhere) throws IOException {
+    Path natives = Files.createDirectories(classpath.resolve("natives/linux-x86_64"));
+    Files.writeString(natives.resolve("MANIFEST"), "libonnxruntime-sherpa.so\nlibdengjen_stt.so\n");
+    Files.writeString(natives.resolve("libonnxruntime-sherpa.so"), "bundled");
+    Files.writeString(natives.resolve("libdengjen_stt.so"), "stt");
+    Path mine = Files.writeString(elsewhere.resolve("libonnxruntime.so.1.23.2"), "mine");
+
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {classpath.toUri().toURL()}, null)) {
+      Path plain = SttNativeLoader.extractManifest(loader, "linux-x86_64");
+      Path withMine = SttNativeLoader.extractManifest(loader, "linux-x86_64", Optional.of(mine));
+
+      assertThat(withMine).isNotEqualTo(plain);
+      assertThat(withMine.resolve("libonnxruntime-sherpa.so")).hasContent("mine");
+      assertThat(withMine.resolve("libdengjen_stt.so")).hasContent("stt");
+      assertThat(plain.resolve("libonnxruntime-sherpa.so")).hasContent("bundled");
+    }
+  }
+
+  @Test
+  void aConfiguredRuntimeKeepsItsOwnNameWhenTheJarHasNone(
+      @TempDir Path classpath, @TempDir Path elsewhere) throws IOException {
+    Path natives = Files.createDirectories(classpath.resolve("natives/linux-x86_64"));
+    Files.writeString(natives.resolve("MANIFEST"), "libdengjen_stt.so\n");
+    Files.writeString(natives.resolve("libdengjen_stt.so"), "stt");
+    Path mine = Files.writeString(elsewhere.resolve("libonnxruntime.so.1.23.2"), "mine");
+
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {classpath.toUri().toURL()}, null)) {
+      Path directory = SttNativeLoader.extractManifest(loader, "linux-x86_64", Optional.of(mine));
+
+      assertThat(directory.resolve("libonnxruntime.so.1.23.2")).hasContent("mine");
+    }
+  }
+
+  @Test
+  void aConfiguredRuntimeMustBeRecognisableByName(@TempDir Path classpath, @TempDir Path elsewhere)
+      throws IOException {
+    Path natives = Files.createDirectories(classpath.resolve("natives/linux-x86_64"));
+    Files.writeString(natives.resolve("MANIFEST"), "libdengjen_stt.so\n");
+    Files.writeString(natives.resolve("libdengjen_stt.so"), "stt");
+    Path mine = Files.writeString(elsewhere.resolve("libort.so"), "mine");
+
+    try (URLClassLoader loader = new URLClassLoader(new URL[] {classpath.toUri().toURL()}, null)) {
+      assertThatThrownBy(
+              () -> SttNativeLoader.extractManifest(loader, "linux-x86_64", Optional.of(mine)))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("onnxruntime");
     }
   }
 

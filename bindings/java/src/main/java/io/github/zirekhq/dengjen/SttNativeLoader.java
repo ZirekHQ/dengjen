@@ -9,9 +9,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 final class SttNativeLoader {
   static final String DIR_PROPERTY = "dengjen.stt.native.dir";
+
+  /**
+   * ONNX Runtime settings for speech recognition ({@code .path}, or {@code .url} with {@code
+   * .sha256}; see {@link OnnxRuntimeSource}). Separate from the text-to-speech ones because
+   * sherpa-onnx needs the ONNX Runtime build it was compiled against.
+   */
+  static final String ONNXRUNTIME_PREFIX = "dengjen.stt.onnxruntime";
+
   private static final String STT = "dengjen_stt";
   private static final String SHERPA = "sherpa-onnx-c-api";
   private static final String RUNTIME = "onnxruntime";
@@ -69,10 +78,24 @@ final class SttNativeLoader {
   private static Path extractFromClasspath() {
     String classifier =
         NativePlatform.classifier(System.getProperty("os.name"), System.getProperty("os.arch"));
-    return extractManifest(SttNativeLoader.class.getClassLoader(), classifier);
+    ClassLoader loader = SttNativeLoader.class.getClassLoader();
+    Optional<Path> runtime =
+        OnnxRuntimeSource.resolve(ONNXRUNTIME_PREFIX, System::getProperty, loader, classifier)
+            .map(OnnxRuntime::localFile)
+            .map(Path::of);
+    return extractManifest(loader, classifier, runtime);
   }
 
   static Path extractManifest(ClassLoader loader, String classifier) {
+    return extractManifest(loader, classifier, Optional.empty());
+  }
+
+  /**
+   * Extracts the jar's natives for {@code classifier}. With {@code runtime}, that ONNX Runtime file
+   * takes the place of the one in the jar, under the jar's file name (which sherpa-onnx links
+   * against), or under its own name when the jar carries none.
+   */
+  static Path extractManifest(ClassLoader loader, String classifier, Optional<Path> runtime) {
     String base = "natives/" + classifier + "/";
     try (var manifest = loader.getResourceAsStream(base + "MANIFEST")) {
       if (manifest == null) {
@@ -91,15 +114,47 @@ final class SttNativeLoader {
               .map(String::strip)
               .filter(name -> !name.isEmpty())
               .toList();
-      Path directory =
-          NativeLibraryLoader.privateSubdirectory("stt-" + contentKey(base, names, loader));
-      for (String name : names) {
-        NativeLibraryLoader.extractInto(base + name, loader, directory, name);
+      if (runtime.isEmpty()) {
+        Path directory =
+            NativeLibraryLoader.privateSubdirectory("stt-" + contentKey(base, names, loader));
+        for (String name : names) {
+          NativeLibraryLoader.extractInto(base + name, loader, directory, name);
+        }
+        return directory;
       }
-      return directory;
+      return extractWithRuntime(loader, base, names, runtime.get());
     } catch (IOException e) {
       throw new UncheckedIOException("failed to extract the STT natives", e);
     }
+  }
+
+  private static Path extractWithRuntime(
+      ClassLoader loader, String base, List<String> names, Path runtime) throws IOException {
+    List<String> libraries = names.stream().filter(name -> !name.contains(RUNTIME)).toList();
+    String runtimeName =
+        names.stream()
+            .filter(name -> name.contains(RUNTIME))
+            .findFirst()
+            .orElse(runtime.getFileName().toString());
+    if (!runtimeName.contains(RUNTIME)) {
+      throw new IllegalStateException(
+          "the ONNX Runtime file for speech recognition must have 'onnxruntime' in its name: "
+              + runtimeName);
+    }
+    byte[] runtimeBytes = Files.readAllBytes(runtime);
+    String key =
+        NativeLibraryLoader.sha256Hex(
+            (contentKey(base, libraries, loader)
+                    + runtimeName
+                    + ':'
+                    + NativeLibraryLoader.sha256Hex(runtimeBytes))
+                .getBytes(StandardCharsets.UTF_8));
+    Path directory = NativeLibraryLoader.privateSubdirectory("stt-" + key);
+    for (String name : libraries) {
+      NativeLibraryLoader.extractInto(base + name, loader, directory, name);
+    }
+    NativeLibraryLoader.writeInto(runtimeBytes, directory, runtimeName);
+    return directory;
   }
 
   /**
