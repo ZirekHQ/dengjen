@@ -65,6 +65,26 @@ try (Recognizer recognizer = Recognizer.load(modelDir, modelSha256, 2)) {
 jar. On Windows, `onnxruntime.dll` must be the only ONNX Runtime loaded in the JVM, so combine
 this with the text-to-speech bindings only when both use the same ONNX Runtime version.
 
+## Choosing an ONNX Runtime
+
+Text to speech and speech recognition each read their own settings, because sherpa-onnx needs the
+ONNX Runtime build it was compiled against. Use the `dengjen.onnxruntime` prefix for text to
+speech and `dengjen.stt.onnxruntime` for speech recognition:
+
+| System property | Meaning |
+|---|---|
+| `<prefix>.path` | A library file already on disk, used as is. |
+| `<prefix>.url` and `<prefix>.sha256` | Download this file once and use it only if its SHA-256 matches. A URL without a digest is refused. |
+| `<prefix>.file` | Optional with `.url`: the file name to keep it under, when the URL does not end in one. |
+| `dengjen.cache.dir` | Where downloads are kept (default `~/.cache/dengjen` on Linux, `~/Library/Caches/dengjen` on macOS, `%LOCALAPPDATA%\dengjen\cache` on Windows). |
+
+Downloads land in `<cache>/onnxruntime/<sha256>/<file name>`. A partial or mismatched download is
+never used, and a later run reuses the verified file without going online. Pointing at your own
+build (a GPU one, or a newer patch release) is at your own risk: it has to be a version the native
+library supports. For speech recognition the file replaces the copy in the natives jar under that
+copy's name, and `-Ddengjen.stt.native.dir` ignores these settings because it names a complete
+directory.
+
 ## Callback safety
 
 The handler passed to `speak` must not throw and must return promptly — an
@@ -96,7 +116,8 @@ be undefined behavior at this FFI boundary.
   (the shared library of the official release, or the copy inside the `onnxruntime` pip package)
   and point to it with `-Ddengjen.onnxruntime.path=<file>` or the `ORT_DYLIB_PATH` environment
   variable; otherwise the platform loader search path is used. Set it before the first
-  `Voice.load`.
+  `Voice.load`. See [Choosing an ONNX Runtime](#choosing-an-onnx-runtime) to have it downloaded
+  instead.
 - Every JVM invocation of a consumer built against this module needs
   `--enable-native-access=ALL-UNNAMED` (or the module-qualified equivalent)
   to avoid a native-access warning — `build.gradle.kts` already adds this

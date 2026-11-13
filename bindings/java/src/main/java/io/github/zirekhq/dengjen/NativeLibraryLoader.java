@@ -72,7 +72,11 @@ final class NativeLibraryLoader {
    */
   static Path extractInto(String resourcePath, ClassLoader loader, Path directory, String fileName)
       throws IOException {
-    byte[] content = readResource(resourcePath, loader);
+    return writeInto(readResource(resourcePath, loader), directory, fileName);
+  }
+
+  /** Writes {@code content} as {@code directory/fileName} unless that file already holds it. */
+  static Path writeInto(byte[] content, Path directory, String fileName) throws IOException {
     Path target = directory.resolve(fileName);
     if (Files.isRegularFile(target) && Arrays.equals(Files.readAllBytes(target), content)) {
       return target;
