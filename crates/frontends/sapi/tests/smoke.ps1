@@ -166,6 +166,18 @@ Write-Host "purge finished in $($watch.ElapsedMilliseconds) ms"
 Assert $done 'the purge finished'
 Assert ($watch.ElapsedMilliseconds -lt 2000) 'the purge stopped within two seconds'
 
+# .NET apps speak through System.Speech, whose engine host differs from SAPI's own: its Write
+# succeeds without reporting a byte count, which the voice once took for a refusal.
+Add-Type -AssemblyName System.Speech
+$synthesizer = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$name = @($synthesizer.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Name -like 'Dengjen*' })[0].VoiceInfo.Name
+$synthesizer.SelectVoice($name)
+$managed = Join-Path $env:TEMP 'dengjen-system-speech.wav'
+$synthesizer.SetOutputToWaveFile($managed)
+$synthesizer.Speak('Rojbaş, ez dengê Dengjen im.')
+$synthesizer.Dispose()
+Assert ((Get-Item $managed).Length -gt 16000) "System.Speech saves speech with $name ($((Get-Item $managed).Length) bytes)"
+
 Invoke-Regsvr32 @('/s', '/u')
 $left = @((New-Object -ComObject SAPI.SpVoice).GetVoices() | Where-Object { $_.GetDescription() -like 'Dengjen*' })
 Assert ($left.Count -eq 0) 'unregistering removes the voice'

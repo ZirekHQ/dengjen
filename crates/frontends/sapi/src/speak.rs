@@ -382,9 +382,28 @@ fn skip(steps: &[Step], index: usize, during: bool, site: &dyn Site) -> usize {
     target
 }
 
+/// How many bytes of `offered` audio a successful `ISpTTSEngineSite::Write` took. SAPI's own
+/// site reports the count, but System.Speech's managed host (and so every .NET app that speaks
+/// through `SpeechSynthesizer`) returns `S_OK` without setting it; success means the whole
+/// buffer was taken, so a zero count is read as all of it rather than as a refusal.
+pub fn bytes_taken(offered: u32, reported: u32) -> u32 {
+    match reported {
+        0 => offered,
+        reported => reported.min(offered),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_successful_write_with_no_count_took_the_whole_buffer() {
+        assert_eq!(bytes_taken(4096, 4096), 4096);
+        assert_eq!(bytes_taken(4096, 1024), 1024);
+        assert_eq!(bytes_taken(4096, 0), 4096);
+        assert_eq!(bytes_taken(4096, 9000), 4096);
+    }
 
     #[test]
     fn a_bookmark_number_is_the_leading_integer_of_its_name() {
