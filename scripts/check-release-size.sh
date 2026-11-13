@@ -9,6 +9,10 @@
 set -euo pipefail
 dir="${1:?usage: check-release-size.sh <staging-dir> <budget-mb>}"
 budget_mb="${2:?usage: check-release-size.sh <staging-dir> <budget-mb>}"
+if ! [[ "$budget_mb" =~ ^[0-9]+$ ]] || [ "$budget_mb" -gt 80 ]; then
+  echo "::error::budget '${budget_mb}' must be a whole number of MB from 0 to 80 (Maven Central's monthly limit)" >&2
+  exit 1
+fi
 [ -d "$dir" ] || { echo "::error::no staged release at $dir" >&2; exit 1; }
 
 # One line per artifact version directory (group/artifact/version): bytes, then the path.

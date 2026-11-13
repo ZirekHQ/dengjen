@@ -17,4 +17,8 @@ grep -q 'total: 2.10 MB' <<<"$out" || fail "total missing: $out"
 
 if bash "$script" "$work" 2 >/dev/null 2>&1; then fail "2.1 MB must fail a 2 MB budget"; fi
 if bash "$script" "$work/missing" 2 >/dev/null 2>&1; then fail "a missing directory must fail"; fi
+for bad in -1 81 abc 2.5 ""; do
+  if bash "$script" "$work" "$bad" >/dev/null 2>&1; then fail "budget '$bad' must be refused"; fi
+done
+if bash "$script" "$work" 0 >/dev/null 2>&1; then fail "a zero budget must fail any release"; fi
 echo "check-release-size: ok"

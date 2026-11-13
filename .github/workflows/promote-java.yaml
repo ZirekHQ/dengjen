@@ -1,0 +1,89 @@
+name: Promote the Java deployment
+
+# Called by release.yaml after publish-java.yaml staged the Java bindings on Maven Central
+# (stage: upload) and crates.io, PyPI, Go and gRPC went out: publishes the deployment, then
+# creates the java-v* GitHub release. release.yaml drops the deployment itself when one of those
+# failed, so Maven Central never gets ahead of the other registries.
+on:
+  workflow_call:
+    inputs:
+      deployment_id:
+        required: true
+        type: string
+      tag:
+        description: "java-vX.Y.Z"
+        required: true
+        type: string
+      previous_tag:
+        description: "Override changelog baseline tag"
+        required: false
+        type: string
+    secrets:
+      JRELEASER_MAVENCENTRAL_USERNAME:
+        required: true
+      JRELEASER_MAVENCENTRAL_PASSWORD:
+        required: true
+      JRELEASER_GPG_PASSPHRASE:
+        required: true
+      JRELEASER_GPG_SECRET_KEY:
+        required: true
+      JRELEASER_GPG_PUBLIC_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - name: verify this workflow was only reached through release.yaml or prepare-release.yaml
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          actual_path="${WORKFLOW_REF%@*}"
+          if [ "$WORKFLOW_REF" != "ZirekHQ/dengjen/.github/workflows/release.yaml@refs/heads/main" ] \
+            && [ "$actual_path" != "ZirekHQ/dengjen/.github/workflows/prepare-release.yaml" ]; then
+            echo "::error::workflow_ref is '${WORKFLOW_REF}', expected release.yaml@refs/heads/main or prepare-release.yaml@<any ref> in ZirekHQ/dengjen" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # JReleaser's changelog needs history
+          persist-credentials: false
+      - name: Publish the deployment
+        env:
+          DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+          CENTRAL_USERNAME: ${{ secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
+        run: bash scripts/central-deployment.sh publish "${DEPLOYMENT_ID}"
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: 25
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-disabled: true
+      - name: Create the java-v* GitHub release
+        working-directory: bindings/java
+        env:
+          VERSIONING_GIT_TAG: ${{ inputs.tag }}
+          JRELEASER_PREVIOUS_TAG_OVERRIDE: ${{ inputs.previous_tag }}
+          JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
+          JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
+          JRELEASER_GPG_PASSPHRASE: ${{ secrets.JRELEASER_GPG_PASSPHRASE }}
+          JRELEASER_GPG_SECRET_KEY: ${{ secrets.JRELEASER_GPG_SECRET_KEY }}
+          JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.JRELEASER_GPG_PUBLIC_KEY }}
+          JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The deployment is already public at this point; a failure here only leaves the java-v*
+        # release notes missing, which a re-run of this job adds.
+        # `publish` restages the binding so JReleaser finds the staging directory its config names.
+        run: |
+          set -euo pipefail
+          ./gradlew publish --no-daemon --stacktrace -PskipNativesPublish=true -PskipSttNativesPublish=true
+          ./gradlew jreleaserRelease --no-daemon --stacktrace -PskipNativesPublish=true -PskipSttNativesPublish=true
