@@ -441,14 +441,14 @@ checksum = "0c87e182de0887fd5361989c677c4e8f5000cd9491d6d563161a8f3a5519fc7f"
 
 [[package]]
 name = "dengjen-app"
-version = "3.3.0"
+version = "3.3.1"
 dependencies = [
  "workspace-hack",
 ]
 
 [[package]]
 name = "dengjen-audio-ops"
-version = "3.3.0"
+version = "3.3.1"
 dependencies = [
  "libsonic",
  "once_cell",
@@ -458,7 +458,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-core"
-version = "3.3.0"
+version = "3.3.1"
 dependencies = [
  "ort",
  "workspace-hack",
@@ -482,7 +482,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-kurmanji-phonemizer"
-version = "3.3.0"
+version = "3.3.1"
 dependencies = [
  "dengjen-tts-core",
  "unicode-normalization",
@@ -491,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts"
-version = "3.3.0"
+version = "3.3.1"
 dependencies = [
  "dengjen-audio-ops",
  "dengjen-tts-core",
@@ -505,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-core"
-version = "3.3.0"
+version = "3.3.1"
 dependencies = [
  "dengjen-audio-ops",
  "dengjen-core",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "dengjen-tts-piper"
-version = "3.3.0"
+version = "3.3.1"
 dependencies = [
  "dengjen-kurmanji-phonemizer",
  "dengjen-tts-core",
