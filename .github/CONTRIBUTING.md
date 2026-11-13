@@ -147,6 +147,22 @@ mirror, the gRPC server release, and the Python wheels all track it.
    for both `release.yaml` and `prepare-release.yaml` because PyPI rejects reusable workflows) and
    publishes one whole-repo GitHub Release once crates/java/go/grpc/python all succeed. On the
    override path below, `prepare-release.yaml` does the PyPI upload after `release.yaml` returns.
+
+   The run is staged so that nothing permanent goes out until everything that can be checked has
+   been:
+   1. Every artifact is built, `cargo package` checks the whole workspace and `twine check` the
+      wheels. Nothing leaves CI.
+   2. The Java bundle is measured (`scripts/check-release-size.sh`: 2 MB when the natives are
+      unchanged, `JAVA_NATIVES_BUDGET_MB` when they change) and uploaded to Maven Central as a
+      deployment that waits for validation. Central's monthly quota shows up here, so a refusal
+      stops the release before anything is public.
+   3. crates.io, PyPI, the Go mirror and the gRPC release, which cannot be undone.
+   4. The Java deployment is promoted (`promote-java.yaml`), or dropped if step 3 failed; then the
+      whole-repo GitHub Release, the docs site and the announcement.
+
+   When Maven Central refuses uploads for a while (the free plan allows 80 MB a month), set the
+   repository variable `SKIP_MAVEN_CENTRAL` to `true`: the release then leaves Java out and says so
+   in its notes. Delete the variable to bring Java back.
 3. **Direct-release override**: setting `new_tag` (and optionally `previous_tag` — overrides the
    Java changelog baseline — and `dry_run`) on **Prepare release** skips `next-version.sh`,
    `bump-version.sh`, and the PR entirely, and hands off straight to `release.yaml` for the

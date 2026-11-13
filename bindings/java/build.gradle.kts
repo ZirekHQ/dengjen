@@ -493,6 +493,10 @@ configure<org.jreleaser.gradle.plugin.JReleaserExtension> {
                     active = org.jreleaser.model.Active.ALWAYS
                     url = "https://central.sonatype.com/api/v1/publisher"
                     stagingRepository(stagingDir.get().toString())
+                    // UPLOAD leaves the bundle as a USER_MANAGED deployment that release.yaml
+                    // promotes or drops later (scripts/central-deployment.sh); unset is FULL.
+                    providers.environmentVariable("JRELEASER_MAVENCENTRAL_STAGE_OVERRIDE").orNull
+                        ?.let { setStage(it) }
                 }
             }
         }

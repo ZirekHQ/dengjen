@@ -18,6 +18,16 @@ on:
         required: false
         type: boolean
         default: false
+      # full: upload and publish in one go. upload: stop once Maven Central has validated the
+      # bundle and return its deployment_id, for promote-java.yaml to publish or drop.
+      stage:
+        required: false
+        type: string
+        default: full
+    outputs:
+      deployment_id:
+        description: "The validated Maven Central deployment (stage: upload); empty when nothing was uploaded"
+        value: ${{ jobs.release.outputs.deployment_id }}
     secrets:
       JRELEASER_MAVENCENTRAL_USERNAME:
         required: true
@@ -225,9 +235,11 @@ jobs:
     # build-natives is skipped when the natives version is already on Central.
     if: ${{ !cancelled() && needs.check.result == 'success' && needs.check.outputs.skip != 'true' && needs.build-natives.result != 'failure' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     permissions:
       contents: write
+    outputs:
+      deployment_id: ${{ steps.publish.outputs.deployment_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -265,8 +277,10 @@ jobs:
           mv natives-windows-x64 windows-x64
           mv natives-macos-arm64 macos-aarch64
       - name: Publish
+        id: publish
         working-directory: bindings/java
         env:
+          STAGE: ${{ inputs.stage }}
           # git-versioning reads GITHUB_REF (not the checkout), so naming the tag here is what
           # makes this build the release version instead of a branch snapshot.
           VERSIONING_GIT_TAG: ${{ inputs.tag }}
@@ -298,7 +312,20 @@ jobs:
             budget_mb="${NATIVES_BUDGET_MB}"
           fi
           bash ../../scripts/check-release-size.sh build/staging-deploy "${budget_mb}"
-          ./gradlew jreleaserFullRelease --no-daemon --stacktrace -PskipNativesPublish="${SKIP_NATIVES}" -PskipSttNativesPublish="${SKIP_STT_NATIVES}"
+          if [ "${STAGE}" != upload ]; then
+            ./gradlew jreleaserFullRelease --no-daemon --stacktrace -PskipNativesPublish="${SKIP_NATIVES}" -PskipSttNativesPublish="${SKIP_STT_NATIVES}"
+            exit 0
+          fi
+          # Upload only: the java-v* GitHub release waits for promote-java.yaml, after the promotion.
+          JRELEASER_MAVENCENTRAL_STAGE_OVERRIDE=UPLOAD ./gradlew jreleaserDeploy --no-daemon --stacktrace -PskipNativesPublish="${SKIP_NATIVES}" -PskipSttNativesPublish="${SKIP_STT_NATIVES}"
+          deployment_id="$(sed -nE 's/^deployMavenCentral[A-Za-z]*DeploymentId=([A-Za-z0-9-]+)$/\1/p' build/jreleaser/output.properties | head -n1)"
+          if [ -z "${deployment_id}" ]; then
+            echo "::error::JReleaser reported no Maven Central deployment id in build/jreleaser/output.properties" >&2
+            exit 1
+          fi
+          echo "deployment_id=${deployment_id}" >> "$GITHUB_OUTPUT"
+          CENTRAL_USERNAME="${JRELEASER_MAVENCENTRAL_USERNAME}" CENTRAL_PASSWORD="${JRELEASER_MAVENCENTRAL_PASSWORD}" \
+            bash ../../scripts/central-deployment.sh wait "${deployment_id}"
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -116,12 +116,64 @@ jobs:
             exit 1
           fi
 
-  # Runs before anything is published, so a natives failure stops the whole release instead of
-  # leaving crates.io ahead of Maven Central, PyPI and the GitHub releases.
+  # The release runs in phases so nothing permanent goes out until everything that can be checked
+  # has been:
+  #   1. build every artifact and package every crate (nothing leaves CI);
+  #   2. stage the Java bindings on Maven Central and wait for its validation, quota included
+  #      (a staged deployment is the only publish that can still be dropped);
+  #   3. crates.io, PyPI, the Go mirror and the gRPC release (irreversible);
+  #   4. promote the Java deployment (or drop it if phase 3 failed), then the whole-repo release.
+  # Setting the repository variable SKIP_MAVEN_CENTRAL to true leaves Java out, for when Central
+  # refuses uploads (its monthly quota) and the rest of the release should not wait.
+
+  # Phase 1: `cargo package` for the whole workspace, so a crate that would fail to publish stops
+  # the release while the same version can still be re-run.
+  crates-check:
+    name: crates.io (package check)
+    needs: tag-and-release
+    if: "!cancelled() && needs.tag-and-release.result == 'success'"
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/publish-crates.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    with:
+      package_only: true
+
+  # End of phase 1: every artifact built and every check passed.
+  preflight:
+    name: All artifacts built and checked
+    needs: [tag-and-release, natives, crates-check, python, deb, android, apple, espeak-data, sapi]
+    if: >-
+      !cancelled() && needs.tag-and-release.result == 'success' &&
+      needs.natives.result == 'success' && needs.crates-check.result == 'success' &&
+      needs.python.result == 'success' && needs.deb.result == 'success' &&
+      needs.android.result == 'success' && needs.apple.result == 'success' &&
+      needs.espeak-data.result == 'success' && needs.sapi.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - run: echo "Phase 1 passed; staging the Java bindings next."
+
+  # End of phase 2: Maven Central validated the staged Java bindings, already has this version, or
+  # is switched off. Everything irreversible waits for this.
+  go-ahead:
+    name: Ready to publish
+    needs: [preflight, java]
+    if: >-
+      !cancelled() && needs.preflight.result == 'success' &&
+      (needs.java.result == 'success' ||
+        (needs.java.result == 'skipped' && vars.SKIP_MAVEN_CENTRAL == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - run: echo "Phase 2 passed; publishing to crates.io, PyPI, Go and gRPC."
+
   crates:
     name: crates.io
-    needs: [tag-and-release, natives]
-    if: "!cancelled() && needs.tag-and-release.result == 'success' && needs.natives.result == 'success'"
+    needs: [tag-and-release, go-ahead]
+    if: "!cancelled() && needs.go-ahead.result == 'success'"
     permissions:
       contents: read
       id-token: write
@@ -137,10 +189,12 @@ jobs:
       contents: read
     uses: ./.github/workflows/assemble-natives.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
 
+  # Phase 2: uploads and stops at VALIDATED (a dry run still goes through JReleaser's full flow,
+  # which publishes nothing).
   java:
-    name: Maven Central (Java bindings)
-    needs: [tag-and-release, natives]
-    if: "!cancelled() && needs.tag-and-release.result == 'success' && needs.natives.result == 'success'"
+    name: Maven Central (Java bindings, staged)
+    needs: [tag-and-release, preflight]
+    if: "!cancelled() && needs.preflight.result == 'success' && vars.SKIP_MAVEN_CENTRAL != 'true'"
     permissions:
       contents: write
     uses: ./.github/workflows/publish-java.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
@@ -148,6 +202,7 @@ jobs:
       tag: java-v${{ needs.tag-and-release.outputs.version }}
       previous_tag: ${{ inputs.previous_tag }}
       dry_run: ${{ inputs.dry_run == true }}
+      stage: ${{ inputs.dry_run == true && 'full' || 'upload' }}
     secrets:
       # push: the org secret; workflow_call from prepare-release.yaml: the JRELEASER_* input it maps.
       JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.SONATYPE_USERNAME || secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
@@ -158,8 +213,8 @@ jobs:
 
   go:
     name: dengjen-tts-go mirror
-    needs: [tag-and-release, natives]
-    if: "!cancelled() && needs.tag-and-release.result == 'success' && needs.natives.result == 'success'"
+    needs: [tag-and-release, go-ahead]
+    if: "!cancelled() && needs.go-ahead.result == 'success'"
     permissions:
       contents: read
     uses: ./.github/workflows/publish-go.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
@@ -172,8 +227,8 @@ jobs:
 
   grpc:
     name: gRPC server GitHub Release
-    needs: [tag-and-release, natives]
-    if: "!cancelled() && needs.tag-and-release.result == 'success' && needs.natives.result == 'success'"
+    needs: [tag-and-release, go-ahead]
+    if: "!cancelled() && needs.go-ahead.result == 'success'"
     permissions:
       contents: write
       id-token: write
@@ -248,8 +303,8 @@ jobs:
   # Requires a PyPI trusted publisher for `pydengjen` on release.yaml and prepare-release.yaml.
   pypi:
     name: PyPI
-    needs: python
-    if: "!cancelled() && github.event_name == 'push' && needs.python.result == 'success'"
+    needs: [python, go-ahead]
+    if: "!cancelled() && github.event_name == 'push' && needs.go-ahead.result == 'success'"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -266,6 +321,52 @@ jobs:
         with:
           packages-dir: dist
           skip-existing: true
+
+  # Phase 4: everything irreversible went out, so the staged Java bindings follow. On the override
+  # path PyPI publishes from prepare-release.yaml after this workflow returns, so it can't gate this.
+  java-promote:
+    name: Maven Central (promote)
+    needs: [tag-and-release, java, crates, go, grpc, pypi]
+    if: >-
+      !cancelled() && needs.java.outputs.deployment_id != '' &&
+      needs.crates.result == 'success' && needs.go.result == 'success' &&
+      needs.grpc.result == 'success' &&
+      (needs.pypi.result == 'success' ||
+        (inputs.new_tag != '' && needs.pypi.result == 'skipped'))
+    permissions:
+      contents: write
+    uses: ./.github/workflows/promote-java.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    with:
+      action: publish
+      deployment_id: ${{ needs.java.outputs.deployment_id }}
+      tag: java-v${{ needs.tag-and-release.outputs.version }}
+      previous_tag: ${{ inputs.previous_tag }}
+    secrets:
+      JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.SONATYPE_USERNAME || secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
+      JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.SONATYPE_PASSWORD || secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
+      JRELEASER_GPG_PASSPHRASE: ${{ secrets.JRELEASER_GPG_PASSPHRASE }}
+      JRELEASER_GPG_SECRET_KEY: ${{ secrets.JRELEASER_GPG_SECRET_KEY }}
+      JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.JRELEASER_GPG_PUBLIC_KEY }}
+
+  # Something irreversible failed (or never ran), so the staged Java bindings must not go out. A
+  # re-run of the release stages them again and the publishes skip what already went out.
+  java-drop:
+    name: Maven Central (drop)
+    needs: [java, crates, go, grpc, pypi]
+    if: >-
+      always() && needs.java.outputs.deployment_id != '' && needs.java.result == 'success' &&
+      (needs.crates.result != 'success' || needs.go.result != 'success' ||
+        needs.grpc.result != 'success' ||
+        (needs.pypi.result != 'success' && !(inputs.new_tag != '' && needs.pypi.result == 'skipped')))
+    permissions:
+      contents: read
+    uses: ./.github/workflows/promote-java.yaml # zizmor: ignore[self-repository] CI pins a zizmor that predates $/ syntax support
+    with:
+      action: drop
+      deployment_id: ${{ needs.java.outputs.deployment_id }}
+    secrets:
+      JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.SONATYPE_USERNAME || secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
+      JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.SONATYPE_PASSWORD || secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
 
   # Installs what just reached crates.io and PyPI and synthesizes once. Runs on the push path only:
   # the override path publishes to PyPI from prepare-release.yaml, after this workflow returns.
@@ -289,11 +390,14 @@ jobs:
     name: Whole-repo GitHub Release
     # On the override path `pypi` is skipped (prepare-release.yaml publishes to PyPI after this
     # workflow returns), so only the wheel build gates the release there.
-    needs: [tag-and-release, crates, java, go, grpc, deb, android, apple, espeak-data, sapi, python, pypi]
+    needs: [tag-and-release, crates, java, java-promote, go, grpc, deb, android, apple, espeak-data, sapi, python, pypi]
     if: >-
       !cancelled() && inputs.dry_run != true &&
       needs.tag-and-release.result == 'success' &&
-      needs.crates.result == 'success' && needs.java.result == 'success' &&
+      needs.crates.result == 'success' &&
+      (needs.java-promote.result == 'success' ||
+        (needs.java-promote.result == 'skipped' && needs.java.outputs.deployment_id == '' &&
+          (needs.java.result == 'success' || vars.SKIP_MAVEN_CENTRAL == 'true'))) &&
       needs.go.result == 'success' && needs.grpc.result == 'success' &&
       needs.deb.result == 'success' && needs.android.result == 'success' &&
       needs.apple.result == 'success' && needs.espeak-data.result == 'success' &&
@@ -367,6 +471,7 @@ jobs:
           REPO: ${{ github.repository }}
           VERSION: ${{ needs.tag-and-release.outputs.version }}
           SIGNED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+          SKIP_MAVEN: ${{ vars.SKIP_MAVEN_CENTRAL == 'true' }}
         # Depends on every component job so this always publishes last, shown as "Latest". Each
         # component job skips a version it already published, so a re-run reaching this step
         # must skip the same way instead of hitting gh's already_exists error.
@@ -397,6 +502,9 @@ jobs:
             policy="Windows installer: free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). ${policy_link}"
           else
             policy="Windows installer: not signed yet; signing through [SignPath Foundation](https://signpath.org/) is being set up. ${policy_link}"
+          fi
+          if [ "$SKIP_MAVEN" = "true" ]; then
+            policy+=$'\n\n''Java bindings: not published to Maven Central for this version.'
           fi
           notes_args=(--generate-notes --notes "$policy")
           if [ -n "$previous_tag" ]; then

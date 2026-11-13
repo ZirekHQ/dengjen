@@ -10,6 +10,13 @@ on:
         required: false
         type: boolean
         default: false
+      # Packages and verifies every crate without authenticating or publishing: release.yaml runs
+      # this before anything leaves CI, so a crate that would fail to publish stops the release
+      # while it can still be re-run under the same version.
+      package_only:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,6 +30,7 @@ jobs:
       id-token: write
     env:
       DRY_RUN: ${{ inputs.dry_run }}
+      PACKAGE_ONLY: ${{ inputs.package_only }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,6 +50,7 @@ jobs:
       # too -- release.yaml (always @refs/heads/main, its only trigger) or prepare-release.yaml (the
       # override path, which can legitimately run from a tag ref -- see the stale-retry path).
       - name: verify OIDC workflow_ref matches crates.io Trusted Publishing target
+        if: env.PACKAGE_ONLY != 'true'
         env:
           WORKFLOW_REF: ${{ github.workflow_ref }}
         run: |
@@ -53,6 +62,7 @@ jobs:
             exit 1
           fi
       - name: Authenticate with crates.io
+        if: env.PACKAGE_ONLY != 'true'
         id: auth
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
 
@@ -67,8 +77,8 @@ jobs:
       # on crates.io yet (tier 2+ on a version bump). Packaging the whole workspace resolves them
       # from the local packages instead and builds each archive; publish-crate-if-needed.sh then
       # skips its per-crate dry run.
-      - name: package and verify the workspace (dry run only)
-        if: env.DRY_RUN == 'true'
+      - name: package and verify the workspace (dry run or package only)
+        if: env.DRY_RUN == 'true' || env.PACKAGE_ONLY == 'true'
         run: >-
           cargo package --workspace --locked
           --exclude dengjen-capi-jni-common
@@ -82,6 +92,7 @@ jobs:
       # publish-crate-if-needed.sh skips a crate crates.io already has (a curl lookup, no token
       # needed) before CARGO_REGISTRY_TOKEN is read -- see the script's own comment for why.
       - name: publish tier 1 (dengjen-audio-ops, dengjen-core, dengjen-espeak-rs-sys, dengjen-stt, dengjen-voices)
+        if: env.PACKAGE_ONLY != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -92,7 +103,7 @@ jobs:
           bash .github/scripts/publish-crate-if-needed.sh dengjen-stt "$VERSION"
           bash .github/scripts/publish-crate-if-needed.sh dengjen-voices "$VERSION"
       - name: wait for tier 1 to index
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.PACKAGE_ONLY != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -103,17 +114,19 @@ jobs:
           bash .github/scripts/wait-for-crate.sh dengjen-voices "$VERSION"
 
       - name: publish tier 2 (dengjen-tts-core)
+        if: env.PACKAGE_ONLY != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: bash .github/scripts/publish-crate-if-needed.sh dengjen-tts-core "$VERSION"
       - name: wait for tier 2 to index
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.PACKAGE_ONLY != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: bash .github/scripts/wait-for-crate.sh dengjen-tts-core "$VERSION"
 
       - name: publish tier 3 (dengjen-hebrew-phonemizer, dengjen-kurmanji-phonemizer, dengjen-pinyin-phonemizer)
+        if: env.PACKAGE_ONLY != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -122,7 +135,7 @@ jobs:
           bash .github/scripts/publish-crate-if-needed.sh dengjen-kurmanji-phonemizer "$VERSION"
           bash .github/scripts/publish-crate-if-needed.sh dengjen-pinyin-phonemizer "$VERSION"
       - name: wait for tier 3 to index
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.PACKAGE_ONLY != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -131,17 +144,19 @@ jobs:
           bash .github/scripts/wait-for-crate.sh dengjen-pinyin-phonemizer "$VERSION"
 
       - name: publish tier 4 (dengjen-espeak-phonemizer)
+        if: env.PACKAGE_ONLY != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: bash .github/scripts/publish-crate-if-needed.sh dengjen-espeak-phonemizer "$VERSION"
       - name: wait for tier 4 to index
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.PACKAGE_ONLY != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: bash .github/scripts/wait-for-crate.sh dengjen-espeak-phonemizer "$VERSION"
 
       - name: publish tier 5 (dengjen-tts-piper, dengjen-tts-kokoro, dengjen-tts-melotts)
+        if: env.PACKAGE_ONLY != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -150,7 +165,7 @@ jobs:
           bash .github/scripts/publish-crate-if-needed.sh dengjen-tts-kokoro "$VERSION"
           bash .github/scripts/publish-crate-if-needed.sh dengjen-tts-melotts "$VERSION"
       - name: wait for tier 5 to index
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.PACKAGE_ONLY != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -159,17 +174,19 @@ jobs:
           bash .github/scripts/wait-for-crate.sh dengjen-tts-melotts "$VERSION"
 
       - name: publish tier 6 (dengjen-tts)
+        if: env.PACKAGE_ONLY != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: bash .github/scripts/publish-crate-if-needed.sh dengjen-tts "$VERSION"
       - name: wait for tier 6 to index
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.PACKAGE_ONLY != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: bash .github/scripts/wait-for-crate.sh dengjen-tts "$VERSION"
 
       - name: publish tier 7 (dengjen-tts-cli, dengjen-tts-grpc, dengjen-tts-python, libdengjen)
+        if: env.PACKAGE_ONLY != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -179,7 +196,7 @@ jobs:
           bash .github/scripts/publish-crate-if-needed.sh dengjen-tts-python "$VERSION"
           bash .github/scripts/publish-crate-if-needed.sh libdengjen "$VERSION"
       - name: wait for tier 7 to index
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.PACKAGE_ONLY != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
