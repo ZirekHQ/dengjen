@@ -1,0 +1,36 @@
+[package]
+name = "dengjen-gtk"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "The Dengjen app for Linux: read Kurmanji text aloud and save it as audio"
+repository = "https://github.com/ZirekHQ/dengjen"
+publish = false
+
+# A workspace of its own so GTK and ALSA stay out of the engine workspace's builds and CI.
+[workspace]
+
+[[bin]]
+name = "dengjen-gtk"
+path = "src/main.rs"
+
+[features]
+default = []
+# Load onnxruntime at run time instead of downloading it at build time.
+ort-dylib = ["ort/load-dynamic"]
+
+[dependencies]
+adw = { package = "libadwaita", version = "0.7", features = ["v1_4"] }
+async-channel = "2"
+dengjen-app = { path = "../../crates/app" }
+dengjen-tts = { path = "../../crates/dengjen/synth" }
+dengjen-tts-core = { path = "../../crates/dengjen/core", features = ["ort-providers"] }
+dengjen-tts-piper = { path = "../../crates/dengjen/models/piper", default-features = false, features = ["kurmanji"] }
+dirs = "7"
+gtk = { package = "gtk4", version = "0.9", features = ["v4_12"] }
+rodio = { version = "0.20", default-features = false }
+
+[dependencies.ort]
+version = "=2.0.0-rc.15"
+default-features = false
+features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-27"]

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Dengjen
+GenericName=Read aloud
+Comment=Hear Kurmanji text read aloud and save it as audio
+Comment[ku]=Nivîsa kurmancî bi deng bixwîne û wek deng tomar bike
+Exec=dengjen-gtk
+Icon=audio-speakers
+Terminal=false
+Categories=Utility;Accessibility;AudioVideo;
+Keywords=speech;tts;kurdish;kurmanji;read;
+StartupNotify=true
