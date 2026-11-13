@@ -6,6 +6,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.invoke.MethodHandle;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 /**
  * Points a dynamically linked native library at the onnxruntime the {@code dengjen.onnxruntime.*}
@@ -31,13 +32,41 @@ final class OnnxRuntime {
     }
   }
 
+  private static boolean isExplicit(UnaryOperator<String> properties) {
+    return properties.apply(PREFIX + ".path") != null || properties.apply(PREFIX + ".url") != null;
+  }
+
   private static String resolvePath() {
     String classifier =
         NativePlatform.classifier(System.getProperty("os.name"), System.getProperty("os.arch"));
-    return OnnxRuntimeSource.resolve(
-            PREFIX, System::getProperty, OnnxRuntime.class.getClassLoader(), classifier)
+    return resolveSource(
+            System::getProperty,
+            System::getenv,
+            OnnxRuntime.class.getClassLoader(),
+            classifier,
+            DengjenLib.SET_ORT_DYLIB_PATH.isPresent())
         .map(OnnxRuntime::localFile)
         .orElse(null);
+  }
+
+  /**
+   * The source to apply. A jar's pinned default never overrides an {@code ORT_DYLIB_PATH} the user
+   * already exported, and nor does it apply to a native library that embeds onnxruntime ({@code
+   * canSetPath} false); an explicit {@code -D} setting still does.
+   */
+  static Optional<OnnxRuntimeSource> resolveSource(
+      UnaryOperator<String> properties,
+      UnaryOperator<String> environment,
+      ClassLoader loader,
+      String classifier,
+      boolean canSetPath) {
+    if (!isExplicit(properties)) {
+      String envPath = environment.apply("ORT_DYLIB_PATH");
+      if (!canSetPath || (envPath != null && !envPath.isBlank())) {
+        return Optional.empty();
+      }
+    }
+    return OnnxRuntimeSource.resolve(PREFIX, properties, loader, classifier);
   }
 
   /** The file for {@code source}, downloaded into the per-user cache when it is remote. */

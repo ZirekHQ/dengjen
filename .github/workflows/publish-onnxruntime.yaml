@@ -1,0 +1,70 @@
+name: Publish ONNX Runtime
+
+# Hosts the ONNX Runtime files the Java binding downloads on first use
+# (bindings/java/src/main/resources/onnxruntime/). The files come from
+# sherpa-onnx's shared-library tarballs, so TTS and STT run the same build.
+# Run it again only to move to another ONNX Runtime version, then update the
+# pinned .properties files with the digests the job prints.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sherpa_version:
+        description: sherpa-onnx release to take ONNX Runtime from
+        default: "2.0.1"
+        required: true
+      ort_version:
+        description: ONNX Runtime version that release bundles (names the tag)
+        default: "1.28.2"
+        required: true
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      SHERPA: ${{ inputs.sherpa_version }}
+      ORT: ${{ inputs.ort_version }}
+    steps:
+      - name: Fetch and unpack the four platform tarballs
+        run: |
+          set -euo pipefail
+          [[ $SHERPA =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && $ORT =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          mkdir out
+          base="https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA}/sherpa-onnx-v${SHERPA}"
+          fetch() { # classifier tarball-suffix file
+            curl --proto =https --tlsv1.2 -fsSL --retry 3 "${base}-$2.tar.bz2" -o "$1.tar.bz2"
+            mkdir "x-$1"
+            tar -xjf "$1.tar.bz2" -C "x-$1" --wildcards "*/lib/$3"
+            cp "x-$1"/*/lib/"$3" "out/onnxruntime-${ORT}-$1-$3"
+          }
+          fetch linux-x86_64 linux-x64-shared-lib libonnxruntime.so
+          fetch linux-aarch64 linux-aarch64-shared-cpu-lib libonnxruntime.so
+          fetch macos-aarch64 osx-arm64-shared-lib libonnxruntime.dylib
+          fetch windows-x64 win-x64-shared-MT-Release-lib onnxruntime.dll
+          # Refuse to publish a file that is not the version the tag claims.
+          for f in out/*; do
+            grep -aq "${ORT}" "$f" || { echo "::error::$f does not mention ONNX Runtime ${ORT}"; exit 1; }
+          done
+          (cd out && sha256sum * | tee SHA256SUMS)
+          {
+            echo '### Pin these in `bindings/java/src/main/resources/onnxruntime/`'
+            echo '```'; cat out/SHA256SUMS; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="onnxruntime-v${ORT}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::$tag already exists; assets are immutable pins, pick a new version"
+            exit 1
+          fi
+          gh release create "$tag" out/* --repo "$GITHUB_REPOSITORY" \
+            --title "ONNX Runtime ${ORT}" --latest=false \
+            --notes "ONNX Runtime ${ORT} as shipped in sherpa-onnx ${SHERPA}, downloaded on first use by the Java binding. Do not delete or replace assets: released jars pin their SHA-256."
