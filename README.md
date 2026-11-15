@@ -50,10 +50,11 @@ To contribute, see [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 ## Code signing policy
 
-The Windows SAPI5 voice installer is signed through SignPath Foundation (free code signing provided
-by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/))
-from the first release after the project's approval; until then it is unsigned. See the [code signing policy](CODE_SIGNING_POLICY.md) for what is signed, who approves it, and the
-privacy statement.
+The Windows SAPI5 voice installer is currently unsigned, so Windows SmartScreen warns when you run
+it; the [SAPI5 voice guide](crates/frontends/sapi/README.md#windows-smartscreen-warning) explains
+how to check its SHA-256 and run it. Signing is tracked in
+[#574](https://github.com/ZirekHQ/dengjen/issues/574). See the [code signing policy](CODE_SIGNING_POLICY.md)
+for what will be signed, who approves it, and the privacy statement.
 
 ## License
 
