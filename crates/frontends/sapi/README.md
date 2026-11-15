@@ -6,7 +6,7 @@ any other SAPI5 program can use it, on the logon screen and in UAC prompts too w
 machine-wide.
 
 **Status: spike.** It speaks, aborts within one 40 ms slice of audio, and reports sentence, word
-and bookmark events. A 64-bit installer is built by CI but not yet published with releases.
+and bookmark events. Releases include a 64-bit installer.
 
 ## Installing
 
@@ -19,6 +19,23 @@ prompts too. Uninstalling from Settings > Apps removes the files, the voice toke
 registration. For an unattended install, pass `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. If the
 Visual C++ runtime it installs needs a restart, Setup stops before copying anything (exit code 8
 when unattended); restart Windows and run it again.
+
+### Windows SmartScreen warning
+
+The installer is not code signed yet, so Windows SmartScreen shows "Windows protected your PC"
+when you run it. Select **More info**, check that the app is `dengjen-sapi-<version>-x64-setup.exe`,
+then select **Run anyway**. Before you do, check that the file is the one the release published:
+each release has a `SHA256SUMS-sapi.txt` beside the installer, and GitHub shows the same SHA-256
+next to the asset. In PowerShell, in the folder you downloaded it to:
+
+```powershell
+(Get-FileHash .\dengjen-sapi-3.2.0-x64-setup.exe -Algorithm SHA256).Hash
+```
+
+Compare the result with the line in `SHA256SUMS-sapi.txt` (case does not matter). For v3.2.0 it is
+`dc817f726a035a172a41d628cd76f991ab95b99c6823a725b8b442626ffca710`. If it differs, do not run the
+file; download it again from the release page. Signing is tracked in
+[#574](https://github.com/ZirekHQ/dengjen/issues/574).
 
 The script is `installer/dengjen-sapi.iss` (Inno Setup 6); `tests/installer.ps1` installs, speaks
 and uninstalls in CI. Releases build it with `publish-sapi.yaml`, which signs the DLL and the installer
