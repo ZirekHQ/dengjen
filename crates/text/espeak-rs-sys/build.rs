@@ -250,8 +250,20 @@ fn apply_source_patch(root: &Path, patch: &SourcePatch) -> Result<(), String> {
             path.display()
         ));
     }
-    std::fs::write(&path, text.replacen(&find, &replace, 1))
+    write_replacing(&path, &text.replacen(&find, &replace, 1))
         .map_err(|e| format!("failed to write patched {}: {e}", path.display()))
+}
+
+/// Leaves `path` untouched when the write fails, which a cached source tree relies on.
+fn write_replacing(path: &Path, contents: &str) -> std::io::Result<()> {
+    let mut staged = path.as_os_str().to_owned();
+    staged.push(".patching");
+    let staged = PathBuf::from(staged);
+    std::fs::write(&staged, contents)
+        .and_then(|()| std::fs::rename(&staged, path))
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&staged);
+        })
 }
 
 /// Idempotent: skips a file that already contains `replace`. Errors if `find` does not occur

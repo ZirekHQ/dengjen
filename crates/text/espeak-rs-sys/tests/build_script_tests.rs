@@ -192,6 +192,7 @@ fn apply_source_patches_inserts_the_replacement_once() {
         std::fs::read_to_string(root.join("f.c")).unwrap(),
         "a;\nb;\nc;\n"
     );
+    assert!(!root.join("f.c.patching").exists());
     std::fs::remove_dir_all(&root).unwrap();
 }
 
