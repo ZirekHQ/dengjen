@@ -191,6 +191,43 @@ fn materialize_pinned(lock_text: &str, dst: &Path) {
     std::fs::write(&stamp, &lock.sha256).expect("Failed to record the pinned espeak-ng checksum");
 }
 
+pub(crate) struct SourcePatch {
+    pub(crate) file: &'static str,
+    pub(crate) find: &'static str,
+    pub(crate) replace: &'static str,
+}
+
+// espeak-ng's `TranslateWord2` scans `word_phonemes` for a NUL, but a word that fills
+// `N_WORD_PHONEMES` codes leaves none, so the scan reads past the buffer. Two NULs, because a
+// trailing phonSWITCH consumes the first as its operand. Drop once `espeak-ng.lock` pins a commit
+// that terminates the buffer itself.
+pub(crate) const SOURCE_PATCHES: &[SourcePatch] = &[SourcePatch {
+    file: "src/libespeak-ng/translate.c",
+    find: "\tstress = 0;\n\tnext_stress = 1;\n\tsrcix = 0;\n\tmax_stress = -1;\n",
+    replace: "\tword_phonemes[N_WORD_PHONEMES - 2] = 0;\n\tword_phonemes[N_WORD_PHONEMES - 1] = 0;\n\n\tstress = 0;\n\tnext_stress = 1;\n\tsrcix = 0;\n\tmax_stress = -1;\n",
+}];
+
+/// Idempotent: skips a file that already contains `replace`. Panics if `find` does not occur
+/// exactly once in the file, or if the file cannot be read or written.
+pub(crate) fn apply_source_patches(root: &Path, patches: &[SourcePatch]) {
+    for patch in patches {
+        let path = root.join(patch.file);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {} to patch it: {e}", path.display()));
+        if text.contains(patch.replace) {
+            continue;
+        }
+        assert!(
+            text.matches(patch.find).count() == 1,
+            "{} does not hold the text patch expects exactly once; re-check the patch after \
+             moving the espeak-ng pin",
+            path.display()
+        );
+        std::fs::write(&path, text.replacen(patch.find, patch.replace, 1))
+            .unwrap_or_else(|e| panic!("failed to write patched {}: {e}", path.display()));
+    }
+}
+
 pub(crate) fn materialize_espeak_ng_source(
     override_path: Option<&Path>,
     lock_text: &str,
@@ -682,6 +719,7 @@ fn main() {
         espeak_dst.display()
     );
     materialize_espeak_ng_source(source_override.as_deref(), &lock_text, &espeak_dst);
+    apply_source_patches(&espeak_dst, SOURCE_PATCHES);
 
     let mut bindgen_builder = bindgen::Builder::default()
         .header("wrapper.h")
