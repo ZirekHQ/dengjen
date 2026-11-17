@@ -4,7 +4,8 @@
 mod build_script;
 
 use build_script::{
-    BUILD_CONFIG_ENV_VARS, EspeakNgSource, copy_folder, ensure_libs_installed, entry_is_safe,
+    BUILD_CONFIG_ENV_VARS, EspeakNgSource, SOURCE_PATCHES, SourcePatch, apply_source_patches,
+    copy_folder, discard_stale_patched_source, ensure_libs_installed, entry_is_safe,
     espeak_ng_data_dir_const_source, extract_lib_assets, extract_tar_gz, is_below_a_symlink,
     materialize_espeak_ng_source, parse_clang_libraries_dir, parse_source_lock,
     resolve_espeak_ng_source, resolved_pcaudio_lib, resolved_sonic_lib, source_url, stripped_path,
@@ -166,6 +167,82 @@ fn scratch_path(name: &str) -> PathBuf {
         std::process::id(),
         std::thread::current().id(),
     ))
+}
+
+fn patch_fixture(name: &str, contents: &str) -> PathBuf {
+    let root = scratch_path(name);
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("f.c"), contents).unwrap();
+    root
+}
+
+const TEST_PATCH: &[SourcePatch] = &[SourcePatch {
+    file: "f.c",
+    find: "a;\n",
+    replace: "a;\nb;\n",
+}];
+
+#[test]
+fn apply_source_patches_inserts_the_replacement_once() {
+    let root = patch_fixture("patch-once", "a;\nc;\n");
+    apply_source_patches(&root, TEST_PATCH).unwrap();
+    apply_source_patches(&root, TEST_PATCH).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(root.join("f.c")).unwrap(),
+        "a;\nb;\nc;\n"
+    );
+    assert!(!root.join("f.c.patching").exists());
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn apply_source_patches_rejects_source_the_patch_no_longer_matches() {
+    let root = patch_fixture("patch-drift", "x;\n");
+    assert!(apply_source_patches(&root, TEST_PATCH).is_err());
+    assert!(!root.join(".patches-applied").exists());
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn apply_source_patches_matches_crlf_checkouts_and_keeps_their_line_endings() {
+    let root = patch_fixture("patch-crlf", "a;\r\nc;\r\n");
+    apply_source_patches(&root, TEST_PATCH).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(root.join("f.c")).unwrap(),
+        "a;\r\nb;\r\nc;\r\n"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn an_edited_patch_set_discards_the_tree_the_old_one_modified() {
+    let root = patch_fixture("patch-edited", "a;\nc;\n");
+    apply_source_patches(&root, TEST_PATCH).unwrap();
+    let edited = [SourcePatch {
+        file: "f.c",
+        find: "a;\n",
+        replace: "a;\nz;\n",
+    }];
+    discard_stale_patched_source(&root, &edited);
+    assert!(!root.exists());
+}
+
+#[test]
+fn an_unchanged_patch_set_keeps_the_patched_tree() {
+    let root = patch_fixture("patch-kept", "a;\nc;\n");
+    apply_source_patches(&root, TEST_PATCH).unwrap();
+    discard_stale_patched_source(&root, TEST_PATCH);
+    assert!(root.join("f.c").exists());
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn each_shipped_patch_extends_the_text_it_finds() {
+    for patch in SOURCE_PATCHES {
+        assert!(patch.replace.contains(patch.find));
+        assert_ne!(patch.replace, patch.find);
+    }
 }
 
 #[test]

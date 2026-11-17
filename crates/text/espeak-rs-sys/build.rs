@@ -191,6 +191,92 @@ fn materialize_pinned(lock_text: &str, dst: &Path) {
     std::fs::write(&stamp, &lock.sha256).expect("Failed to record the pinned espeak-ng checksum");
 }
 
+pub(crate) struct SourcePatch {
+    pub(crate) file: &'static str,
+    pub(crate) find: &'static str,
+    pub(crate) replace: &'static str,
+}
+
+// `TranslateWord2` scans `word_phonemes` for a NUL, and a trailing phonSWITCH consumes the next
+// byte as its operand, so a buffer filled to its end is read past it. Drop once `espeak-ng.lock`
+// pins a commit that terminates the buffer itself.
+pub(crate) const SOURCE_PATCHES: &[SourcePatch] = &[SourcePatch {
+    file: "src/libespeak-ng/translate.c",
+    find: "\tstress = 0;\n\tnext_stress = 1;\n\tsrcix = 0;\n\tmax_stress = -1;\n",
+    replace: "\tword_phonemes[N_WORD_PHONEMES - 2] = 0;\n\tword_phonemes[N_WORD_PHONEMES - 1] = 0;\n\n\tstress = 0;\n\tnext_stress = 1;\n\tsrcix = 0;\n\tmax_stress = -1;\n",
+}];
+
+const PATCHES_MARKER: &str = ".patches-applied";
+
+fn patch_fingerprint(patches: &[SourcePatch]) -> String {
+    patches
+        .iter()
+        .map(|p| format!("{}\0{}\0{}\0", p.file, p.find, p.replace))
+        .collect()
+}
+
+/// Removes a source tree that a different patch set modified, so an edited patch never stacks on
+/// the old one.
+pub(crate) fn discard_stale_patched_source(root: &Path, patches: &[SourcePatch]) {
+    let marker = std::fs::read_to_string(root.join(PATCHES_MARKER));
+    if marker.is_ok_and(|applied| applied != patch_fingerprint(patches)) {
+        remove_stale(root);
+    }
+}
+
+fn in_line_endings_of(text: &str, snippet: &str) -> String {
+    if text.contains("\r\n") {
+        snippet.replace('\n', "\r\n")
+    } else {
+        snippet.to_string()
+    }
+}
+
+fn apply_source_patch(root: &Path, patch: &SourcePatch) -> Result<(), String> {
+    let path = root.join(patch.file);
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("failed to read {} to patch it: {e}", path.display()))?;
+    let (find, replace) = (
+        in_line_endings_of(&text, patch.find),
+        in_line_endings_of(&text, patch.replace),
+    );
+    if text.contains(&replace) {
+        return Ok(());
+    }
+    if text.matches(&find).count() != 1 {
+        return Err(format!(
+            "{} does not hold the text the patch expects exactly once; re-check the patch after \
+             moving the espeak-ng pin",
+            path.display()
+        ));
+    }
+    write_replacing(&path, &text.replacen(&find, &replace, 1))
+        .map_err(|e| format!("failed to write patched {}: {e}", path.display()))
+}
+
+/// Leaves `path` untouched when the write fails, which a cached source tree relies on.
+fn write_replacing(path: &Path, contents: &str) -> std::io::Result<()> {
+    let mut staged = path.as_os_str().to_owned();
+    staged.push(".patching");
+    let staged = PathBuf::from(staged);
+    std::fs::write(&staged, contents)
+        .and_then(|()| std::fs::rename(&staged, path))
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&staged);
+        })
+}
+
+/// Idempotent: skips a file that already contains `replace`. Errors if `find` does not occur
+/// exactly once in a file, or if a file cannot be read or written. The marker that records the
+/// patch set is written only after every patch applied.
+pub(crate) fn apply_source_patches(root: &Path, patches: &[SourcePatch]) -> Result<(), String> {
+    patches
+        .iter()
+        .try_for_each(|patch| apply_source_patch(root, patch))?;
+    std::fs::write(root.join(PATCHES_MARKER), patch_fingerprint(patches))
+        .map_err(|e| format!("failed to record the applied patches: {e}"))
+}
+
 pub(crate) fn materialize_espeak_ng_source(
     override_path: Option<&Path>,
     lock_text: &str,
@@ -681,7 +767,15 @@ fn main() {
         source_override,
         espeak_dst.display()
     );
+    discard_stale_patched_source(&espeak_dst, SOURCE_PATCHES);
     materialize_espeak_ng_source(source_override.as_deref(), &lock_text, &espeak_dst);
+    match apply_source_patches(&espeak_dst, SOURCE_PATCHES) {
+        Ok(()) => {}
+        Err(e) if source_override.is_some() => {
+            println!("cargo:warning=building ESPEAK_NG_SOURCE unpatched: {e}");
+        }
+        Err(e) => panic!("{e}"),
+    }
 
     let mut bindgen_builder = bindgen::Builder::default()
         .header("wrapper.h")
