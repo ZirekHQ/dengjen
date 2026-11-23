@@ -27,7 +27,6 @@ jobs:
       - name: Run zizmor
         uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
-          version: 1.32.0
           # Fork PRs -- and same-repo Dependabot PRs, which GitHub also caps to a
           # read-only token -- would fail the default SARIF upload, which needs
           # security-events: write.
