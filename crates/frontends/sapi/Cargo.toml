@@ -54,5 +54,5 @@ features = [
 ]
 
 [target.'cfg(windows)'.dependencies]
-windows-core = "0.62.2"
-windows-registry = "0.6.1"
+windows-core = "0.100.0"
+windows-registry = "0.100.0"

@@ -1,10 +1,10 @@
 huggingface_hub==2.4.0
 jiwer==4.0.0
-librosa==1.0.0
-numpy==2.5.4
-pyarrow==26.0.0
+librosa==1.0.1
+numpy==2.5.5
+pyarrow==26.0.1
 sherpa-onnx==2.0.1
 sherpa-onnx-core==2.0.1
 soundfile==0.14.0
 torch==2.15.0
-transformers==5.22.1
+transformers==5.23.0
