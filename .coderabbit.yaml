@@ -8,13 +8,15 @@ reviews:
     - "!**/*.lock"
     - "!**/*.lockfile"
 
-  instructions: |
-    - Focus strictly on correctness, concurrency safety, memory safety, and performance.
-    - Avoid nitpicking style, naming conventions, or formatting unless it impacts API clarity or ABI safety.
-    - Flag any silent error discards, unchecked unwrap() calls in public APIs or request paths, and missing bounds checks.
-    - Keep comments concise: explain the root cause and provide a targeted code fix.
-
   path_instructions:
+    # 0. Repo-wide guidance
+    - path: "**"
+      instructions: |
+        - Focus strictly on correctness, concurrency safety, memory safety, and performance.
+        - Avoid nitpicking style, naming conventions, or formatting unless it impacts API clarity or ABI safety.
+        - Flag any silent error discards, unchecked unwrap() calls in public APIs or request paths, and missing bounds checks.
+        - Keep comments concise: explain the root cause and provide a targeted code fix.
+
     # 1. Rust Audio Ops & DSP
     - path: "crates/audio/**"
       instructions: |
