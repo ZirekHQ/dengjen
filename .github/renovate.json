@@ -106,6 +106,22 @@
         "gradle"
       ],
       "groupName": "android gradle plugin and gradle wrapper"
+    },
+    {
+      "description": "0.x minor bumps of these crates break the API, and Renovate does not regenerate apps/linux/Cargo.lock; migrate them in their own reviewed PR",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchFileNames": [
+        "apps/linux/Cargo.toml"
+      ],
+      "matchPackageNames": [
+        "libadwaita",
+        "gtk4",
+        "rodio"
+      ],
+      "groupName": "linux app ui crates",
+      "automerge": false
     }
   ],
   "gitIgnoredAuthors": [
