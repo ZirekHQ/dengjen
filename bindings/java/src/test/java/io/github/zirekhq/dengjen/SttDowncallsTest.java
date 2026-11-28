@@ -63,14 +63,13 @@ class SttDowncallsTest {
     java.util.concurrent.atomic.AtomicReference<Object> outcome =
         new java.util.concurrent.atomic.AtomicReference<>();
     Thread worker =
-        new Thread(
-            () -> {
-              try {
-                outcome.set(r.recognize(new float[16_000 * 6], 16_000));
-              } catch (SttException e) {
-                outcome.set(e);
-              }
-            });
+        new Thread(() -> {
+          try {
+            outcome.set(r.recognize(new float[16_000 * 6], 16_000));
+          } catch (SttException e) {
+            outcome.set(e);
+          }
+        });
     worker.start();
     worker.join(300);
     r.close();

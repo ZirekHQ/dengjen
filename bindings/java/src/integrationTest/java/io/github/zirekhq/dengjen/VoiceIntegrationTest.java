@@ -130,14 +130,13 @@ class VoiceIntegrationTest {
       try {
         SynthesisParams params = new SynthesisParams(SynthesisMode.LAZY, 10, 100, 50, 0);
 
-        assertThatCode(
-                () ->
-                    voice.speak(
-                        "Test.",
-                        params,
-                        event -> {
-                          throw new AssertionError("boom");
-                        }))
+        assertThatCode(() ->
+                voice.speak(
+                    "Test.",
+                    params,
+                    event -> {
+                      throw new AssertionError("boom");
+                    }))
             .doesNotThrowAnyException();
       } finally {
         SpeakTrampoline.testCallReleased.set(prevHook);

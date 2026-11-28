@@ -55,9 +55,8 @@ final class DengjenLib {
   static final Optional<MethodHandle> SET_ORT_DYLIB_PATH =
       LOOKUP
           .find("libdengjenSetOrtDylibPath")
-          .map(
-              address ->
-                  LINKER.downcallHandle(address, FunctionDescriptor.ofVoid(ADDRESS, ADDRESS)));
+          .map(address ->
+              LINKER.downcallHandle(address, FunctionDescriptor.ofVoid(ADDRESS, ADDRESS)));
 
   static final MethodHandle LOAD_VOICE_FROM_CONFIG_PATH =
       handle("libdengjenLoadVoiceFromConfigPath", FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS));

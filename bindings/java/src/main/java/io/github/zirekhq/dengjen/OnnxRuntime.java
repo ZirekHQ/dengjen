@@ -95,10 +95,9 @@ final class OnnxRuntime {
 
   static void apply(String path, Optional<MethodHandle> setter) {
     MethodHandle setPath =
-        setter.orElseThrow(
-            () ->
-                new IllegalStateException(
-                    "-D" + PATH_PROPERTY + " is set but this native library embeds onnxruntime"));
+        setter.orElseThrow(() ->
+            new IllegalStateException(
+                "-D" + PATH_PROPERTY + " is set but this native library embeds onnxruntime"));
     try (Arena arena = Arena.ofConfined()) {
       MemorySegment outError = arena.allocate(DengjenLayouts.EXTERN_ERROR);
       try {
