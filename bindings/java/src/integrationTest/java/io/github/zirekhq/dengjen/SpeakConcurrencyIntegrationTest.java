@@ -28,13 +28,12 @@ class SpeakConcurrencyIntegrationTest {
         for (int t = 0; t < THREADS; t++) {
           SynthesisParams params = t % 2 == 0 ? nonblocking : blocking;
           threads[t] =
-              new Thread(
-                  () -> {
-                    for (int i = 0; i < CALLS_PER_THREAD; i++) {
+              new Thread(() -> {
+                for (int i = 0; i < CALLS_PER_THREAD; i++) {
 
-                      voice.speak("Test.", params, event -> event.data().length % 3 != 0);
-                    }
-                  });
+                  voice.speak("Test.", params, event -> event.data().length % 3 != 0);
+                }
+              });
           threads[t].start();
         }
         for (Thread thread : threads) {

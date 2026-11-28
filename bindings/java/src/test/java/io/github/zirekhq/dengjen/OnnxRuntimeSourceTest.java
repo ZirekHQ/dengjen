@@ -74,51 +74,40 @@ class OnnxRuntimeSourceTest {
 
   @Test
   void aPathAndAUrlTogetherAreRefused() {
-    assertThatThrownBy(
-            () ->
-                resolve(
-                    Map.of(
-                        PREFIX + ".path", "/x",
-                        PREFIX + ".url", "https://example.org/libonnxruntime.so",
-                        PREFIX + ".sha256", SHA)))
+    assertThatThrownBy(() ->
+            resolve(
+                Map.of(
+                    PREFIX + ".path", "/x",
+                    PREFIX + ".url", "https://example.org/libonnxruntime.so",
+                    PREFIX + ".sha256", SHA)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("not both");
   }
 
   @Test
   void aMalformedDigestIsRefused() {
-    assertThatThrownBy(
-            () ->
-                resolve(
-                    Map.of(
-                        PREFIX + ".url", "https://example.org/libonnxruntime.so",
-                        PREFIX + ".sha256", "abc")))
-        .isInstanceOf(IllegalArgumentException.class);
+    var settings =
+        Map.of(
+            PREFIX + ".url", "https://example.org/libonnxruntime.so",
+            PREFIX + ".sha256", "abc");
+    assertThatThrownBy(() -> resolve(settings)).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aFileNameWithAPathIsRefused() {
-    assertThatThrownBy(
-            () ->
-                resolve(
-                    Map.of(
-                        PREFIX + ".url", "https://example.org/x",
-                        PREFIX + ".sha256", SHA,
-                        PREFIX + ".file", "../libonnxruntime.so")))
-        .isInstanceOf(IllegalArgumentException.class);
+    var settings =
+        Map.of(
+            PREFIX + ".url", "https://example.org/x",
+            PREFIX + ".sha256", SHA,
+            PREFIX + ".file", "../libonnxruntime.so");
+    assertThatThrownBy(() -> resolve(settings)).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void otherSchemesAreRefused() {
-    assertThatThrownBy(
-            () ->
-                resolve(
-                    Map.of(
-                        PREFIX + ".url",
-                        "ftp://example.org/libonnxruntime.so",
-                        PREFIX + ".sha256",
-                        SHA)))
-        .isInstanceOf(IllegalArgumentException.class);
+    var settings =
+        Map.of(PREFIX + ".url", "ftp://example.org/libonnxruntime.so", PREFIX + ".sha256", SHA);
+    assertThatThrownBy(() -> resolve(settings)).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test

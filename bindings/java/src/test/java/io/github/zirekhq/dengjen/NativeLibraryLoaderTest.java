@@ -23,10 +23,9 @@ class NativeLibraryLoaderTest {
   void failsClearlyWhenTheResourceIsMissing() {
     var classLoader = NativeLibraryLoaderTest.class.getClassLoader();
 
-    assertThatThrownBy(
-            () ->
-                NativeLibraryLoader.extractResource(
-                    "natives/does-not-exist/libdengjen.so", classLoader))
+    assertThatThrownBy(() ->
+            NativeLibraryLoader.extractResource(
+                "natives/does-not-exist/libdengjen.so", classLoader))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("natives/does-not-exist/libdengjen.so");
   }
@@ -59,10 +58,9 @@ class NativeLibraryLoaderTest {
   void failsWithIOExceptionWhenTheTargetDirectoryIsMissing(@TempDir Path dir) {
     var loader = NativeLibraryLoaderTest.class.getClassLoader();
 
-    assertThatThrownBy(
-            () ->
-                NativeLibraryLoader.extractResource(
-                    "fixture/hello.txt", loader, dir.resolve("missing")))
+    assertThatThrownBy(() ->
+            NativeLibraryLoader.extractResource(
+                "fixture/hello.txt", loader, dir.resolve("missing")))
         .isInstanceOf(IOException.class);
   }
 }

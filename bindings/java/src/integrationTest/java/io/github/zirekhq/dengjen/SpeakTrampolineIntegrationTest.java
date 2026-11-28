@@ -49,11 +49,10 @@ class SpeakTrampolineIntegrationTest {
 
       SynthesisEvent[] received = new SynthesisEvent[1];
       SpeakTrampoline trampoline =
-          SpeakTrampoline.create(
-              event2 -> {
-                received[0] = event2;
-                return true;
-              });
+          SpeakTrampoline.create(event2 -> {
+            received[0] = event2;
+            return true;
+          });
       try {
         byte result = SpeakTrampoline.invoke(event, trampoline.userData());
         assertThat(result)
@@ -82,11 +81,10 @@ class SpeakTrampolineIntegrationTest {
 
       SynthesisEvent[] received = new SynthesisEvent[1];
       SpeakTrampoline trampoline =
-          SpeakTrampoline.create(
-              event2 -> {
-                received[0] = event2;
-                return true;
-              });
+          SpeakTrampoline.create(event2 -> {
+            received[0] = event2;
+            return true;
+          });
       boolean[] released = {false};
       Runnable prevHook = SpeakTrampoline.testCallReleased.get();
       SpeakTrampoline.testCallReleased.set(() -> released[0] = true);

@@ -131,6 +131,8 @@ jobs:
             mkdir -p ../base-tree/crates/dengjen/synth/models
             cp -r crates/dengjen/synth/models/. ../base-tree/crates/dengjen/synth/models/
           fi
+          # Resolve the baseline with head's lockfile: a base lockfile that no longer compiles must not fail the comparison.
+          cp Cargo.lock ../base-tree/Cargo.lock
           cd ../base-tree
           bash "$GITHUB_WORKSPACE/.github/scripts/run-synth-bench.sh" "$GITHUB_WORKSPACE/base-synth.txt"
           cargo bench -p dengjen-audio-ops --bench benchmarks | tee "$GITHUB_WORKSPACE/base-audio.txt"
