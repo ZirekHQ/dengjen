@@ -106,9 +106,7 @@ class OnnxRuntimeSourceTest {
   @Test
   void otherSchemesAreRefused() {
     var settings =
-        Map.of(
-            PREFIX + ".url", "ftp://example.org/libonnxruntime.so",
-            PREFIX + ".sha256", SHA);
+        Map.of(PREFIX + ".url", "ftp://example.org/libonnxruntime.so", PREFIX + ".sha256", SHA);
     assertThatThrownBy(() -> resolve(settings)).isInstanceOf(IllegalArgumentException.class);
   }
 
